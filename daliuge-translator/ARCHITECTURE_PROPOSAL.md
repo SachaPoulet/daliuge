@@ -85,16 +85,28 @@ not reflect that. Two failure modes, both structural.
 | [translator_utils.py](dlg/dropmake/web/translator_utils.py) | unroll + partition, a *third* time | [:160-184](dlg/dropmake/web/translator_utils.py#L160-L184) | 2 — pure glue, replaceable |
 
 The clearest symptom is **reprodata**. The convention "reprodata is the last list element"
-is hand-re-implemented at ~12 sites, in every module that drives the pipeline:
+is hand-re-implemented at 12 sites — one producer and eleven consumers — in every module that
+drives the pipeline:
 
 | Site | Tier | Fate |
 |------|------|------|
-| [tool_commands.py:408](dlg/translator/tool_commands.py#L408), [:434](dlg/translator/tool_commands.py#L434), [:515](dlg/translator/tool_commands.py#L515) — two marked `# TODO: Re-integrate` | 1 | deleted, Phase 1 |
+| [pg_generator.py:95](dlg/dropmake/pg_generator.py#L95) — `drop_list.append(lg.reprodata)`, the *producer* | 1 | becomes `PhysicalGraphTemplate.to_wire()` |
+| [tool_commands.py:408](dlg/translator/tool_commands.py#L408)/[:417](dlg/translator/tool_commands.py#L417), [:434](dlg/translator/tool_commands.py#L434)/[:436](dlg/translator/tool_commands.py#L436), [:515](dlg/translator/tool_commands.py#L515)/[:519](dlg/translator/tool_commands.py#L519) — two marked `# TODO: Re-integrate` | 1 | deleted, Phase 1 |
+| [tool_commands.py:597-600](dlg/translator/tool_commands.py#L597-L600) — `dlg translator submit`; reads `pg[-1]` then re-appends around the submit call | 1 | deleted, Phase 1 |
 | [translator_utils.py:162](dlg/dropmake/web/translator_utils.py#L162), [:180-184](dlg/dropmake/web/translator_utils.py#L180-L184) | 2 | deleted with the glue function |
-| [translator_rest.py:954-961](dlg/dropmake/web/translator_rest.py#L954-L961), [:1009-1014](dlg/dropmake/web/translator_rest.py#L1009-L1014), [:1061-1067](dlg/dropmake/web/translator_rest.py#L1061-L1067) | 2 | each pop/append pair collapses to one adapter call — a call-site edit, nothing more |
+| [translator_rest.py:954-961](dlg/dropmake/web/translator_rest.py#L954-L961), [:1009-1014](dlg/dropmake/web/translator_rest.py#L1009-L1014), [:1061-1067](dlg/dropmake/web/translator_rest.py#L1061-L1067) — `Updated` generation | 2 | each pop/append pair collapses to one adapter call — a call-site edit, nothing more |
+| [translator_rest.py:641](dlg/dropmake/web/translator_rest.py#L641), [:661](dlg/dropmake/web/translator_rest.py#L661) — `Original` generation, `gen_pg_spec` / deploy path | 2 | same collapse. ⚠ These live in the legacy half, which §5 otherwise leaves alone — see below |
 
 A single cross-cutting concern has no owner, so every caller re-owns it — differently. With
-Tier 2 adaptable, **all ~12 sites can go**, and the convention ends up implemented once.
+Tier 2 adaptable, **all 12 can go**, and the convention ends up implemented once.
+
+⚠ **The last row is the one to think about.** §5 declares the `Original` / `Updated` split
+out of scope, but two reprodata sites sit inside `Original`. Editing them is still legal —
+they are call sites, not restructuring — yet they are the reprodata cleanup's only reach into
+the legacy half, and `Original` is what EAGLE calls. Phase 7 should treat them as a separate,
+last commit, verified against the Phase 0 HTTP corpus. If that corpus does not cover
+`gen_pg_spec`, leave these two alone rather than editing blind: the cleanup is worth 10 sites,
+not 12, if the alternative is an unverified change to EAGLE's path.
 
 ### 1.2 Transitions are split across files with no declared ownership
 
@@ -157,6 +169,8 @@ dlg/translator/
 ├── artefacts.py              LGT, LG, PGT, PGTP, PG envelopes + wire (de)serialisation
 ├── pipeline.py               Stage protocol, composition, reprodata hook — the ONLY one
 ├── errors.py                 exception hierarchy (moved out of dm_utils/pgt/scheduler)
+├── lg.graph.schema           package data, moved from dlg/dropmake/  (§8 Q6)
+├── lib/                      package data, bundled libmetis.{so,dylib} — moved (§8 Q6)
 │
 ├── stages/
 │   ├── prepare/              ══ TRANSITION 1: LGT → LG ══
@@ -214,6 +228,12 @@ dlg/translator/
 The `web/` subtree keeps its internal shape exactly — same filenames, same module
 boundaries, same endpoint set. It moves so that the whole translator is one package instead
 of two, and its imports are rewritten because Tier 1 moved underneath it. Nothing else.
+
+`lg.graph.schema` and `lib/` sit at the package root rather than inside the stage that uses
+them (`prepare/` and `partition/algorithms/` respectively), because both are located at
+runtime by a **package-name string literal**, not by import — moving them deeper multiplies
+the strings that must be kept in sync. Package root keeps it to one anchor: `dlg.translator`.
+See §8 Q6.
 
 `projections/gojs.py` exists because `to_gojs_json` currently lives on `PGT` and does two
 unrelated jobs. Serialisation goes here; the synthetic-DROP insertion goes to
@@ -361,6 +381,15 @@ the HTTP response body of every `Updated` endpoint for a handful of graphs — t
 Tier 2 regression net, and Tier 2 is now something we edit. `pso` is stochastic; seed it or
 compare structurally.
 
+Two coverage requirements the later phases depend on, both cheap to include now and expensive
+to retrofit:
+
+- **`metis` must actually run** — it is the only algorithm that loads the bundled
+  `libmetis`, so it is the only one that would catch the Phase 2 package-path breakage (§8 Q6).
+- **`Original`'s `gen_pg_spec` must be in the HTTP corpus** if Phase 7 is to touch its two
+  reprodata sites (§1.1). Without it, that part of the cleanup is not verifiable and should
+  be dropped.
+
 **Phase 1 — envelopes and pipeline.** Introduce `artefacts.py` + `pipeline.py`. Rewrite
 `tool_commands.py` to compose stages wrapping the *existing* functions unchanged. Deletes
 the three CLI reprodata sites. Zero compiler changes, zero Tier 2 changes. Highest value,
@@ -373,13 +402,21 @@ paths are mandatory, not optional**: `daliuge-engine` imports `pg_generator`, `g
 and `web.translator_utils` from six production modules (§8 Q5). Shipping this phase without
 them breaks the engine.
 
+`scheduler.py` moves in this phase, so **`lib/libmetis.*` moves with it** and the
+`importlib.resources.files("dlg.dropmake")` literal at
+[scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) must be repointed at `dlg.translator`
+(§8 Q6). A shim cannot cover this — it is a filesystem lookup, not an import. Run a `metis`
+partition before merging the phase; nothing else exercises it.
+
 **Phase 2b — relocate `web/`.** `dlg/dropmake/web/` → `dlg/translator/web/`,
-`dlg/dropmake/pg_manager.py` → `dlg/translator/web/pg_manager.py`. A `git mv`, plus three
-in-repo reference fixes the scan identified (§8 Q6): `MANIFEST.in`'s four hardcoded
-`dlg/dropmake/web/*` lines, the literal `"dlg.dropmake.web.translator_rest:run"` at
-[tool_commands.py:610](dlg/translator/tool_commands.py#L610), and the `lg.graph.schema`
-path. Plus a shim at `dlg.dropmake.web.translator_utils`, because the engine imports it.
-**No content edits in the same commit** — keep the move reviewable as a pure rename.
+`dlg/dropmake/pg_manager.py` → `dlg/translator/web/pg_manager.py`. A `git mv`, plus the
+in-repo reference fixes the scan identified (§8 Q6): `MANIFEST.in`'s six hardcoded
+`dlg/dropmake/…` lines, the literal `"dlg.dropmake.web.translator_rest:run"` at
+[tool_commands.py:610](dlg/translator/tool_commands.py#L610), the `lg.graph.schema` move,
+and its one consumer `file_as_string("lg.graph.schema", module="dlg.dropmake")` at
+[translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145). Plus a shim at
+`dlg.dropmake.web.translator_utils`, because the engine imports it. **No content edits in
+the same commit** beyond those path literals — keep the move reviewable as a pure rename.
 
 **Phase 3 — construct registry, read path.** Introduce `ConstructHandler` and route
 `degree_of_parallelism` + `validate_*` through it. Cheapest half of the interface; delete
@@ -465,9 +502,11 @@ this table and §7.1's endpoint contract.
 
 ## 8. Findings — open questions, answered
 
-Answered by source scan on 2026-08-09 over `daliuge-translator/` and `daliuge-engine/`.
-Every claim below is grounded in a cited line. Two findings **contradicted assumptions in
-earlier drafts of this document**; both are marked ⚠ and the proposal has been corrected.
+Answered by source scan on 2026-08-09 over `daliuge-translator/` and `daliuge-engine/`,
+re-verified line-by-line the same day (every citation in both documents was checked against
+the file it names). Every claim below is grounded in a cited line. Three findings
+**contradicted assumptions in earlier drafts of this document**; each is marked ⚠ and the
+proposal has been corrected.
 
 ### Q1 — Is `convert_construct` prepare-time or unroll-time? ✅ Free to move
 
@@ -580,19 +619,48 @@ Full import surface is tabulated in §7.1. The three consequences:
    therefore a runtime contract, and the thread-safety note (§5 row 8) has a concrete
    consumer rather than being theoretical.
 
-### Q6 — Does relocating `web/` break a deployment path? ✅ Three fixes, no blockers
+### Q6 — Does relocating the package break a deployment path? ✅ Five fixes, no blockers
+
+⚠ **Wider than `web/`.** The scan was re-run against *all* of Tier 1, not just the `web/`
+subtree, and found two runtime resource lookups that key off the string `"dlg.dropmake"`.
+Neither is an import, so neither is caught by an import rewrite, and neither fails at import
+time — they fail when the feature is first exercised. Both were missing from the earlier
+version of this table.
 
 | Reference | Status |
 |-----------|--------|
-| `MANIFEST.in` — four hardcoded `dlg/dropmake/web/*` lines, plus `dlg/dropmake/*.schema` and `dlg/dropmake/lib/*` | **must edit** |
+| [scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) — `os.environ["METIS_DLL"] = importlib.resources.files("dlg.dropmake") / f"lib/libmetis.{ext}"` | **must edit + move `lib/`.** Breaks *all* METIS partitioning, not just the web app. Silent until `metis` is first selected |
+| [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) — `file_as_string("lg.graph.schema", module="dlg.dropmake")` | **must edit.** The only consumer of the schema. A Tier 2 call-site edit forced by a Tier 1 move — legitimate under the Scope rule |
+| `MANIFEST.in` — four hardcoded `dlg/dropmake/web/*` lines, plus `dlg/dropmake/*.schema` and `dlg/dropmake/lib/*` | **must edit** (all six lines) |
 | [tool_commands.py:610](dlg/translator/tool_commands.py#L610) — literal `"dlg.dropmake.web.translator_rest:run"` registering `dlg translator tm` | **must edit** |
 | `dlg/dropmake/lg.graph.schema` — the only `.schema` in the package | **must move + update MANIFEST** |
+| `dlg/dropmake/lib/{libmetis.so,libmetis.dylib}` | **must move + update MANIFEST + the `scheduler.py` literal above** |
 | `setup.py` — `packages=find_packages()` [:169](setup.py#L169), `package_data` built from `package_files("dlg")` [:111](setup.py#L111) | fine, both recursive |
 | `setup.py` entry point `dlg.tool_commands: translator=dlg.translator.tool_commands` [:171](setup.py#L171) | fine, unaffected |
 | `docker/Dockerfile{,.dev,.ray}` — `CMD ["dlg","tm",…]` | fine, path-independent |
 | `dlg.spec` | fine — contains only a stale absolute `pathex` to a developer's machine |
 
-Plus the shim at `dlg.dropmake.web.translator_utils` required by Q5.
+Plus the shim at `dlg.dropmake.web.translator_utils` required by Q5. Note a shim does **not**
+help the two resource lookups: `importlib.resources.files("dlg.dropmake")` resolves against
+the real on-disk package directory, so a re-export module leaves it pointing at a directory
+with no `lib/` in it. The literals must be edited, not shimmed.
+
+**Corpus implication:** the Phase 0 corpus must include at least one `metis` run, or this
+class of breakage ships undetected — every other algorithm is pure Python.
+
+### Q7 — Does an import rewrite cover the whole move? ⚠ No — two string-literal lookups
+
+**Answer: `dlg.dropmake` is a package-name string in two runtime resource lookups and a
+`MANIFEST.in` glob set. Rewriting imports leaves all of them stale, and none fails at import
+time.** Full detail in the Q6 table; the two lookups are
+[scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) (`libmetis`, breaks METIS partitioning)
+and [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) (`lg.graph.schema`,
+breaks LG validation on every REST call).
+
+Generalised: **the shim strategy from Q5 covers imports and only imports.** Anything that
+resolves a path from a package name at runtime has to be edited. A grep for the literal
+strings `"dlg.dropmake"` / `dlg/dropmake` — not just `import dlg.dropmake` — is the check,
+and it should be re-run at the end of Phase 2 and Phase 2b.
 
 ### Still open
 
@@ -623,6 +691,8 @@ Conventions:
 | 2026-08-09 | Claude (Opus 5) | — | Scoped web application out entirely: frozen consumer, shims as the compatibility mechanism | n/a | superseded |
 | 2026-08-09 | Claude (Opus 5) | — | Three-tier scope. Web is Tier 2 "adaptable": relocation + call-site/glue edits permitted, app restructuring still forbidden. Added Phase 2b (relocate `web/`) and Phase 7 (glue adaptation); reprodata cleanup now covers all ~12 sites; §7.2 reframed from frozen to budgeted | n/a | — |
 | 2026-08-09 | Claude (Opus 5) | — | Source scan answered §8 Q1, Q2, Q3, Q5, Q6; Q4 partially. **Two corrections**: (a) Q3 — `to_gojs_json`'s synthetic DROPs are deliberate linearisation output for `min_num_parts`/`pso`, not a viewer artefact, so §5 row 2 and §3 now route them to `partition/linearise.py` instead of "make the serialiser read-only"; (b) Q5 — `daliuge-engine` imports translator internals from six production modules incl. `web.translator_utils`, so Phase 2 shims are mandatory and `unroll_and_partition_with_params` / `prepare_lgt` are frozen signatures. Also: MKN confirmed dead **and** broken → delete (Q2); `convert_construct` has no external observer → free to move (Q1); new §5 row 5b, Loop DoP returns `None` → bare `TypeError` | n/a | — |
+| 2026-08-09 | Claude (Opus 5) | — | Verification pass: re-checked every line citation in this document and in [ARCHITECTURE.md](ARCHITECTURE.md) against source — all correct, no drift. **One new finding (§8 Q7)**: `dlg.dropmake` is a package-name *string literal* in two runtime resource lookups — `scheduler.py:1143` (`libmetis`) and `translator_rest.py:145` (`lg.graph.schema`) — plus six `MANIFEST.in` globs. Shims cover imports only, so Phase 2/2b would have shipped broken METIS partitioning and broken LG validation. Q6 widened from three fixes to five; §3 layout gains `lib/` and `lg.graph.schema` at package root; Phase 0 now requires a `metis` run. **Second correction**: §1.1's reprodata table under-enumerated — added `tool_commands.py:597-600` and `translator_rest.py:641`/`:661`, the latter two inside the `Original` generation, with a rule for handling them | n/a | — |
+| 2026-08-09 | Claude (Opus 5) | — | [ARCHITECTURE.md](ARCHITECTURE.md) brought in line with the Q3/Q4 findings it predates: §6 GOJS paragraph now scopes the synthetic-DROP insertion to `min_num_parts`/`pso` instead of claiming it happens on every partition path; §10 item 6 reframed from "visualisation mutates production data" to "partitioning logic living in a serialiser"; §10 item 9 gains the Loop-DoP `None` → bare `TypeError` case; new §10 item 11 records the four package-path string literals | n/a | — |
 
 ### Notes for coding agents
 
@@ -637,7 +707,11 @@ Conventions:
 - Phases are ordered by risk. Do not start Phase 4 before Phase 2 lands; the two-pass unroll
   rewrite is unreviewable while the code is still spread across `lg.py`, `lg_node.py` and
   `dm_utils.py`.
-- Phase 2b is a pure `git mv` — no content edits in that commit.
+- Phase 2b is a pure `git mv` — no content edits in that commit beyond the path literals in
+  §8 Q6.
+- After any move, `grep -rn 'dlg[./]dropmake' --include='*.py' --include='*.in'` must come
+  back empty except for the deliberate shims. Import rewrites do not catch string literals
+  (§8 Q7), and neither does the test suite until the feature is exercised.
 - Phase 4 lands **one construct handler per PR**, corpus run between each.
 - If a change breaks anything in §7.1, stop and escalate — those are cross-repository
   decisions.

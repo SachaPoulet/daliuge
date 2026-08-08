@@ -255,11 +255,22 @@ available node count. It then stamps each DROP with `node` and `island`. With
 are placeholders `#0`, `#1`, … rather than hostnames, producing a *pg_spec template*
 deployable to a cluster whose node names are not yet known (e.g. SLURM).
 
-**GOJS export.** `to_gojs_json` serves the web viewer. It is not a pure serialiser: when
-`_extra_drops` is unset it *mutates the graph*, inserting synthetic `BarrierAppDROP` /
-`InMemoryDROP` nodes wherever two same-type DROPs are directly adjacent, so the viewer can
-render a strictly alternating data/app graph. Because `pg_generator.partition` always calls
-it, those synthetic DROPs are present in the production path too.
+**GOJS export.** `to_gojs_json` serves the web viewer, but it is not a pure serialiser: under
+`if self._extra_drops is None` ([pgt.py:374](dlg/dropmake/pgt.py#L374)) it *mutates the graph*,
+inserting synthetic `BarrierAppDROP` / `InMemoryDROP` nodes wherever two same-type DROPs are
+directly adjacent, producing a strictly alternating data/app graph.
+
+That branch is **algorithm-scoped, not universal**. `PGT.__init__` sets `_extra_drops = []`
+([pgt.py:58](dlg/dropmake/pgt.py#L58)), so for `none`, `metis` and `mysarkar` the guard is
+False and nothing is synthesised. Only `MinNumPartsPGTP` ([pgtp.py:619](dlg/dropmake/pgtp.py#L619))
+and `PSOPGTP` ([pgtp.py:652](dlg/dropmake/pgtp.py#L652)) set it to `None`, both commented
+*"force it to re-calculate the extra drops due to extra links during linearisation"*.
+`pg_generator.partition` does call `to_gojs_json` unconditionally
+([pg_generator.py:233](dlg/dropmake/pg_generator.py#L233)), and `PGT.drops` returns
+`_drop_list + _extra_drops` ([pgt.py:108](dlg/dropmake/pgt.py#L108)) which `to_pg_spec`
+iterates — so for those two algorithms the synthetic DROPs are stamped with `node`/`island`
+and ship in the PG. The insertion is edge-zeroing linearisation output that happens to be
+typed into a serialiser, not a viewer nicety.
 
 ---
 
@@ -376,8 +387,12 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
    match the wiring order. Any rewrite that establishes a proper two-pass structure
    (resolve all instances, then resolve all edges) removes the need for it.
 
-6. **`to_gojs_json` mutates.** A visualisation function inserting DROPs into the production
-   graph is a boundary violation, and it fires on the normal partition path.
+6. **`to_gojs_json` mutates — and the mutation is load-bearing.** Two unrelated jobs share one
+   method: GOJS serialisation, and synthesis of the intermediate DROPs that edge-zeroing
+   linearisation requires. The second only fires for `min_num_parts` and `pso` (§6), and those
+   DROPs reach the PG. So this is not "a viewer mutating production data" — it is partitioning
+   logic living in a serialiser. Separating them means moving the synthesis into the
+   partitioning layer, not deleting it.
 
 7. **Reprodata-as-last-list-element.** An untyped positional convention across four stage
    boundaries and both entry points. A typed envelope (`{"drops": [...], "reprodata": {...}}`)
@@ -388,15 +403,27 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
    documented but not physically separated, and the legacy half mixes HTML rendering with
    translation logic.
 
-9. **Silent defaults.** Scatter DoP falls back to 4 when no count field is found
-   ([lg_node.py:629](dlg/dropmake/lg_node.py#L629), marked "dummy impl"); missing
-   `categoryType` on a Gather input is defaulted to `"Data"` mid-validation. Both turn
-   authoring errors into wrong-but-plausible graphs.
+9. **Silent defaults, and one missing default.** Scatter DoP falls back to 4 when no count
+   field is found ([lg_node.py:629](dlg/dropmake/lg_node.py#L629), marked "dummy impl");
+   missing `categoryType` on a Gather input is defaulted to `"Data"` mid-validation. Both turn
+   authoring errors into wrong-but-plausible graphs. Loop has the opposite problem: if none of
+   `num_of_iter` / `Number of Iterations` / `Number of loops` is present, `_dop` is never
+   assigned ([lg_node.py:644-651](dlg/dropmake/lg_node.py#L644-L651)), `dop` returns `None`,
+   and `range(lgn.dop)` in `lgn_to_pgn` raises a bare `TypeError` naming no node. Three
+   branches of the same `if/elif`, three different failure policies.
 
 10. **METIS is a mixed dependency.** `MetisPGTP` sets `self._metis_path = "gpmetis"`
-    (an external binary on `$PATH`) while `DAGUtil.import_metis()` loads the Python binding
-    against the bundled `lib/libmetis.so`. The binary path appears vestigial but is not
-    obviously dead.
+    ([pgtp.py:63](dlg/dropmake/pgtp.py#L63) — an external binary on `$PATH`) while
+    `DAGUtil.import_metis()` loads the Python binding against the bundled `lib/libmetis.so`.
+    The binary path appears vestigial but is not obviously dead.
+
+11. **Package layout is referenced by string in four places.** `dlg.dropmake` is not only an
+    import path: `scheduler.py:1143` resolves `libmetis` via
+    `importlib.resources.files("dlg.dropmake")`, `translator_rest.py:145` loads the LG schema
+    via `file_as_string("lg.graph.schema", module="dlg.dropmake")`, `tool_commands.py:610`
+    registers `dlg translator tm` as the literal `"dlg.dropmake.web.translator_rest:run"`, and
+    `MANIFEST.in` hardcodes six `dlg/dropmake/…` globs. None of these are caught by an import
+    rewrite, so any package move must handle them explicitly.
 
 ---
 
