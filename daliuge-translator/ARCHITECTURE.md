@@ -282,6 +282,13 @@ rest (node managers), then rewrite every `#N` placeholder into the corresponding
 Nothing about the graph structure changes. This is the only stage that knows anything about
 real infrastructure.
 
+It accepts **two input shapes**: the bare `list[dropdict]`, and a `(graph_name, list)` pair,
+unwrapped by `if type(pgt[0]) is str: pgt = pgt[1]`
+([pg_generator.py:258](dlg/dropmake/pg_generator.py#L258)) with a `TODO: we may want to
+retain that`. The named form is what `daliuge-engine`'s `create_dlg_job.py` writes to disk
+(`json.dump((pgt_name, pgt), …)`), so it is an externally-produced shape, not an internal
+convenience. The graph name is discarded.
+
 ---
 
 ## 8. Entry points
@@ -341,6 +348,15 @@ ISO timestamp) plus the logical node id plus the `iid`. The session id doubles a
 travels as the **final element of the artefact list**, which is why nearly every stage
 transition contains a `repro = pgt.pop()` … `pgt.append(repro)` dance. Getting this wrong
 silently corrupts the graph, because the reprodata element is otherwise shaped like a DROP.
+
+Crucially the convention is **not translator-internal**. `daliuge-engine` drives the same
+dance around its own `pg_generator` calls — `create_dlg_job.py:534-544` and
+`start_dlg_cluster.py:341-358`, the latter sniffing `if not unrolled[-1].get("oid")` to
+decide whether a trailing element is reprodata — and the Drop Manager itself pops it on
+receipt (`composite_manager.py:450-452`, keyed on `"rmode" in graphSpec[-1]`). The
+translator's stage functions therefore return *un-annotated* artefacts and the caller applies
+the `init_*` hook; a translator that applied the hook internally would double-annotate for
+every engine caller.
 
 **Exceptions.** All derive from `GraphException` (`dm_utils`): `GInvalidLink`,
 `GInvalidNode` for structural problems; `GPGTException`, `GPGTNoNeedMergeException`
@@ -417,13 +433,25 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
     `DAGUtil.import_metis()` loads the Python binding against the bundled `lib/libmetis.so`.
     The binary path appears vestigial but is not obviously dead.
 
-11. **Package layout is referenced by string in four places.** `dlg.dropmake` is not only an
+11. **Package layout is referenced by string outside Python.** `dlg.dropmake` is not only an
     import path: `scheduler.py:1143` resolves `libmetis` via
     `importlib.resources.files("dlg.dropmake")`, `translator_rest.py:145` loads the LG schema
     via `file_as_string("lg.graph.schema", module="dlg.dropmake")`, `tool_commands.py:610`
-    registers `dlg translator tm` as the literal `"dlg.dropmake.web.translator_rest:run"`, and
-    `MANIFEST.in` hardcodes six `dlg/dropmake/…` globs. None of these are caught by an import
-    rewrite, so any package move must handle them explicitly.
+    registers `dlg translator tm` as the literal `"dlg.dropmake.web.translator_rest:run"`,
+    `MANIFEST.in` hardcodes six `dlg/dropmake/…` globs, `build_translator.sh:15-51` writes
+    `dlg/dropmake/web/VERSION` and copies the LICENSE there on all four build paths,
+    `run_translator.sh:19-31` bind-mounts `$PWD/dlg/dropmake` over the installed package for
+    development, and `tools/checkGraph.py:14` opens
+    `../daliuge-translator/dlg/dropmake/lg.graph.schema` by relative filesystem path. None of
+    these are caught by an import rewrite, and only the first four are even Python.
+
+12. **`pg_generator.partition` returns two different types.** With `show_gojs=True` it returns
+    the live `PGT` object; with `show_gojs=False` (the default) it returns the `to_pg_spec`
+    list ([pg_generator.py:233-241](dlg/dropmake/pg_generator.py#L233-L241)). Both branches are
+    in use: `web/translator_utils.py:164` and the REST layer take the object path, the CLI and
+    `daliuge-engine`'s deploy scripts take the list path. `to_gojs_json` is called on *both*,
+    so the linearisation mutation of §6 is not gated on `show_gojs` — only its `visual` flag
+    is. A stage typed `Artefact → Artefact` cannot reproduce this without keeping the flag.
 
 ---
 
@@ -435,7 +463,14 @@ cross-repository decision, not a translator-local one.
 - **PG wire format** — the flat `list[dropdict]` with `oid`, `categoryType`, `dropclass`,
   `node`, `island`, `inputs`/`outputs`/`consumers`/`producers`/`streamingConsumers`,
   `port_map`, `rank`, `iid`. Consumed directly by the engine's Drop Managers.
-- **Reprodata as the trailing list element** at every stage boundary.
+- **Reprodata as the trailing list element** at every stage boundary — and the fact that the
+  translator does *not* apply the `init_*` hooks itself, because `daliuge-engine` applies them
+  around its own `pg_generator` calls (§9).
+- **`pg_generator.{unroll, partition, resource_map}` Python signatures and return types**,
+  including `partition`'s `show_gojs` polymorphism (§10 item 12) and `resource_map`'s
+  acceptance of the `(graph_name, list)` form (§7). `daliuge-engine` calls all three from
+  production code, `unroll`/`partition` from inside a running workflow
+  (`dlg/apps/subgraph.py:31`).
 - **`#N` / `#M` placeholder convention** in pg_spec templates — deferred deployment
   (SLURM, Helm) depends on it.
 - **CLI command names, options and stdin/stdout piping behaviour** — used by deployment

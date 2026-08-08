@@ -85,8 +85,9 @@ not reflect that. Two failure modes, both structural.
 | [translator_utils.py](dlg/dropmake/web/translator_utils.py) | unroll + partition, a *third* time | [:160-184](dlg/dropmake/web/translator_utils.py#L160-L184) | 2 — pure glue, replaceable |
 
 The clearest symptom is **reprodata**. The convention "reprodata is the last list element"
-is hand-re-implemented at 12 sites — one producer and eleven consumers — in every module that
-drives the pipeline:
+is hand-re-implemented at 12 translator-side sites — one producer and eleven consumers — in
+every module that drives the pipeline, plus four more in `daliuge-engine` that we cannot
+touch:
 
 | Site | Tier | Fate |
 |------|------|------|
@@ -96,11 +97,20 @@ drives the pipeline:
 | [translator_utils.py:162](dlg/dropmake/web/translator_utils.py#L162), [:180-184](dlg/dropmake/web/translator_utils.py#L180-L184) | 2 | deleted with the glue function |
 | [translator_rest.py:954-961](dlg/dropmake/web/translator_rest.py#L954-L961), [:1009-1014](dlg/dropmake/web/translator_rest.py#L1009-L1014), [:1061-1067](dlg/dropmake/web/translator_rest.py#L1061-L1067) — `Updated` generation | 2 | each pop/append pair collapses to one adapter call — a call-site edit, nothing more |
 | [translator_rest.py:641](dlg/dropmake/web/translator_rest.py#L641), [:661](dlg/dropmake/web/translator_rest.py#L661) — `Original` generation, `gen_pg_spec` / deploy path | 2 | same collapse. ⚠ These live in the legacy half, which §5 otherwise leaves alone — see below |
+| `daliuge-engine`: `create_dlg_job.py:534-544`, `start_dlg_cluster.py:341-358` (incl. the `unrolled[-1].get("oid")` sniff), `composite_manager.py:450-452` (`"rmode" in graphSpec[-1]`) | **3** | **untouchable — and they constrain the fix** (§8 Q8) |
 
 A single cross-cutting concern has no owner, so every caller re-owns it — differently. With
-Tier 2 adaptable, **all 12 can go**, and the convention ends up implemented once.
+Tier 2 adaptable, **the 12 translator-side sites can go**, and the convention ends up
+implemented once *inside the translator*.
 
-⚠ **The last row is the one to think about.** §5 declares the `Original` / `Updated` split
+⚠ **The convention does not end at the repo boundary.** The engine performs the same
+pop/append dance around its own `pg_generator` calls, and the Drop Manager pops the trailing
+element on receipt. Two consequences, both binding on §4: `pg_generator.*` must keep returning
+bare lists rather than envelopes, and the translator must keep *not* applying the `init_*`
+hooks inside those functions — an engine caller applies them itself and would otherwise
+double-annotate. See §8 Q8.
+
+⚠ **The `Original`-generation row is the one to think about.** §5 declares the `Original` / `Updated` split
 out of scope, but two reprodata sites sit inside `Original`. Editing them is still legal —
 they are call sites, not restructuring — yet they are the reprodata cleanup's only reach into
 the legacy half, and `Original` is what EAGLE calls. Phase 7 should treat them as a separate,
@@ -278,9 +288,17 @@ class Stage(Protocol[TIn, TOut]):
 ```
 
 `pipeline.py` composes stages and applies the reproducibility hook at each boundary — the
-single place `init_*_repro_data` is called. `unroll_and_partition` becomes
-`Pipeline([UnrollStage(), PartitionStage()])` in the CLI, in the `/unroll_and_partition`
-endpoint, and in `translator_utils` — one implementation, three callers.
+single place `init_*_repro_data` is called *within the translator*. `unroll_and_partition`
+becomes `Pipeline([UnrollStage(), PartitionStage()])` in the CLI, in the
+`/unroll_and_partition` endpoint, and in `translator_utils` — one implementation, three
+callers.
+
+⚠ **The hook belongs to the Pipeline, not to the `pg_generator` facade.** `daliuge-engine`
+calls `pg_generator.unroll` / `partition` / `resource_map` directly and applies `init_*`
+itself (§1.1, §8 Q8). If the facade routed through a hook-applying Pipeline, every engine call
+site would annotate twice. The facade must compose the *stages* and skip the hook, which means
+`Pipeline` needs the hook to be an explicit constructor argument rather than baked in —
+`Pipeline([...], repro=True)` for CLI/web, `repro=False` behind the facade.
 
 ```mermaid
 flowchart LR
@@ -356,7 +374,7 @@ class InstanceId:
 | 1 | `LG.__init__` loads, configures, normalises, builds nodes, builds links, validates | `PrepareStage` returns an LG; `UnrollStage` consumes it. Parsing without compiling becomes possible. | import updates |
 | 2 | `to_gojs_json` inserts synthetic DROPs, and those DROPs reach the PG for `min_num_parts` / `pso` via `PGT.drops` — **deliberate linearisation, not a viewer artefact** (§8 Q3) | synthesis moves to `partition/linearise.py`, owned by the algorithms that need it; `projections/gojs.py` becomes a pure serialiser; `PGT.to_gojs_json` delegates | none |
 | 3 | `to_pg_spec` does merging + islands + placeholders + hostname mapping | split across `partition/islands.py`, `partition/placeholders.py`, `map/stage.py`; `PGT.to_pg_spec` remains as a facade | none |
-| 4 | reprodata handled by hand at ~12 sites | one adapter; **every** site collapses, web included | ~8 call-site edits |
+| 4 | reprodata handled by hand at ~12 translator sites (+4 in the engine) | one adapter; every *translator* site collapses, web included. The engine's four stay, so the facade keeps returning bare lists and keeps not applying the `init_*` hooks (§8 Q8) | ~8 call-site edits |
 | 5 | Scatter DoP silently defaults to 4 [lg_node.py:629](dlg/dropmake/lg_node.py#L629); Gather input `categoryType` silently defaults to `"Data"` | handlers raise `GInvalidNode` by default; opt-in `--lenient` restores old behaviour with a warning | endpoints may surface a new error — see §8 Q4 |
 | 5b | **Loop DoP has no fallback at all**: if none of `num_of_iter` / `Number of Iterations` / `Number of loops` is present, `_dop` stays `None` and `dop` returns `None`, so `range(lgn.dop)` raises `TypeError` [lg_node.py:644-651](dlg/dropmake/lg_node.py#L644-L651) | `LoopHandler.degree_of_parallelism` raises `GInvalidNode` naming the node and the missing field | new, found during the §8 scan |
 | 6 | `convert_mkn` / `convert_mkn_all_share_m` [dm_utils.py:170](dlg/dropmake/dm_utils.py#L170) are unreachable | **delete** — confirmed dead *and* already broken (§8 Q2) | none |
@@ -413,8 +431,12 @@ partition before merging the phase; nothing else exercises it.
 in-repo reference fixes the scan identified (§8 Q6): `MANIFEST.in`'s six hardcoded
 `dlg/dropmake/…` lines, the literal `"dlg.dropmake.web.translator_rest:run"` at
 [tool_commands.py:610](dlg/translator/tool_commands.py#L610), the `lg.graph.schema` move,
-and its one consumer `file_as_string("lg.graph.schema", module="dlg.dropmake")` at
-[translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145). Plus a shim at
+and its two consumers — `file_as_string("lg.graph.schema", module="dlg.dropmake")` at
+[translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) and the relative path in
+`tools/checkGraph.py:14`. Also the ten shell-script lines that hardcode the old path:
+`build_translator.sh:15-51` (writes `web/VERSION`, copies `LICENSE`) and
+`run_translator.sh:19-31` (the developer live-mount — stale, it silently runs installed code
+instead of the working tree). Plus a shim at
 `dlg.dropmake.web.translator_utils`, because the engine imports it. **No content edits in
 the same commit** beyond those path literals — keep the move reviewable as a pure rename.
 
@@ -481,6 +503,19 @@ contract in the same class as the wire format, because both packages ship togeth
 workflow*, so `pg_generator`'s signature is a runtime contract and the thread-safety point
 in §5 row 8 has a real consumer.
 
+**Return types are part of that contract**, not just parameter lists:
+
+- `partition` returns a live `PGT` when `show_gojs=True` and a `to_pg_spec` list when it is
+  False [pg_generator.py:233-241](dlg/dropmake/pg_generator.py#L233-L241). The engine's deploy
+  scripts take the list branch; `translator_utils` [:164](dlg/dropmake/web/translator_utils.py#L164)
+  and the REST layer take the object branch. Both survive the restructure unchanged.
+- `resource_map` accepts a `(graph_name, list)` pair as well as a bare list
+  [pg_generator.py:258](dlg/dropmake/pg_generator.py#L258); `create_dlg_job.py` writes exactly
+  that shape to disk. `map/stage.py` must keep unwrapping it.
+- `unroll_and_partition_with_params` returns a `PGT` object with `.reprodata` assigned
+  [translator_utils.py:183-185](dlg/dropmake/web/translator_utils.py#L183-L185), not a list.
+  Phase 7's `Pipeline` rewrite of its body must still hand back that object.
+
 ### 7.2 The Tier 2 call surface — changeable, but budgeted
 
 These are the symbols `web/` imports. They are no longer frozen, but every change to one
@@ -504,9 +539,10 @@ this table and §7.1's endpoint contract.
 
 Answered by source scan on 2026-08-09 over `daliuge-translator/` and `daliuge-engine/`,
 re-verified line-by-line the same day (every citation in both documents was checked against
-the file it names). Every claim below is grounded in a cited line. Three findings
-**contradicted assumptions in earlier drafts of this document**; each is marked ⚠ and the
-proposal has been corrected.
+the file it names), then extended outward to `daliuge-engine` call sites and non-Python
+references. Every claim below is grounded in a cited line. Four findings
+**contradicted assumptions in earlier drafts of this document** — Q3, Q5, Q7, Q8; each is
+marked ⚠ and the proposal has been corrected.
 
 ### Q1 — Is `convert_construct` prepare-time or unroll-time? ✅ Free to move
 
@@ -619,7 +655,7 @@ Full import surface is tabulated in §7.1. The three consequences:
    therefore a runtime contract, and the thread-safety note (§5 row 8) has a concrete
    consumer rather than being theoretical.
 
-### Q6 — Does relocating the package break a deployment path? ✅ Five fixes, no blockers
+### Q6 — Does relocating the package break a deployment path? ✅ Nine fixes, no blockers
 
 ⚠ **Wider than `web/`.** The scan was re-run against *all* of Tier 1, not just the `web/`
 subtree, and found two runtime resource lookups that key off the string `"dlg.dropmake"`.
@@ -630,11 +666,14 @@ version of this table.
 | Reference | Status |
 |-----------|--------|
 | [scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) — `os.environ["METIS_DLL"] = importlib.resources.files("dlg.dropmake") / f"lib/libmetis.{ext}"` | **must edit + move `lib/`.** Breaks *all* METIS partitioning, not just the web app. Silent until `metis` is first selected |
-| [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) — `file_as_string("lg.graph.schema", module="dlg.dropmake")` | **must edit.** The only consumer of the schema. A Tier 2 call-site edit forced by a Tier 1 move — legitimate under the Scope rule |
+| [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) — `file_as_string("lg.graph.schema", module="dlg.dropmake")` | **must edit.** The schema's in-package consumer (there is a second one outside the package — see `tools/checkGraph.py` below). A Tier 2 call-site edit forced by a Tier 1 move — legitimate under the Scope rule |
 | `MANIFEST.in` — four hardcoded `dlg/dropmake/web/*` lines, plus `dlg/dropmake/*.schema` and `dlg/dropmake/lib/*` | **must edit** (all six lines) |
 | [tool_commands.py:610](dlg/translator/tool_commands.py#L610) — literal `"dlg.dropmake.web.translator_rest:run"` registering `dlg translator tm` | **must edit** |
 | `dlg/dropmake/lg.graph.schema` — the only `.schema` in the package | **must move + update MANIFEST** |
 | `dlg/dropmake/lib/{libmetis.so,libmetis.dylib}` | **must move + update MANIFEST + the `scheduler.py` literal above** |
+| `build_translator.sh:15-51` — writes `dlg/dropmake/web/VERSION` and copies `LICENSE` into `dlg/dropmake/web/` on all four build paths | **must edit** (7 lines). Nothing reads that `VERSION` back, so a stale path fails silently — the file just lands in a directory the app no longer occupies |
+| `run_translator.sh:19-31` — `docker run --volume $PWD/dlg/dropmake:/dlg/lib/python3.8/site-packages/dlg/dropmake` on three of four paths | **must edit** (3 lines). This is the developer live-mount; a stale path silently runs the *installed* code instead of the working tree, which is the worst failure mode in the table |
+| `tools/checkGraph.py:14` — `LG_SCHEMA_FILENAME = "../daliuge-translator/dlg/dropmake/lg.graph.schema"` | **must edit.** A second schema consumer, outside the translator package, resolving by relative filesystem path |
 | `setup.py` — `packages=find_packages()` [:169](setup.py#L169), `package_data` built from `package_files("dlg")` [:111](setup.py#L111) | fine, both recursive |
 | `setup.py` entry point `dlg.tool_commands: translator=dlg.translator.tool_commands` [:171](setup.py#L171) | fine, unaffected |
 | `docker/Dockerfile{,.dev,.ray}` — `CMD ["dlg","tm",…]` | fine, path-independent |
@@ -662,9 +701,43 @@ resolves a path from a package name at runtime has to be edited. A grep for the 
 strings `"dlg.dropmake"` / `dlg/dropmake` — not just `import dlg.dropmake` — is the check,
 and it should be re-run at the end of Phase 2 and Phase 2b.
 
+### Q8 — ⚠ Is reprodata handling really translator-internal? **No — the engine owns half of it**
+
+**Answer: `daliuge-engine` performs the same pop/append dance around its own `pg_generator`
+calls, and applies the `init_*` hooks itself. The envelope idea survives; "one place calls
+`init_*`" does not.**
+
+| Engine site | What it does |
+|-------------|--------------|
+| `create_dlg_job.py:534-544` | `unroll` → `init_pgt_unroll_repro_data` → `pop()` → `partition` → `append()` → `init_pgt_partition_repro_data` |
+| `start_dlg_cluster.py:341-358` | same sequence, plus the shape sniff `if not unrolled[-1].get("oid"): reprodata = unrolled.pop()` — the *same* sniff §4.1 promises to collapse, in code we cannot touch |
+| `start_dlg_cluster.py:378` | `init_pg_repro_data(pg_generator.resource_map(...))` |
+| `composite_manager.py:450-452` | the Drop Manager pops the trailing element on receipt, keyed on `"rmode" in graphSpec[-1]` |
+
+The translator's own stage functions do **not** call `init_*`: `unroll` appends the raw
+`lg.reprodata` [pg_generator.py:95](dlg/dropmake/pg_generator.py#L95) and stops there. The
+hook is the caller's job, and there are Tier 3 callers.
+
+**Three effects on the proposal.**
+
+1. **§4.2 revised.** The repro hook cannot be unconditional inside the Pipeline. It becomes a
+   Pipeline construction option: on for the CLI and web, off for the `pg_generator` facade the
+   engine calls. Without this, `create_dlg_job.py:535` annotates an already-annotated PGT.
+2. **§4.1 constrained.** `PhysicalGraphTemplate` is an *internal* type. The facade's boundary
+   is `to_wire()` / `from_wire()`, and the wire form stays a bare list — which §7.1 already
+   promises, but for the wire only; this extends it to the Python return type.
+3. **The "12 sites" claim is scoped, not wrong.** Twelve is the translator-side count. Four
+   more live in the engine and stay. §1.1 updated to say so.
+
+**Confidence:** high — all four sites read directly. **Corpus implication:** none new; the
+engine's deploy path is not in the Phase 0 corpus and should not be, but a smoke run of
+`create_dlg_job.py` after Phase 1 is cheap insurance against the double-annotation regression.
+
 ### Still open
 
 - **Q4's product half** — is the Scatter `4` default load-bearing for real graphs?
+- **Q8's double-annotation guard** — is `init_pgt_unroll_repro_data` idempotent? If it is, the
+  `repro=` Pipeline flag is belt-and-braces; if not, it is load-bearing. Answer before Phase 1.
 - **Q3's corpus confirmation** — PG output for `min_num_parts` / `pso` unchanged after the
   linearisation move.
 - **Deprecation window** — how long the `dlg.dropmake.*` shims must live is now a
@@ -693,6 +766,7 @@ Conventions:
 | 2026-08-09 | Claude (Opus 5) | — | Source scan answered §8 Q1, Q2, Q3, Q5, Q6; Q4 partially. **Two corrections**: (a) Q3 — `to_gojs_json`'s synthetic DROPs are deliberate linearisation output for `min_num_parts`/`pso`, not a viewer artefact, so §5 row 2 and §3 now route them to `partition/linearise.py` instead of "make the serialiser read-only"; (b) Q5 — `daliuge-engine` imports translator internals from six production modules incl. `web.translator_utils`, so Phase 2 shims are mandatory and `unroll_and_partition_with_params` / `prepare_lgt` are frozen signatures. Also: MKN confirmed dead **and** broken → delete (Q2); `convert_construct` has no external observer → free to move (Q1); new §5 row 5b, Loop DoP returns `None` → bare `TypeError` | n/a | — |
 | 2026-08-09 | Claude (Opus 5) | — | Verification pass: re-checked every line citation in this document and in [ARCHITECTURE.md](ARCHITECTURE.md) against source — all correct, no drift. **One new finding (§8 Q7)**: `dlg.dropmake` is a package-name *string literal* in two runtime resource lookups — `scheduler.py:1143` (`libmetis`) and `translator_rest.py:145` (`lg.graph.schema`) — plus six `MANIFEST.in` globs. Shims cover imports only, so Phase 2/2b would have shipped broken METIS partitioning and broken LG validation. Q6 widened from three fixes to five; §3 layout gains `lib/` and `lg.graph.schema` at package root; Phase 0 now requires a `metis` run. **Second correction**: §1.1's reprodata table under-enumerated — added `tool_commands.py:597-600` and `translator_rest.py:641`/`:661`, the latter two inside the `Original` generation, with a rule for handling them | n/a | — |
 | 2026-08-09 | Claude (Opus 5) | — | [ARCHITECTURE.md](ARCHITECTURE.md) brought in line with the Q3/Q4 findings it predates: §6 GOJS paragraph now scopes the synthetic-DROP insertion to `min_num_parts`/`pso` instead of claiming it happens on every partition path; §10 item 6 reframed from "visualisation mutates production data" to "partitioning logic living in a serialiser"; §10 item 9 gains the Loop-DoP `None` → bare `TypeError` case; new §10 item 11 records the four package-path string literals | n/a | — |
+| 2026-08-09 | Claude (Opus 5) | — | Outward scan (engine call sites + non-Python references). **Third correction (§8 Q8)**: `daliuge-engine` owns four reprodata sites of its own — `create_dlg_job.py:534-544`, `start_dlg_cluster.py:341-358` + `:378`, `composite_manager.py:450-452` — and applies the `init_*` hooks itself, so §4.2's "Pipeline applies the hook at every boundary" would double-annotate every engine call; the hook becomes a Pipeline constructor flag, off behind the `pg_generator` facade. **Fourth correction (§7.2)**: `pg_generator.partition` has a polymorphic return type (`PGT` when `show_gojs=True`, list otherwise), `resource_map` accepts a `(name, list)` pair, and `unroll_and_partition_with_params` returns a `PGT` object — all three are frozen return contracts, not just signatures. Q6 widened from five fixes to nine: `build_translator.sh` (7 lines), `run_translator.sh` (3 lines, the developer live-mount), `tools/checkGraph.py:14` (second schema consumer). Agent grep instruction changed to unfiltered. [ARCHITECTURE.md](ARCHITECTURE.md) §7/§9/§10-11/§10-12/§11 updated to match | n/a | — |
 
 ### Notes for coding agents
 
@@ -709,9 +783,12 @@ Conventions:
   `dm_utils.py`.
 - Phase 2b is a pure `git mv` — no content edits in that commit beyond the path literals in
   §8 Q6.
-- After any move, `grep -rn 'dlg[./]dropmake' --include='*.py' --include='*.in'` must come
-  back empty except for the deliberate shims. Import rewrites do not catch string literals
-  (§8 Q7), and neither does the test suite until the feature is exercised.
+- After any move, `grep -rn 'dlg[./]dropmake' .` — **unfiltered, from the monorepo root, no
+  `--include` filter** — must come back empty except for the deliberate shims. Of the nine
+  non-import references, three are in `build_translator.sh` / `run_translator.sh` and one is
+  in `tools/checkGraph.py`; a `--include='*.py' --include='*.in'` grep misses all four. Import
+  rewrites do not catch string literals (§8 Q7), and neither does the test suite until the
+  feature is exercised.
 - Phase 4 lands **one construct handler per PR**, corpus run between each.
 - If a change breaks anything in §7.1, stop and escalate — those are cross-repository
   decisions.
