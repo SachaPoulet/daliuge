@@ -152,6 +152,14 @@ Recursive walk from `self._start_list` (nodes with no inputs). For each node:
 - **MPI node** → one DROP per process rank.
 - **Leaf** → exactly one DROP via `make_single_drop`.
 
+The group branch also *mutates the logical graph*: `lgn.add_input(gs)` / `gs.add_output(lgn)`
+plus an append to `self._lg_links` ([lg.py:294-316](dlg/dropmake/lg.py#L294-L316)), i.e. link
+synthesis is interleaved with instantiation and the list that §5.2 iterates is still growing
+during §5.1. The `recursive=False` branch ([lg.py:352-359](dlg/dropmake/lg.py#L352-L359)),
+which deep-copies children onto `_start_list` instead of recursing, is **dead** — both call
+sites take the default `recursive=True`, and `pgtp.py:267`'s `recursive` is METIS's unrelated
+recursive-bisection flag.
+
 `iid` is the hierarchical coordinate of an instance (`"0-3-1"` = outer scatter index 0,
 inner scatter 3, innermost 1). It is the *only* mechanism connecting a physical DROP back
 to its logical position, and it is a string that later code splits on `-` and `$`.
@@ -177,8 +185,18 @@ to the M target DROPs. The decision tree is driven by group membership and *h-le
 | non-group → non-group | chunked distribution by `dop_diff`, with special cases for loop-end→loop-start relinking, cross-loop stepwise locking, and `loop_aware` links (first/last iteration only) |
 | non-group → GroupBy | DROPs bucketed by group key derived from `iid`; key count must equal DROP count |
 | non-group → Gather | chunked by `gather_width` |
+| non-group → Service | **rewrites the target LGNode** — `categoryType` → `"Application"`, `category` → `"DALiuGEApp"` ([lg.py:750-755](dlg/dropmake/lg.py#L750-L755)) — a logical-model mutation performed during edge resolution |
+| non-group → SubGraph | no-op |
 
-Link creation itself is `_link_drops`. Three distinct wiring styles:
+The row that matters for a rewrite is **non-group → non-group**: it is four sub-branches
+deep, and none of them dispatches on the endpoints' own types. They key off the *enclosing*
+construct (`slgn.group.is_loop`), the group identity relation (`slgn.gid == tlgn.gid`), the
+`is_group_end` / `is_group_start` flags, the h-level comparison, and membership of
+`self._loop_aware_set` — a per-link flag computed in `__init__`
+([lg.py:150](dlg/dropmake/lg.py#L150)). Both endpoints are typically plain leaf Components.
+
+Link creation itself is `_link_drops`, and it is **construct-agnostic**: it dispatches purely
+on `categoryType`, not on Scatter/Gather/Loop. Three distinct wiring styles:
 
 1. **Streaming app→app** — a `NullDROP` is injected between them and the consumer is
    registered as a *streaming* consumer.
@@ -186,6 +204,11 @@ Link creation itself is `_link_drops`. Three distinct wiring styles:
    `port_map` is recorded on the target DROP.
 3. **Data source** — direct consumer/input wiring, streaming or not depending on the
    link's `is_stream` flag (set during `__init__` if the source port name ends in `stream`).
+
+Both the app and data branches additionally register bash parameters when either end is a
+`BASH_SHELL_APP` ([lg.py:509-511](dlg/dropmake/lg.py#L509-L511),
+[:541-543](dlg/dropmake/lg.py#L541-L543)). The only construct-aware part of `_link_drops` is
+its Gather/GroupBy source-DROP substitution at the top and the gather-cache diversion.
 
 **Gather cache.** Gathers cannot be wired eagerly, because the gather's own inputs and
 outputs are discovered at different points of the walk. `self._gather_cache` accumulates
@@ -210,6 +233,14 @@ unique and scatter-enclosed; GroupBy output must be a Gather; source and target 
 hierarchically related, unless both sit in Loops of equal DoP. Violations raise
 `GInvalidLink`. This is the only real static-analysis pass in the translator, and it runs
 before any DROP exists.
+
+Two properties constrain any refactor of it. The rules are **pairwise, not per-endpoint**:
+the Gather rule reads `src.inputs[0].h_level == tgt.h_level` — the h-level of the *source's
+own input* ([lg.py:171-181](dlg/dropmake/lg.py#L171-L181)) — and the loop rule walks both
+endpoints' group chains upward in lockstep comparing `dop`
+([lg.py:217-239](dlg/dropmake/lg.py#L217-L239)). And the validator **mutates**: a Gather input
+with no `categoryType` gets `"Data"` written into `src.jd`
+([lg.py:201-202](dlg/dropmake/lg.py#L201-L202)) before the check that reads it.
 
 ---
 
@@ -398,6 +429,11 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
 4. **`unroll_to_tpl`'s link resolution is one ~250-line nested conditional.** The
    src-group/tgt-group/h-level/loop-aware matrix is implicit in nesting order, not stated
    anywhere. This is the single highest-risk region for behaviour drift during a rewrite.
+   Note *what* it dispatches on: the deepest branches
+   ([lg.py:617-696](dlg/dropmake/lg.py#L617-L696)) key off the endpoints' **enclosing** group,
+   their `gid` relation, `is_group_start`/`is_group_end`, the h-level comparison and the
+   `_loop_aware_set` link flag — not off the endpoints' own construct types, which are usually
+   plain leaves. Any plugin decomposition keyed on the endpoints alone will not reach them.
 
 5. **Gather is wired out-of-band.** The gather cache exists because the walk order does not
    match the wiring order. Any rewrite that establishes a proper two-pass structure
@@ -452,6 +488,17 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
     `daliuge-engine`'s deploy scripts take the list path. `to_gojs_json` is called on *both*,
     so the linearisation mutation of §6 is not gated on `show_gojs` — only its `visual` flag
     is. A stage typed `Artefact → Artefact` cannot reproduce this without keeping the flag.
+
+13. **Both unroll phases mutate the logical model.** `lgn_to_pgn` adds inputs/outputs to
+    LGNodes and appends to `self._lg_links` while instantiating (§5.1); `unroll_to_tpl`
+    rewrites a Service target's `categoryType`/`category` while wiring (§5.2); `validate_link`
+    writes a default `categoryType` into `src.jd` while validating (§5.4). A clean
+    parse → validate → instantiate → wire split has to find a home for each of the three.
+
+14. **`lgn_to_pgn`'s `recursive=False` branch is dead.** Both call sites use the default
+    ([lg.py:349](dlg/dropmake/lg.py#L349), [:555](dlg/dropmake/lg.py#L555)); nothing in either
+    repo passes `recursive=False`. Lines 352-359 — deep-copying children onto `_start_list`
+    with `happy = True` — are unreachable, in the same category as the MKN functions (§4).
 
 ---
 

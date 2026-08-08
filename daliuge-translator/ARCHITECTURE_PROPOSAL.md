@@ -202,6 +202,7 @@ dlg/translator/
 │   │   ├── validate.py         structural rules, delegating to construct plugins
 │   │   ├── instantiate.py      PASS 1 — every instance, no edges
 │   │   ├── wire.py             PASS 2 — every edge, no instances
+│   │   ├── link.py             _link_drops — shared, construct-agnostic (§8 Q9)
 │   │   └── constructs/         ONE FILE PER CONSTRUCT
 │   │       ├── registry.py     name → handler
 │   │       ├── base.py         ConstructHandler protocol
@@ -323,30 +324,52 @@ class ConstructHandler(Protocol):
     def instantiate(self, node, coord: InstanceId, ctx) -> list[dropdict]: ...
     def synthesise_links(self, node, ctx) -> list[LogicalLink]: ...
     def resolve_edges(self, link, sources, targets, ctx) -> list[Edge]: ...
-    def validate_as_source(self, link, ctx) -> None: ...
-    def validate_as_target(self, link, ctx) -> None: ...
+    def validate_link(self, link, ctx) -> None: ...
 ```
 
 Mapping from today's scattered code:
 
-| Handler method | Absorbs |
-|----------------|---------|
-| `degree_of_parallelism` | the `dop` `if/elif` chain [lg_node.py:612](dlg/dropmake/lg_node.py#L612) |
-| `instantiate` | `_create_groupby_drops`, `_create_gather_drops`, `_create_listener_drops`, the group branch of `lgn_to_pgn` |
-| `synthesise_links` | loop-circle and group-start artificial links [lg.py:273-315](dlg/dropmake/lg.py#L273-L315) |
-| `resolve_edges` | the relevant slice of the ~250-line `unroll_to_tpl` conditional and `_link_drops` |
-| `validate_*` | the corresponding clause of `validate_link` [lg.py:156](dlg/dropmake/lg.py#L156) |
+| Handler method | Absorbs | Does **not** absorb |
+|----------------|---------|---------------------|
+| `degree_of_parallelism` | the `dop` `if/elif` chain [lg_node.py:612](dlg/dropmake/lg_node.py#L612) | — |
+| `instantiate` | `_create_groupby_drops`, `_create_gather_drops`, `_create_listener_drops`, the group branch of `lgn_to_pgn` | — |
+| `synthesise_links` | loop-circle and group-start artificial links [lg.py:273-315](dlg/dropmake/lg.py#L273-L315) | — |
+| `resolve_edges` | *which* source DROP pairs with *which* target DROP — the chunking, bucketing and iteration-selection logic of the ~250-line `unroll_to_tpl` conditional | **`_link_drops`.** It stays one shared function (§8 Q9) |
+| `validate_link` | the corresponding clause of `validate_link` [lg.py:156](dlg/dropmake/lg.py#L156) | — |
 
-Two structural wins fall out:
+Three constraints the source scan (§8 Q9) imposes on this interface. They are why the
+signature above differs from the obvious one:
+
+1. **Dispatch is on construct *context*, not on endpoint type.** The hardest branches —
+   loop-end→loop-start relinking, cross-loop stepwise locking, `loop_aware` first/last-iteration
+   links [lg.py:617-696](dlg/dropmake/lg.py#L617-L696) — have a **plain leaf on both ends**.
+   They key off `slgn.group.is_loop`, `slgn.gid == tlgn.gid`, `is_group_start`/`is_group_end`,
+   the h-level comparison and `_loop_aware_set` membership. So the registry dispatches on
+   `(source enclosing construct, target enclosing construct, h-level relation)` with the
+   loop-aware flag carried on the `LogicalLink` — a `(source handler, target handler)` key
+   would route every one of those cells to `LeafHandler`, i.e. back to the nested conditional.
+   `LoopHandler` owns edges *between two leaves it encloses*.
+2. **`resolve_edges` returns pairs; it does not wire.** `_link_drops` dispatches on
+   `categoryType` — streaming app→app via an injected `NullDROP`, `Application`/`Control`
+   port-map wiring, data wiring — plus `BASH_SHELL_APP` parameter registration on both sides.
+   None of that is construct-specific. Folding it into handlers would copy three wiring styles
+   into eight files and rebuild the ceiling this proposal exists to remove.
+3. **`validate_as_source` / `validate_as_target` collapse into one `validate_link`.** The
+   rules are pairwise: the Gather rule compares `src.inputs[0].h_level` against `tgt.h_level`,
+   and the loop rule walks *both* group chains upward comparing `dop`. Neither is expressible
+   as a source-only or target-only check. One method, both endpoints in `ctx`, handler chosen
+   by precedence.
+
+Two structural wins still fall out:
 
 - **The gather cache disappears.** `self._gather_cache` exists only because instantiation
   and wiring are interleaved in one walk. Splitting into `instantiate.py` (pass 1) then
   `wire.py` (pass 2) means a Gather's inputs and outputs both exist before any edge is
   resolved.
 - **The link-resolution matrix becomes explicit.** Today the
-  src-group/tgt-group/h-level/loop-aware decision table is implicit in nesting order and
-  written down nowhere. Under `resolve_edges` it is dispatched on `(source handler, target
-  handler)` and each cell is named, located and independently testable.
+  enclosing-construct/h-level/loop-aware decision table is implicit in nesting order and
+  written down nowhere. Under `resolve_edges` each cell is named, located and independently
+  testable.
 
 ### 4.4 `InstanceId` — stop parsing strings
 
@@ -380,6 +403,8 @@ class InstanceId:
 | 6 | `convert_mkn` / `convert_mkn_all_share_m` [dm_utils.py:170](dlg/dropmake/dm_utils.py#L170) are unreachable | **delete** — confirmed dead *and* already broken (§8 Q2) | none |
 | 7 | Vestigial `self._metis_path = "gpmetis"` alongside the Python binding | `algorithms/metis.py` picks one mechanism | none |
 | 8 | `LG.unroll_to_tpl` documented as not thread-safe; `translator_rest` compensates with module-level semaphores | stages hold no mutable instance state across `run()`, so the core is no longer the reason for the semaphores | **none — semaphores stay.** Removing them is a web-side concurrency decision, out of scope |
+| 9 | Three passes mutate the logical model: `lgn_to_pgn` appends to `self._lg_links` *while* §5.2 iterates it, `unroll_to_tpl` rewrites a Service target's `categoryType`/`category` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755), `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | `synthesise_links` runs as a pre-pass before `instantiate.py`, so the link set is frozen before pass 2 reads it; the Service rewrite moves into `ServiceHandler.instantiate`; the `categoryType` default becomes the `--lenient` path of row 5 | none |
+| 10 | `lgn_to_pgn(recursive=False)` [lg.py:352-359](dlg/dropmake/lg.py#L352-L359) — deep-copies children onto `_start_list` — is unreachable; both call sites take the default, and `pgtp.py:267`'s `recursive` is METIS's bisection flag | **delete**, with the MKN batch (row 6) | none |
 
 **Explicitly not addressed:** splitting the `Original` / `Updated` REST generations, and
 extracting HTML rendering from `translator_rest.py`. Both are app restructuring, which the
@@ -444,10 +469,17 @@ the same commit** beyond those path literals — keep the move reviewable as a p
 `degree_of_parallelism` + `validate_*` through it. Cheapest half of the interface; delete
 the `dop` chain and the `validate_link` chain. Tier 1 only.
 
-**Phase 4 — two-pass unroll.** Split `unroll_to_tpl` into `instantiate.py` and `wire.py`,
-move `resolve_edges` into handlers, delete `_gather_cache`. **Highest-risk phase** — the
-~250-line conditional is where behaviour drift will happen. Do it construct by construct,
-running the golden corpus after each handler lands, and land it as its own PR. Tier 1 only.
+**Phase 4 — two-pass unroll.** Split `unroll_to_tpl` into `instantiate.py`, `wire.py` and the
+shared `link.py`, move `resolve_edges` into handlers, delete `_gather_cache`. **Highest-risk
+phase** — the ~250-line conditional is where behaviour drift will happen. Do it construct by
+construct, running the golden corpus after each handler lands, and land it as its own PR.
+Tier 1 only.
+
+Order matters here: land `link.py` (a straight lift of `_link_drops`, no behaviour change)
+*before* the first handler, and take `LoopHandler` **last**. Loop owns the four leaf-to-leaf
+cells at [lg.py:617-696](dlg/dropmake/lg.py#L617-L696) (§8 Q9), so until it lands those edges
+still route through the legacy conditional — which is fine, but it means the "one handler per
+PR" cadence has a fat tail, not an even one.
 
 **Phase 5 — `InstanceId`.** Replace `iid` internals; keep `__str__` output identical.
 
@@ -733,6 +765,57 @@ hook is the caller's job, and there are Tier 3 callers.
 engine's deploy path is not in the Phase 0 corpus and should not be, but a smoke run of
 `create_dlg_job.py` after Phase 1 is cheap insurance against the double-annotation regression.
 
+### Q9 — ⚠ Does `ConstructHandler` actually cover `unroll_to_tpl`? **Mostly — three of six methods were mis-specified**
+
+**Answer: the plugin decomposition holds, but the interface as first drawn would not have
+reached the hardest branches, would have duplicated the wiring code eight times, and could not
+express the validation rules. All three are fixed in §4.3.**
+
+Read line-by-line over `lgn_to_pgn` [lg.py:261-386](dlg/dropmake/lg.py#L261),
+`_link_drops` [:436-543](dlg/dropmake/lg.py#L436), `unroll_to_tpl` [:545-761](dlg/dropmake/lg.py#L545)
+and `validate_link` [:156-250](dlg/dropmake/lg.py#L156).
+
+**1. `(source handler, target handler)` is the wrong dispatch key.** Of the six top-level
+branches, only three key off the endpoints' construct types. The `not slgn.is_group and not
+tlgn.is_group` branch [:617-696](dlg/dropmake/lg.py#L617-L696) — four sub-branches, the
+highest-risk code in the translator — has a **leaf on both ends** and dispatches on
+`slgn.group.is_loop`, `slgn.gid == tlgn.gid`, `is_group_end`/`is_group_start`,
+`slgn.h_level ≥ tlgn.h_level`, and `("%s-%s" % (sid, tid)) in self._loop_aware_set` — a
+per-link flag computed in `LG.__init__` [:150](dlg/dropmake/lg.py#L150). Keyed on endpoint
+handlers, all four cells land in `LeafHandler` and the nested conditional survives intact
+inside it. Key must be `(source enclosing construct, target enclosing construct, h-level
+relation)`, loop-awareness on the `LogicalLink`.
+
+**2. `_link_drops` must not move into handlers.** It dispatches on `categoryType`, never on
+construct: `_is_stream_link` over the five app categories → inject a `NullDROP`
+[:469-490](dlg/dropmake/lg.py#L469-L490); `s_type in ["Application", "Control"]` → port-name
+resolution and `port_map` [:492-511](dlg/dropmake/lg.py#L492-L511); else data wiring
+[:512-543](dlg/dropmake/lg.py#L512-L543); plus `BASH_SHELL_APP` parameter registration on
+both sides. Its only construct-aware parts are the Gather/GroupBy source-DROP substitution at
+the top and the gather-cache diversion — both of which disappear with the cache. So
+`resolve_edges` decides *which pairs*, a shared `unroll/link.py` decides *how*.
+
+**3. `validate_as_source` / `validate_as_target` cannot express the rules.** They are
+pairwise: the Gather rule reads `src.inputs[0].h_level == tgt.h_level` — the h-level of the
+source's *own input* [:171-181](dlg/dropmake/lg.py#L171-L181) — and the loop rule walks both
+group chains upward in lockstep comparing `dop` [:217-239](dlg/dropmake/lg.py#L217-L239).
+Collapsed to one `validate_link(link, ctx)`.
+
+**Two smaller findings**, recorded as §5 rows 9 and 10:
+
+- **Three passes mutate the logical model** — `lgn_to_pgn` appends to `self._lg_links` while
+  the link loop later iterates it, the Service branch rewrites `tlgn["categoryType"]`
+  mid-wiring [:750-755](dlg/dropmake/lg.py#L750-L755), and `validate_link` writes a default
+  `categoryType` into `src.jd` [:201-202](dlg/dropmake/lg.py#L201-L202). Each needs a home in
+  the parse → validate → instantiate → wire split.
+- **`lgn_to_pgn(recursive=False)` is dead** [:352-359](dlg/dropmake/lg.py#L352-L359) — both
+  call sites take the default; `pgtp.py:267`'s `recursive` is METIS's bisection flag, not
+  this. Delete with the MKN batch.
+
+**Effect on the proposal:** §4.3 rewritten, §3 gains `unroll/link.py`, §5 gains rows 9 and 10,
+Phase 4 gains a dispatch-key note. **Confidence:** high on 1–3, all read directly. The design
+survives; the interface sketch did not.
+
 ### Still open
 
 - **Q4's product half** — is the Scatter `4` default load-bearing for real graphs?
@@ -767,6 +850,7 @@ Conventions:
 | 2026-08-09 | Claude (Opus 5) | — | Verification pass: re-checked every line citation in this document and in [ARCHITECTURE.md](ARCHITECTURE.md) against source — all correct, no drift. **One new finding (§8 Q7)**: `dlg.dropmake` is a package-name *string literal* in two runtime resource lookups — `scheduler.py:1143` (`libmetis`) and `translator_rest.py:145` (`lg.graph.schema`) — plus six `MANIFEST.in` globs. Shims cover imports only, so Phase 2/2b would have shipped broken METIS partitioning and broken LG validation. Q6 widened from three fixes to five; §3 layout gains `lib/` and `lg.graph.schema` at package root; Phase 0 now requires a `metis` run. **Second correction**: §1.1's reprodata table under-enumerated — added `tool_commands.py:597-600` and `translator_rest.py:641`/`:661`, the latter two inside the `Original` generation, with a rule for handling them | n/a | — |
 | 2026-08-09 | Claude (Opus 5) | — | [ARCHITECTURE.md](ARCHITECTURE.md) brought in line with the Q3/Q4 findings it predates: §6 GOJS paragraph now scopes the synthetic-DROP insertion to `min_num_parts`/`pso` instead of claiming it happens on every partition path; §10 item 6 reframed from "visualisation mutates production data" to "partitioning logic living in a serialiser"; §10 item 9 gains the Loop-DoP `None` → bare `TypeError` case; new §10 item 11 records the four package-path string literals | n/a | — |
 | 2026-08-09 | Claude (Opus 5) | — | Outward scan (engine call sites + non-Python references). **Third correction (§8 Q8)**: `daliuge-engine` owns four reprodata sites of its own — `create_dlg_job.py:534-544`, `start_dlg_cluster.py:341-358` + `:378`, `composite_manager.py:450-452` — and applies the `init_*` hooks itself, so §4.2's "Pipeline applies the hook at every boundary" would double-annotate every engine call; the hook becomes a Pipeline constructor flag, off behind the `pg_generator` facade. **Fourth correction (§7.2)**: `pg_generator.partition` has a polymorphic return type (`PGT` when `show_gojs=True`, list otherwise), `resource_map` accepts a `(name, list)` pair, and `unroll_and_partition_with_params` returns a `PGT` object — all three are frozen return contracts, not just signatures. Q6 widened from five fixes to nine: `build_translator.sh` (7 lines), `run_translator.sh` (3 lines, the developer live-mount), `tools/checkGraph.py:14` (second schema consumer). Agent grep instruction changed to unfiltered. [ARCHITECTURE.md](ARCHITECTURE.md) §7/§9/§10-11/§10-12/§11 updated to match | n/a | — |
+| 2026-08-09 | Claude (Opus 5) | — | Interface-fit scan: `ConstructHandler` checked method-by-method against `lgn_to_pgn`, `_link_drops`, `unroll_to_tpl` and `validate_link`. **Fifth correction (§8 Q9)**: three of six methods were mis-specified — (a) `resolve_edges` cannot dispatch on `(source handler, target handler)`, because the four hardest cells have a leaf on both ends and key off the *enclosing* construct, `gid` relation, h-level and `_loop_aware_set`; key is now `(source enclosing construct, target enclosing construct, h-level relation)`; (b) `_link_drops` is `categoryType`-driven, not construct-driven, so it stays one shared `unroll/link.py` and `resolve_edges` returns pairs only; (c) `validate_as_source`/`validate_as_target` collapse to one pairwise `validate_link`. New §5 rows 9 (three passes mutate the logical model — link synthesis, the Service `categoryType` rewrite, the validator's default) and 10 (`lgn_to_pgn(recursive=False)` is dead — delete with MKN). Phase 4 gains an ordering note: `link.py` first, `LoopHandler` last. [ARCHITECTURE.md](ARCHITECTURE.md) §5.1/§5.2/§5.4 and §10 items 4, 13, 14 updated to match | n/a | — |
 
 ### Notes for coding agents
 
