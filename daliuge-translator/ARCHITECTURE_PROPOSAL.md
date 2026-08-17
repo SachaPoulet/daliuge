@@ -183,8 +183,6 @@ dlg/translator/
 ├── artefacts.py              LGT, LG, PGT, PGTP, PG envelopes + wire (de)serialisation
 ├── pipeline.py               Stage protocol, composition, reprodata hook — the ONLY one
 ├── errors.py                 exception hierarchy (moved out of dm_utils/pgt/scheduler)
-├── lg.graph.schema           package data, moved from dlg/dropmake/  (§8 Q6)
-├── lib/                      package data, bundled libmetis.{so,dylib} — moved (§8 Q6)
 │
 ├── stages/
 │   ├── prepare/              ══ TRANSITION 1: LGT → LG ══
@@ -193,6 +191,7 @@ dlg/translator/
 │   │   ├── versions.py         get_lg_ver_type + per-version normalisation recipe
 │   │   ├── config.py           graph_config overlay
 │   │   ├── params.py           deprecated textual `fill`
+│   │   ├── lg.graph.schema     package data, moved from dlg/dropmake/ (§8 Q6, Q10)
 │   │   └── normalise/
 │   │       ├── globals.py      extract_globals
 │   │       ├── fields.py       convert_fields
@@ -223,6 +222,7 @@ dlg/translator/
 │   │       ├── registry.py     name → algorithm (public names are a contract)
 │   │       ├── base.py         PartitionAlgorithm protocol
 │   │       ├── none.py  metis.py  mysarkar.py  min_num_parts.py  pso.py
+│   │       ├── lib/            package data, bundled libmetis.{so,dylib} (§8 Q10)
 │   │       └── support/        antichains, anneal, heft, Schedule/Partition types
 │   │
 │   └── map/                  ══ TRANSITION 4: PGT-P → PG ══
@@ -244,11 +244,27 @@ The `web/` subtree keeps its internal shape exactly — same filenames, same mod
 boundaries, same endpoint set. It moves so that the whole translator is one package instead
 of two, and its imports are rewritten because Tier 1 moved underneath it. Nothing else.
 
-`lg.graph.schema` and `lib/` sit at the package root rather than inside the stage that uses
-them (`prepare/` and `partition/algorithms/` respectively), because both are located at
-runtime by a **package-name string literal**, not by import — moving them deeper multiplies
-the strings that must be kept in sync. Package root keeps it to one anchor: `dlg.translator`.
-See §8 Q6.
+Both bundled data files sit **inside the stage that owns their subject matter**, not at the
+package root. Each is located at runtime by a package-name string literal rather than by
+import (§8 Q6/Q7), and that is depth-safe — `importlib.resources.files()` resolves any
+importable package, and `setup.py`'s `package_files("dlg")` walk is recursive:
+
+- **`lib/libmetis.{so,dylib}` → `stages/partition/algorithms/lib/`.** Its sole consumer is the
+  METIS loader, which becomes `algorithms/metis.py`. Literal and file end up in the same
+  directory, so they move together or not at all.
+- **`lg.graph.schema` → `stages/prepare/`.** The LG schema describes the artefact `prepare/`
+  produces, so the stage owns it. ⚠ **Its only in-package consumer today is Tier 2** —
+  [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145), used at
+  [:493](dlg/dropmake/web/translator_rest.py#L493) — so that lookup becomes a cross-tier
+  reach and **must be repointed in the same PR as the move**:
+  `file_as_string("lg.graph.schema", module="dlg.translator.stages.prepare")`. It is a
+  string literal, not an import, so no shim covers it and nothing fails until the first
+  REST call (§8 Q7). Same PR: `tools/checkGraph.py:14`'s relative path and the `MANIFEST.in`
+  schema glob. See §8 Q10.
+
+The cost, for both files: the literal is now coupled to stage layout, so a later stage rename
+re-opens the §8 Q7 failure class — a silent, import-clean break. That makes the
+`grep -rn 'dlg[./]translator'` literal check a standing rule, not a Phase 2/2b one-off.
 
 `projections/gojs.py` exists because `to_gojs_json` currently lives on `PGT` and does two
 unrelated jobs. Serialisation goes here; the synthetic-DROP insertion goes to
@@ -443,26 +459,43 @@ the three CLI reprodata sites. Zero compiler changes, zero Tier 2 changes. Highe
 lowest risk — do this first.
 
 **Phase 2 — split by transition.** Move Tier 1 code into `stages/*/` along the boundaries in
-§1.2. Mechanical moves. Update `web/` imports in the same PR — that is the whole Tier 2 diff
-for this phase, and it should be import lines only. **Shims at the old `dlg.dropmake.*`
-paths are mandatory, not optional**: `daliuge-engine` imports `pg_generator`, `graph_config`
-and `web.translator_utils` from six production modules (§8 Q5). Shipping this phase without
-them breaks the engine.
+§1.2. Mechanical moves. Update `web/` imports in the same PR — plus the one Tier 2 *string
+literal* called out below; everything else in the Tier 2 diff should be import lines only.
+**Shims at the old `dlg.dropmake.*` paths are mandatory, not optional**: `daliuge-engine`
+imports `pg_generator`, `graph_config` and `web.translator_utils` from six production modules
+(§8 Q5). Shipping this phase without them breaks the engine.
 
-`scheduler.py` moves in this phase, so **`lib/libmetis.*` moves with it** and the
+`scheduler.py` moves in this phase, so **`lib/libmetis.*` moves with it** — to
+`stages/partition/algorithms/lib/`, beside the loader that reads it (§8 Q10) — and the
 `importlib.resources.files("dlg.dropmake")` literal at
-[scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) must be repointed at `dlg.translator`
-(§8 Q6). A shim cannot cover this — it is a filesystem lookup, not an import. Run a `metis`
-partition before merging the phase; nothing else exercises it.
+[scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) must be repointed at
+`dlg.translator.stages.partition.algorithms` (§8 Q6). A shim cannot cover this — it is a
+filesystem lookup, not an import. Run a `metis` partition before merging the phase; nothing
+else exercises it.
+
+⚠ **`lg.graph.schema` also moves in this phase, not in 2b** — it lands in `stages/prepare/`
+(§8 Q10), which is created here. Three edits ride along in the same PR — none is an import,
+so none is shimmable:
+
+1. [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) —
+   `file_as_string("lg.graph.schema", module="dlg.dropmake")` → `module=
+   "dlg.translator.stages.prepare"`. **This is a Tier 2 content edit inside a Tier 1 phase**,
+   the one exception to "import lines only" above. It is legitimate under the Scope rule: a
+   Tier 1 move forced it. Breaks LG validation on **every** REST call if missed, and does not
+   fail at import time.
+2. `tools/checkGraph.py:14` — relative filesystem path, outside the package, gets the deeper
+   path.
+3. `MANIFEST.in:5` — `include dlg/dropmake/*.schema` → the new location.
+
+Exercise a REST validate call before merging; the CLI path does not touch the schema.
 
 **Phase 2b — relocate `web/`.** `dlg/dropmake/web/` → `dlg/translator/web/`,
 `dlg/dropmake/pg_manager.py` → `dlg/translator/web/pg_manager.py`. A `git mv`, plus the
-in-repo reference fixes the scan identified (§8 Q6): `MANIFEST.in`'s six hardcoded
-`dlg/dropmake/…` lines, the literal `"dlg.dropmake.web.translator_rest:run"` at
-[tool_commands.py:610](dlg/translator/tool_commands.py#L610), the `lg.graph.schema` move,
-and its two consumers — `file_as_string("lg.graph.schema", module="dlg.dropmake")` at
-[translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) and the relative path in
-`tools/checkGraph.py:14`. Also the ten shell-script lines that hardcode the old path:
+in-repo reference fixes the scan identified (§8 Q6): `MANIFEST.in`'s four remaining hardcoded
+`dlg/dropmake/web/…` lines and the literal `"dlg.dropmake.web.translator_rest:run"` at
+[tool_commands.py:610](dlg/translator/tool_commands.py#L610). The schema move and its two
+consumers are **no longer part of this phase** — they land in Phase 2 with `stages/prepare/`
+(§8 Q10). Also the ten shell-script lines that hardcode the old path:
 `build_translator.sh:15-51` (writes `web/VERSION`, copies `LICENSE`) and
 `run_translator.sh:19-31` (the developer live-mount — stale, it silently runs installed code
 instead of the working tree). Plus a shim at
@@ -701,12 +734,12 @@ version of this table.
 
 | Reference | Status |
 |-----------|--------|
-| [scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) — `os.environ["METIS_DLL"] = importlib.resources.files("dlg.dropmake") / f"lib/libmetis.{ext}"` | **must edit + move `lib/`.** Breaks *all* METIS partitioning, not just the web app. Silent until `metis` is first selected |
-| [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) — `file_as_string("lg.graph.schema", module="dlg.dropmake")` | **must edit.** The schema's in-package consumer (there is a second one outside the package — see `tools/checkGraph.py` below). A Tier 2 call-site edit forced by a Tier 1 move — legitimate under the Scope rule |
+| [scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) — `os.environ["METIS_DLL"] = importlib.resources.files("dlg.dropmake") / f"lib/libmetis.{ext}"` | **must edit + move `lib/`** (to `stages/partition/algorithms/lib/`, anchor `dlg.translator.stages.partition.algorithms` — §8 Q10). Breaks *all* METIS partitioning, not just the web app. Silent until `metis` is first selected |
+| [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) — `file_as_string("lg.graph.schema", module="dlg.dropmake")` | **must edit** → `module="dlg.translator.stages.prepare"` (§8 Q10). The schema's in-package consumer (there is a second one outside the package — see `tools/checkGraph.py` below). A Tier 2 call-site edit forced by a Tier 1 move — legitimate under the Scope rule, and it lands in **Phase 2**, with the stage |
 | `MANIFEST.in` — four hardcoded `dlg/dropmake/web/*` lines, plus `dlg/dropmake/*.schema` and `dlg/dropmake/lib/*` | **must edit** (all six lines) |
 | [tool_commands.py:610](dlg/translator/tool_commands.py#L610) — literal `"dlg.dropmake.web.translator_rest:run"` registering `dlg translator tm` | **must edit** |
-| `dlg/dropmake/lg.graph.schema` — the only `.schema` in the package | **must move + update MANIFEST** |
-| `dlg/dropmake/lib/{libmetis.so,libmetis.dylib}` | **must move + update MANIFEST + the `scheduler.py` literal above** |
+| `dlg/dropmake/lg.graph.schema` — the only `.schema` in the package | **must move + update MANIFEST + the `translator_rest.py` literal above.** Destination is `stages/prepare/` (§8 Q10) |
+| `dlg/dropmake/lib/{libmetis.so,libmetis.dylib}` | **must move + update MANIFEST + the `scheduler.py` literal above.** Destination is `stages/partition/algorithms/lib/` (§8 Q10) |
 | `build_translator.sh:15-51` — writes `dlg/dropmake/web/VERSION` and copies `LICENSE` into `dlg/dropmake/web/` on all four build paths | **must edit** (7 lines). Nothing reads that `VERSION` back, so a stale path fails silently — the file just lands in a directory the app no longer occupies |
 | `run_translator.sh:19-31` — `docker run --volume $PWD/dlg/dropmake:/dlg/lib/python3.8/site-packages/dlg/dropmake` on three of four paths | **must edit** (3 lines). This is the developer live-mount; a stale path silently runs the *installed* code instead of the working tree, which is the worst failure mode in the table |
 | `tools/checkGraph.py:14` — `LG_SCHEMA_FILENAME = "../daliuge-translator/dlg/dropmake/lg.graph.schema"` | **must edit.** A second schema consumer, outside the translator package, resolving by relative filesystem path |
@@ -820,9 +853,79 @@ Collapsed to one `validate_link(link, ctx)`.
 Phase 4 gains a dispatch-key note. **Confidence:** high on 1–3, all read directly. The design
 survives; the interface sketch did not.
 
+### Q10 — Should the bundled data files sit at the package root or inside their stage? ✅ Both go in their stage
+
+**Answer: both move into the stage that owns them — `libmetis` to
+`stages/partition/algorithms/lib/`, `lg.graph.schema` to `stages/prepare/`. Nothing forces
+root placement; the earlier "one anchor" rationale was weaker than it read. The schema's cost
+is one Tier 2 call-site edit, which is cheap and must not be forgotten.**
+
+**No technical blocker to deep placement.** Both lookups go through
+`importlib.resources.files(<pkg>)` —
+[translator_utils.py:75-78](dlg/dropmake/web/translator_utils.py#L75-L78) for the schema,
+[scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) for the library. The only requirement is
+that the anchor be an importable package; `stages/prepare/` and
+`stages/partition/algorithms/` both are. `lib/` remains a data-only subdirectory of a package,
+exactly its shape today (`dropmake` is the package, `lib` is not). Packaging is depth-blind
+too: [setup.py:103-111](setup.py#L103-L111) builds `package_data` from `package_files("dlg")`,
+an `os.walk`, and the `MANIFEST.in` globs work at any depth — they need editing either way.
+
+**The rationale that was wrong.** An earlier draft justified root placement with "moving them
+deeper multiplies the strings that must be kept in sync." It does not. Each file has exactly
+**one** in-package literal today, so depth buys one *longer* string, not more strings. The
+external consumers — `MANIFEST.in`, `tools/checkGraph.py:14`'s relative filesystem path, the
+`run_translator.sh` docker mount — must be edited at any depth and are unaffected by the
+argument.
+
+**Placement, and what each costs:**
+
+| File | Home | Anchor after the move | Consumer edits |
+|------|------|----------------------|----------------|
+| `lib/libmetis.{so,dylib}` | `stages/partition/algorithms/lib/` | `dlg.translator.stages.partition.algorithms` | One, Tier 1: [scheduler.py:1143](dlg/dropmake/scheduler.py#L1143) → `algorithms/metis.py`. Literal and file in one directory — a future move drags both or neither |
+| `lg.graph.schema` | `stages/prepare/` | `dlg.translator.stages.prepare` | Two: [translator_rest.py:145](dlg/dropmake/web/translator_rest.py#L145) (**Tier 2**) and `tools/checkGraph.py:14` (outside the package, relative path). Plus the `MANIFEST.in:5` glob |
+
+`libmetis` is unambiguous — sole consumer, colocated with it.
+
+**The schema is the deliberate call, and it has a wart worth naming.** The LG schema describes
+what `prepare/` produces, so the stage owns it by subject matter. But the stage does not
+*read* it — the only in-package reader is [translator_rest.py:493](dlg/dropmake/web/translator_rest.py#L493),
+a Tier 2 REST endpoint. So the placement is by ownership, not by usage, and it leaves a
+`web/` → `stages/prepare/` reach in place until validation itself moves.
+
+⚠ **The required edit.** The Tier 2 lookup must be repointed in the same PR as the move:
+
+```python
+# dlg/translator/web/translator_rest.py
+LG_SCHEMA = json.loads(
+    file_as_string("lg.graph.schema", module="dlg.translator.stages.prepare")
+)
+```
+
+This is a **content edit to a Tier 2 file inside a Tier 1 phase** — permitted under the Scope
+rule because a Tier 1 move forced it, and it must be named in the PR description as such.
+Miss it and LG validation breaks on every REST call, silently: it is a string literal, so no
+shim covers it (Q7), no import fails, and the test suite stays green until an endpoint is hit.
+The natural end state is for `PrepareStage` to own validation too, at which point the reach
+disappears — see "Still open".
+
+Rejected alternatives: `web/` beside its only reader (correct today, but bets that validation
+stays web-private, and the schema is not a web asset); package root (consumer-neutral, but
+defers the ownership question indefinitely and leaves an orphan file at the top of the tree).
+
+**Cost of the deep anchor, accepted for both:** the literal is now coupled to stage layout.
+Rename or re-nest either stage and the lookup breaks the same silent, import-clean way
+described in Q7 — green tests until `metis` is selected or an endpoint is called. This is why
+the literal grep in "Notes for coding agents" is a standing rule rather than a Phase 2/2b
+checklist item.
+
 ### Still open
 
 - **Q4's product half** — is the Scatter `4` default load-bearing for real graphs?
+- **Q10's schema half** — does LG schema validation belong to `PrepareStage` or stay a web
+  concern? The file now lives in `stages/prepare/` but is still read from `web/`. Moving the
+  `jsonschema` call into the stage would close the reach, but it is a Tier 1 behaviour change
+  (validation would then run on the CLI path too, where it does not today) — decide before
+  Phase 7, not during Phase 2.
 - **Q8's double-annotation guard** — is `init_pgt_unroll_repro_data` idempotent? If it is, the
   `repro=` Pipeline flag is belt-and-braces; if not, it is load-bearing. Answer before Phase 1.
 - **Q3's corpus confirmation** — PG output for `min_num_parts` / `pso` unchanged after the
@@ -856,6 +959,8 @@ Conventions:
 | 2026-08-09 | Claude (Opus 5) | — | [ARCHITECTURE.md](ARCHITECTURE.md) brought in line with the Q3/Q4 findings it predates: §6 GOJS paragraph now scopes the synthetic-DROP insertion to `min_num_parts`/`pso` instead of claiming it happens on every partition path; §10 item 6 reframed from "visualisation mutates production data" to "partitioning logic living in a serialiser"; §10 item 9 gains the Loop-DoP `None` → bare `TypeError` case; new §10 item 11 records the four package-path string literals | n/a | — |
 | 2026-08-09 | Claude (Opus 5) | — | Outward scan (engine call sites + non-Python references). **Third correction (§8 Q8)**: `daliuge-engine` owns four reprodata sites of its own — `create_dlg_job.py:534-544`, `start_dlg_cluster.py:341-358` + `:378`, `composite_manager.py:450-452` — and applies the `init_*` hooks itself, so §4.2's "Pipeline applies the hook at every boundary" would double-annotate every engine call; the hook becomes a Pipeline constructor flag, off behind the `pg_generator` facade. **Fourth correction (§7.2)**: `pg_generator.partition` has a polymorphic return type (`PGT` when `show_gojs=True`, list otherwise), `resource_map` accepts a `(name, list)` pair, and `unroll_and_partition_with_params` returns a `PGT` object — all three are frozen return contracts, not just signatures. Q6 widened from five fixes to nine: `build_translator.sh` (7 lines), `run_translator.sh` (3 lines, the developer live-mount), `tools/checkGraph.py:14` (second schema consumer). Agent grep instruction changed to unfiltered. [ARCHITECTURE.md](ARCHITECTURE.md) §7/§9/§10-11/§10-12/§11 updated to match | n/a | — |
 | 2026-08-09 | Claude (Opus 5) | — | Interface-fit scan: `ConstructHandler` checked method-by-method against `lgn_to_pgn`, `_link_drops`, `unroll_to_tpl` and `validate_link`. **Fifth correction (§8 Q9)**: three of six methods were mis-specified — (a) `resolve_edges` cannot dispatch on `(source handler, target handler)`, because the four hardest cells have a leaf on both ends and key off the *enclosing* construct, `gid` relation, h-level and `_loop_aware_set`; key is now `(source enclosing construct, target enclosing construct, h-level relation)`; (b) `_link_drops` is `categoryType`-driven, not construct-driven, so it stays one shared `unroll/link.py` and `resolve_edges` returns pairs only; (c) `validate_as_source`/`validate_as_target` collapse to one pairwise `validate_link`. New §5 rows 9 (three passes mutate the logical model — link synthesis, the Service `categoryType` rewrite, the validator's default) and 10 (`lgn_to_pgn(recursive=False)` is dead — delete with MKN). Phase 4 gains an ordering note: `link.py` first, `LoopHandler` last. [ARCHITECTURE.md](ARCHITECTURE.md) §5.1/§5.2/§5.4 and §10 items 4, 13, 14 updated to match | n/a | — |
+| 2026-08-17 | Claude (Opus 5) | — | **Sixth correction (new §8 Q10)**: §3's justification for putting `lg.graph.schema` and `lib/` at the package root — "moving them deeper multiplies the strings that must be kept in sync" — was wrong. Each file has exactly one in-package literal, so depth costs one *longer* string, not more strings; `importlib.resources.files()` resolves any importable package and `setup.py`'s `package_files("dlg")` walk is depth-blind. Placement is now decided by consumer, and the two files split: **`lib/libmetis.*` moves into `stages/partition/algorithms/lib/`** beside the loader that reads it (anchor `dlg.translator.stages.partition.algorithms`), while **`lg.graph.schema` stays at the package root** — its only in-package consumer is `translator_rest.py:493`, a Tier 2 REST endpoint, so `prepare/` would be a home no consumer points at. Accepted cost: the deep anchor couples to stage layout, so the Q7 literal grep becomes a standing rule (new bullet in Notes for coding agents). New open question: does schema validation belong to `PrepareStage`? §3 layout, Phase 2, Phase 2b and the Q6 table updated to match | n/a | partly superseded |
+| 2026-08-17 | Claude (Opus 5) | — | **Q10 schema half revised** (supersedes the schema half of the row above; the `libmetis` half stands). `lg.graph.schema` now moves into **`stages/prepare/`**, not the package root — the stage owns the artefact the schema describes, even though the only in-package *reader* is Tier 2. Consequence recorded everywhere it bites: the lookup at `translator_rest.py:145` must become `file_as_string("lg.graph.schema", module="dlg.translator.stages.prepare")` **in the same PR as the move**, which makes it a sanctioned Tier 2 content edit inside a Tier 1 phase — the one exception to Phase 2's "import lines only" rule, and it must be named in the PR description. It is a string literal: no shim covers it, nothing fails at import, LG validation breaks on every REST call until an endpoint is exercised. **The schema move also relocates from Phase 2b to Phase 2**, since `stages/prepare/` is created there; `tools/checkGraph.py:14` and the `MANIFEST.in:5` glob ride along. Phase 2b's scope shrinks accordingly. Phase 2 gains a "run a REST validate call before merging" gate — the CLI path never touches the schema. Still-open question sharpened: moving `jsonschema` into `PrepareStage` would close the cross-tier reach but makes validation run on the CLI path, where it does not today — a behaviour change, decide before Phase 7 | n/a | — |
 
 ### Notes for coding agents
 
@@ -878,6 +983,14 @@ Conventions:
   in `tools/checkGraph.py`; a `--include='*.py' --include='*.in'` grep misses all four. Import
   rewrites do not catch string literals (§8 Q7), and neither does the test suite until the
   feature is exercised.
+- **Standing rule after Phase 2**: both bundled data files are anchored on stage paths —
+  `dlg.translator.stages.partition.algorithms` for `libmetis`, `dlg.translator.stages.prepare`
+  for `lg.graph.schema` (§8 Q10). *Any* later rename or re-nesting under `stages/` must re-run
+  the same grep for `dlg[./]translator` literals. Deep anchors buy colocation at the price of
+  layout coupling — the break is silent and import-clean.
+- **Phase 2 contains one sanctioned Tier 2 content edit**: `translator_rest.py:145`'s
+  `module=` argument. It is not an import, so the "import lines only" rule for that phase does
+  not cover it. Name it in the PR description.
 - Phase 4 lands **one construct handler per PR**, corpus run between each.
 - If a change breaks anything in §7.1, stop and escalate — those are cross-repository
   decisions.
