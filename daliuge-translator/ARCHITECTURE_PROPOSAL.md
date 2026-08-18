@@ -186,7 +186,7 @@ dlg/translator/
 │
 ├── stages/
 │   ├── prepare/              ══ TRANSITION 1: LGT → LG ══
-│   │   ├── stage.py            PrepareStage — the only public entry
+│   │   ├── stage.py            PrepareStage + PrepareOptions — the only public entry
 │   │   ├── loader.py           load_lg
 │   │   ├── versions.py         get_lg_ver_type + per-version normalisation recipe
 │   │   ├── config.py           graph_config overlay
@@ -199,7 +199,7 @@ dlg/translator/
 │   │       └── subgraphs.py    convert_subgraphs
 │   │
 │   ├── unroll/               ══ TRANSITION 2: LG → PGT ══
-│   │   ├── stage.py            UnrollStage
+│   │   ├── stage.py            UnrollStage + UnrollOptions
 │   │   ├── model.py            LogicalNode / LogicalLink — data, no behaviour
 │   │   ├── coordinate.py       InstanceId value type (replaces stringly `iid`)
 │   │   ├── validate.py         structural rules, delegating to construct plugins
@@ -213,20 +213,20 @@ dlg/translator/
 │   │       ├── mpi.py      service.py subgraph.py  leaf.py
 │   │
 │   ├── partition/            ══ TRANSITION 3: PGT → PGT-P ══
-│   │   ├── stage.py            PartitionStage — algorithm selection lives here
+│   │   ├── stage.py            PartitionStage + PartitionOptions — algo selection here
 │   │   ├── dag.py              DAG construction + DAGUtil
 │   │   ├── islands.py          partition merging & island formation
 │   │   ├── linearise.py        synthetic drops for edge-zeroing algos (§8 Q3)
 │   │   ├── placeholders.py     `#N` / `#M` stamping — and nothing else
 │   │   └── algorithms/
-│   │       ├── registry.py     name → algorithm (public names are a contract)
-│   │       ├── base.py         PartitionAlgorithm protocol
+│   │       ├── registry.py     name → algorithm (names are a contract); validates algo_params
+│   │       ├── base.py         PartitionAlgorithm protocol + per-algorithm options
 │   │       ├── none.py  metis.py  mysarkar.py  min_num_parts.py  pso.py
 │   │       ├── lib/            package data, bundled libmetis.{so,dylib} (§8 Q10)
 │   │       └── support/        antichains, anneal, heft, Schedule/Partition types
 │   │
 │   └── map/                  ══ TRANSITION 4: PGT-P → PG ══
-│       └── stage.py            placeholder → hostname. Only stage aware of real hosts.
+│       └── stage.py            MapStage + MapOptions. Only stage aware of real hosts
 │
 ├── projections/              read-only serialisers the web app consumes
 │   └── gojs.py                 to_gojs_json logic, side-effect free (§5 row 2)
@@ -305,21 +305,148 @@ payloads are byte-identical.
 ```python
 class Stage(Protocol[TIn, TOut]):
     name: str
-    def run(self, artefact: TIn, opts: StageOptions) -> TOut: ...
+    def run(self, artefact: TIn) -> TOut: ...
+    def stamp(self, wire: list | dict) -> list | dict: ...
 ```
+
+**Options bind at construction — `UnrollStage(UnrollOptions(...))` — not per `run()` call.**
+Two parameters, not three. The alternative, `run(artefact, opts)`, forces `Pipeline` to know
+which options object belongs to which stage and produces a heterogeneous list that cannot be
+type-checked. Binding in `__init__` makes `run` exactly what §2 principle 2 asks for: a pure
+`Artefact → Artefact` function. `stamp` is this stage's reproducibility hook — see below.
+
+**One options type per stage, not one shared `StageOptions` bag.** No option is
+common to all four transitions — the sets are disjoint, and a shared bag would put
+`MapOptions.nodes` in scope inside `UnrollStage`, which is the "who owns this field?" question
+this proposal exists to delete. What is actually threaded today:
+
+| Stage | Options | Source |
+|-------|---------|--------|
+| `PrepareStage` | `ssid`, `apply_config: bool`, the `graph_config` overlay, the textual `fill` params | [lg.py:67](dlg/dropmake/lg.py#L67), [pg_generator.py:57](dlg/dropmake/pg_generator.py#L57) |
+| `UnrollStage` | `oid_prefix` (→ `ssid`), `zerorun: bool`, `app: str` — plus `lenient`, if §5 row 5c keeps it | [pg_generator.py:77](dlg/dropmake/pg_generator.py#L77) |
+| `PartitionStage` | `algo`, `num_partitions`, `num_islands`, `partition_label` | [pg_generator.py:127-133](dlg/dropmake/pg_generator.py#L127-L133) |
+| `MapStage` | `nodes`, `num_islands`, `co_host_dim` | [pg_generator.py:243](dlg/dropmake/pg_generator.py#L243) |
+
+Each options type is a **frozen dataclass declared in its own stage's `stage.py`**, beside the
+only code that reads it.
+
+**Two things that do not belong in these types.**
+
+- **`show_gojs` is not an option**, it is a return-type switch — `partition()` returns a `PGT`
+  when true and a list otherwise [pg_generator.py:233-241](dlg/dropmake/pg_generator.py#L233-L241).
+  It exists because projection is welded to partitioning; Phase 6 separates them, and it must
+  not survive into `PartitionOptions`. Until then it lives on the facade, not the stage.
+- **`**algo_params` is not partition's, it is each algorithm's.** The nine keys
+  (`min_goal`, `ptype`, `max_load_imb`, `max_cpu`, `max_mem`, `time_greedy`, `deadline`,
+  `topk`, `swarm_size`) are read into locals at
+  [pg_generator.py:167-177](dlg/dropmake/pg_generator.py#L167-L177) and then handed to
+  whichever of the four `PGTP` subclasses actually wants them — `topk`/`swarm_size` are PSO's
+  alone, `ptype`/`max_load_imb` are METIS's. Each `algorithms/*.py` plugin declares its own
+  frozen options type; `algorithms/registry.py` validates the incoming dict against the
+  selected algorithm and rejects unknown keys. ⚠ **The key spellings are a Tier 3 contract**
+  (§7.1) — the names on the wire do not change, only where they are declared.
+
+**Options are always present and always typed — never `None`.** Default-construct instead:
+`def __init__(self, opts: UnrollOptions = UnrollOptions())`. Three reasons, and the third is
+already visible in the current code:
+
+1. **`None` cannot be a uniform rule.** `MapOptions.nodes` has no sensible default —
+   `resource_map` raises `ValueError("Empty node_list, cannot map the PG template")`
+   [pg_generator.py:251-253](dlg/dropmake/pg_generator.py#L251-L253) — and `PartitionOptions`
+   wants `algo` explicit. A `None` default would split stages into two flavours and defer a
+   type error to runtime.
+2. **`None` re-creates the bug class §1.1 is about.** Every stage would carry its own
+   `if opts is None: opts = XOptions()` — one convention, re-implemented per caller, exactly
+   the reprodata pop/append shape. Field-level defaults on the dataclass put it in one place.
+3. **The codebase already pays for `None`-punning.** `_get_algo_param` exists only to undo it
+   [pg_generator.py:119-125](dlg/dropmake/pg_generator.py#L119-L125), docstring *"Make sure
+   that default is set even if value has been passed as None"* — callers pass `deadline=None`
+   meaning *unset*, so the function cannot tell absent from explicitly-null. Frozen options
+   with real defaults delete that helper. `deadline` stays `int | None`, because "no deadline"
+   is a value rather than a missing option.
+
+A frozen dataclass instance is safe as a default argument precisely *because* it is frozen; a
+mutable one there is the classic shared-default bug.
+
+#### The Pipeline
 
 `pipeline.py` composes stages and applies the reproducibility hook at each boundary — the
 single place `init_*_repro_data` is called *within the translator*. `unroll_and_partition`
-becomes `Pipeline([UnrollStage(), PartitionStage()])` in the CLI, in the
-`/unroll_and_partition` endpoint, and in `translator_utils` — one implementation, three
-callers.
+becomes one `Pipeline` used by the CLI, the `/unroll_and_partition` endpoint and
+`translator_utils` — one implementation, three callers.
+
+```python
+class Pipeline(Generic[TIn, TOut]):
+    def __init__(self, stages: Sequence[Stage], repro: bool = True):
+        self._stages, self._repro = list(stages), repro
+
+    def then(self, stage: Stage[TOut, TNext]) -> "Pipeline[TIn, TNext]":
+        return Pipeline([*self._stages, stage], repro=self._repro)
+
+    def run(self, artefact: TIn) -> TOut:
+        for stage in self._stages:
+            try:
+                artefact = stage.run(artefact)
+            except GraphException as e:
+                raise StageError(stage.name) from e
+            if self._repro:
+                artefact = type(artefact).from_wire(stage.stamp(artefact.to_wire()))
+        return artefact
+```
+
+**The stage owns *which* hook; the Pipeline owns *whether*.** The five `init_*_repro_data`
+functions are not interchangeable — one per boundary — and two are irregular:
+`init_lgt_repro_data` takes a second argument (`rmode`), and the prepare boundary applies
+**two** hooks chained, exactly as
+[tool_commands.py:229](dlg/translator/tool_commands.py#L229) does today
+(`init_lg_repro_data(init_lgt_repro_data(graph, opts.reproducibility))`). A uniform
+`Callable[[list], list]` held by the Pipeline cannot express that, so each stage carries its
+own `stamp`:
+
+```python
+class PrepareStage:
+    name = "prepare"
+    def stamp(self, wire):
+        return init_lg_repro_data(init_lgt_repro_data(wire, self._opts.rmode))
+
+class UnrollStage:
+    name = "unroll"
+    def stamp(self, wire):
+        return init_pgt_unroll_repro_data(wire)
+```
+
+That also fixes where `rmode` lives: a `PrepareOptions` field, since the CLI passes it as
+`opts.reproducibility`.
+
+**`to_wire()` / `from_wire()` wrap the hook, and only there.** The hooks operate on the wire
+form — they `pop()` the trailing element and `append()` it back — while stages pass envelopes.
+Converting on that one line is what keeps the trailing-element convention inside `artefacts.py`
+and out of everything else (§4.1).
+
+**`then()` returns a re-typed Pipeline**, so
+`Pipeline([]).then(UnrollStage(uo)).then(PartitionStage(po))` statically checks that
+`PGT → PGT-P` chains. A bare heterogeneous list cannot be checked at all.
 
 ⚠ **The hook belongs to the Pipeline, not to the `pg_generator` facade.** `daliuge-engine`
 calls `pg_generator.unroll` / `partition` / `resource_map` directly and applies `init_*`
 itself (§1.1, §8 Q8). If the facade routed through a hook-applying Pipeline, every engine call
-site would annotate twice. The facade must compose the *stages* and skip the hook, which means
-`Pipeline` needs the hook to be an explicit constructor argument rather than baked in —
-`Pipeline([...], repro=True)` for CLI/web, `repro=False` behind the facade.
+site would annotate twice. So `repro` is an explicit constructor argument, and the facade
+passes `False` and keeps trading in bare lists:
+
+```python
+# CLI and web — hook on
+pgt = Pipeline([UnrollStage(uo), PartitionStage(po)], repro=True).run(lg)
+
+# pg_generator facade — hook off, wire in, wire out (frozen contract, §7.2)
+def partition(pgt, algo, num_partitions=1, **algo_params):
+    opts = PartitionOptions(algo=algo, num_partitions=num_partitions, **algo_params)
+    pipeline = Pipeline([PartitionStage(opts)], repro=False)
+    return pipeline.run(PhysicalGraphTemplate.from_wire(pgt)).to_wire()
+```
+
+**Side effect worth naming:** no stage holds mutable state across `run()`, so
+`unroll_to_tpl`'s thread-safety caveat stops being the reason for `post_sem` / `gen_pgt_sem`.
+§5 row 8 still stands — the semaphores stay; removing them is a web-side concurrency call.
 
 ```mermaid
 flowchart LR
@@ -463,10 +590,24 @@ to retrofit:
 
 **Phase 1 — envelopes and pipeline.** Introduce `artefacts.py` + `pipeline.py`. Rewrite
 `tool_commands.py` to compose stages wrapping the *existing* functions unchanged. Deletes
-the three CLI reprodata sites. Zero compiler changes, zero Tier 2 changes. Highest value,
+the CLI reprodata sites. Zero compiler changes, zero Tier 2 changes. Highest value,
 lowest risk — do this first. Ships one new test: annotate a PGT twice and assert the
 `signature` and every `pgt_blockhash` are unchanged — the invariant the `repro=` flag rests
 on (§8 Q8b).
+
+⚠ **Three stages, not four — there is no `PrepareStage` yet.** `pg_generator.unroll`
+constructs the LG itself (`lg = LG(lg, ssid=oid_prefix)`,
+[pg_generator.py:78](dlg/dropmake/pg_generator.py#L78)), so LGT → LG is not separable until
+Phase 2 splits `LG.__init__`. Phase 1's `UnrollStage` therefore spans prepare *and* unroll,
+and Phase 2 re-cuts that boundary. Two consequences: the Phase 1 stage boundaries are
+*function* boundaries rather than the transition boundaries of §1.2, and the two LGT/LG-level
+hooks at [tool_commands.py:229](dlg/translator/tool_commands.py#L229) and
+[:279](dlg/translator/tool_commands.py#L279) survive this phase — which is why §1.1's table
+does not list them for deletion.
+
+`UnrollStage` lands with `pipeline.py` rather than with the CLI rewrite, so the protocol is
+exercised by one real stage — and an equivalence test against `pg_generator.unroll` — before
+the remaining two copy the pattern.
 
 **Phase 1a — remove the silent defaults.** Independent of the restructure and worth landing
 on its own, before Phase 4: delete the Scatter `4` fallback (§5 row 5, client-mandated) and
@@ -1069,6 +1210,9 @@ Conventions:
 | 2026-08-17 | Claude (Opus 5) | — | **Sixth correction (new §8 Q10)**: §3's justification for putting `lg.graph.schema` and `lib/` at the package root — "moving them deeper multiplies the strings that must be kept in sync" — was wrong. Each file has exactly one in-package literal, so depth costs one *longer* string, not more strings; `importlib.resources.files()` resolves any importable package and `setup.py`'s `package_files("dlg")` walk is depth-blind. Placement is now decided by consumer, and the two files split: **`lib/libmetis.*` moves into `stages/partition/algorithms/lib/`** beside the loader that reads it (anchor `dlg.translator.stages.partition.algorithms`), while **`lg.graph.schema` stays at the package root** — its only in-package consumer is `translator_rest.py:493`, a Tier 2 REST endpoint, so `prepare/` would be a home no consumer points at. Accepted cost: the deep anchor couples to stage layout, so the Q7 literal grep becomes a standing rule (new bullet in Notes for coding agents). New open question: does schema validation belong to `PrepareStage`? §3 layout, Phase 2, Phase 2b and the Q6 table updated to match | n/a | partly superseded |
 | 2026-08-17 | Claude (Opus 5) | — | **Q10 schema half revised** (supersedes the schema half of the row above; the `libmetis` half stands). `lg.graph.schema` now moves into **`stages/prepare/`**, not the package root — the stage owns the artefact the schema describes, even though the only in-package *reader* is Tier 2. Consequence recorded everywhere it bites: the lookup at `translator_rest.py:145` must become `file_as_string("lg.graph.schema", module="dlg.translator.stages.prepare")` **in the same PR as the move**, which makes it a sanctioned Tier 2 content edit inside a Tier 1 phase — the one exception to Phase 2's "import lines only" rule, and it must be named in the PR description. It is a string literal: no shim covers it, nothing fails at import, LG validation breaks on every REST call until an endpoint is exercised. **The schema move also relocates from Phase 2b to Phase 2**, since `stages/prepare/` is created there; `tools/checkGraph.py:14` and the `MANIFEST.in:5` glob ride along. Phase 2b's scope shrinks accordingly. Phase 2 gains a "run a REST validate call before merging" gate — the CLI path never touches the schema. Still-open question sharpened: moving `jsonschema` into `PrepareStage` would close the cross-tier reach but makes validation run on the CLI path, where it does not today — a behaviour change, decide before Phase 7 | n/a | — |
 | 2026-08-18 | Claude (Opus 5) | — | **Client answers folded in — four §8 questions closed.** (a) **Q4 resolved**: the Scatter `4` is not intentional; removing it and making the count required is an assigned task. `--lenient` no longer covers Scatter — §5 row 5 is now strict and unconditional, and the `categoryType` defaults split out as new row 5c, which is the flag's whole remaining scope. New **Phase 1a** lands the default removal plus the row 5b Loop error on its own, before Phase 4, so the corpus absorbs the new hard failures in isolation; Phase 0 must enumerate the corpus graphs that omit a Scatter count. (b) **Q3 promoted from check to requirement**: PG output must be *unchanged* after the linearisation move — byte-identical for `min_num_parts`, and `pso` seeded then compared byte-for-byte, since a structural comparison cannot see the extras being reordered. §6 Phase 0's "seed it or compare structurally" resolved to "seed it". (c) **Q10's schema half settled**: validation belongs to `prepare/` — the file moves there in Phase 2 as already planned, but moving the `jsonschema` call is the client team's work, so the `web/` → `stages/prepare/` reach is a known interim state and must not be closed opportunistically. (d) **Q8's idempotency sub-question answered from source** (new **Q8b**) against the client's rule — unsafe iff the stamp hashes a prior hash. It does not: `pgt_unroll_block_fields` lists only `categoryType`/`dt`/`storage`/`rank`, `append_pgt_repro_data` resets `pgt_parenthashes` and overwrites `pgt_data`, and `build_pgt_block_data` writes `pgt_blockhash` without ever reading it. So the `repro=` Pipeline flag is belt-and-braces, not a Phase 1 blocker — kept anyway, plus an annotate-twice regression test in Phase 1 so a future hash-valued field cannot regress it silently. (e) **Deprecation window** removed from "Still open" — client-owned release coordination. "Still open" now holds one decision (the scope of `--lenient`) and three verification gates | n/a | — |
+| 2026-08-18 | Claude (Opus 5) | — | **§4.2 `Stage` signature corrected.** The sketch's single `opts: StageOptions` bag was under-specified: the four transitions share no option, so `Stage` becomes `Protocol[TIn, TOut, TOpts]` with a frozen per-stage options dataclass declared in each `stage.py` (fields enumerated from source in the new §4.2 table). **`opts` is never `None`** — default-construct instead, because (a) `MapOptions.nodes` has no default (`resource_map` raises on an empty node list), so a `None` default cannot be a uniform rule, (b) it would put an `if opts is None:` fallback in every stage — the same re-implemented-convention shape as the reprodata pop/append, and (c) `_get_algo_param` already exists solely to undo `None`-punning. Two carve-outs recorded: `show_gojs` is a return-type switch rather than an option and must not enter `PartitionOptions`, and the nine `algo_params` keys move to per-algorithm plugin options validated by `algorithms/registry.py` — spellings unchanged, they are Tier 3. §3 layout annotations updated | n/a | partly superseded |
+| 2026-08-18 | Claude (Opus 5) | — | **§4.2 gains the `Pipeline` sketch, and the `Stage` signature is corrected again — back to two type parameters.** Per-stage options bind at **construction** (`UnrollStage(UnrollOptions(...))`), not per `run()` call: the previous row's `Protocol[TIn, TOut, TOpts]` would have forced `Pipeline` to know which options object belongs to which stage, over a list that cannot be type-checked. `run` is now a pure `Artefact → Artefact` function, matching §2 principle 2. New second protocol method `stamp(wire)`: **the stage owns which reprodata hook, the Pipeline owns whether** — the five `init_*_repro_data` functions are one per boundary and two are irregular (`init_lgt_repro_data` takes `rmode`, and prepare applies two hooks chained, per `tool_commands.py:229`), so a uniform `Callable` on the Pipeline cannot express them. `rmode` is consequently a `PrepareOptions` field. Pipeline wraps each `stamp()` in `to_wire()`/`from_wire()`, keeping the trailing-element convention inside `artefacts.py`; `then()` returns a re-typed `Pipeline[TIn, TNext]` so stage chaining is statically checked; facade example added showing `repro=False` with bare lists in and out. Also recorded: with no mutable state across `run()`, the core stops being the reason for the web semaphores — §5 row 8 unchanged, they stay | n/a | — |
+| 2026-08-18 | Claude (Opus 5) | — | **Phase 1 sequencing corrected.** (a) **Three stages, not four**: `pg_generator.unroll` constructs the LG itself (`pg_generator.py:78`), so LGT → LG is not separable until Phase 2 splits `LG.__init__` — Phase 1's `UnrollStage` spans prepare *and* unroll, its boundaries are function boundaries rather than §1.2's transition boundaries, and the two LGT/LG-level hooks at `tool_commands.py:229`/`:279` survive the phase (consistent with §1.1's table, which never listed them). A real `PrepareStage` arrives in Phase 2. (b) **`UnrollStage` moves into the `pipeline.py` issue (P1-3)** rather than the CLI-rewrite issue, so the `Stage` protocol ships with one working implementation plus an equivalence test against `pg_generator.unroll`, instead of being dead code first exercised by the PR that also rewrites five CLI commands. Issue plan updated: P1-3 gains the stage and the test, P1-4 becomes `PartitionStage` + `MapStage` + the command rewrite | n/a | — |
 
 ### Notes for coding agents
 
