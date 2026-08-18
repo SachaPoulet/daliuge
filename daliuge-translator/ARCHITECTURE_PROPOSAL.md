@@ -418,12 +418,13 @@ class InstanceId:
 | 2 | `to_gojs_json` inserts synthetic DROPs, and those DROPs reach the PG for `min_num_parts` / `pso` via `PGT.drops` — **deliberate linearisation, not a viewer artefact** (§8 Q3) | synthesis moves to `partition/linearise.py`, owned by the algorithms that need it; `projections/gojs.py` becomes a pure serialiser; `PGT.to_gojs_json` delegates | none |
 | 3 | `to_pg_spec` does merging + islands + placeholders + hostname mapping | split across `partition/islands.py`, `partition/placeholders.py`, `map/stage.py`; `PGT.to_pg_spec` remains as a facade | none |
 | 4 | reprodata handled by hand at ~12 translator sites (+4 in the engine) | one adapter; every *translator* site collapses, web included. The engine's four stay, so the facade keeps returning bare lists and keeps not applying the `init_*` hooks (§8 Q8) | ~8 call-site edits |
-| 5 | Scatter DoP silently defaults to 4 [lg_node.py:629](dlg/dropmake/lg_node.py#L629); Gather input `categoryType` silently defaults to `"Data"` | handlers raise `GInvalidNode` by default; opt-in `--lenient` restores old behaviour with a warning | endpoints may surface a new error — see §8 Q4 |
+| 5 | Scatter DoP silently defaults to 4 [lg_node.py:629](dlg/dropmake/lg_node.py#L629) | **the count becomes a required field** — `ScatterHandler.degree_of_parallelism` raises `GInvalidNode` naming the node and the three accepted spellings. No `--lenient` escape: client-mandated removal (§8 Q4) | endpoints surface a new error for graphs that omit it |
 | 5b | **Loop DoP has no fallback at all**: if none of `num_of_iter` / `Number of Iterations` / `Number of loops` is present, `_dop` stays `None` and `dop` returns `None`, so `range(lgn.dop)` raises `TypeError` [lg_node.py:644-651](dlg/dropmake/lg_node.py#L644-L651) | `LoopHandler.degree_of_parallelism` raises `GInvalidNode` naming the node and the missing field | new, found during the §8 scan |
+| 5c | Gather input `categoryType` silently defaults to `"Data"`; `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | raise `GInvalidNode` by default; opt-in `--lenient` restores old behaviour with a warning. This is now the *whole* remaining scope of `--lenient` — see "Still open" | endpoints may surface a new error |
 | 6 | `convert_mkn` / `convert_mkn_all_share_m` [dm_utils.py:170](dlg/dropmake/dm_utils.py#L170) are unreachable | **delete** — confirmed dead *and* already broken (§8 Q2) | none |
 | 7 | Vestigial `self._metis_path = "gpmetis"` alongside the Python binding | `algorithms/metis.py` picks one mechanism | none |
 | 8 | `LG.unroll_to_tpl` documented as not thread-safe; `translator_rest` compensates with module-level semaphores | stages hold no mutable instance state across `run()`, so the core is no longer the reason for the semaphores | **none — semaphores stay.** Removing them is a web-side concurrency decision, out of scope |
-| 9 | Three passes mutate the logical model: `lgn_to_pgn` appends to `self._lg_links` *while* §5.2 iterates it, `unroll_to_tpl` rewrites a Service target's `categoryType`/`category` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755), `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | `synthesise_links` runs as a pre-pass before `instantiate.py`, so the link set is frozen before pass 2 reads it; the Service rewrite moves into `ServiceHandler.instantiate`; the `categoryType` default becomes the `--lenient` path of row 5 | none |
+| 9 | Three passes mutate the logical model: `lgn_to_pgn` appends to `self._lg_links` *while* §5.2 iterates it, `unroll_to_tpl` rewrites a Service target's `categoryType`/`category` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755), `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | `synthesise_links` runs as a pre-pass before `instantiate.py`, so the link set is frozen before pass 2 reads it; the Service rewrite moves into `ServiceHandler.instantiate`; the `categoryType` default becomes the `--lenient` path of row 5c | none |
 | 10 | `lgn_to_pgn(recursive=False)` [lg.py:352-359](dlg/dropmake/lg.py#L352-L359) — deep-copies children onto `_start_list` — is unreachable; both call sites take the default, and `pgtp.py:267`'s `recursive` is METIS's bisection flag | **delete**, with the MKN batch (row 6) | none |
 
 **Explicitly not addressed:** splitting the `Original` / `Updated` REST generations, and
@@ -435,14 +436,21 @@ Scope section forbids regardless of how tempting the 1247-line module makes them
 ## 6. Migration — strangler, not rewrite
 
 Behaviour compatibility is the acceptance criterion at every phase. No phase may change PGT
-output for the `eagle-test-graphs` corpus except where §5 row 5 is deliberately enabled.
+output for the `eagle-test-graphs` corpus except where §5 rows 5/5b/5c are deliberately
+enabled — those are sanctioned changes, and the graphs they affect must be enumerated in
+Phase 0 so the drift is expected rather than investigated.
 
 **Phase 0 — golden corpus.** Before touching code: pin `eagle-test-graphs`, run every graph
 through `unroll`, `partition` (all five algorithms, fixed `--oid_prefix` for determinism)
 and `map`, and store the outputs. Add a second corpus capturing `to_gojs_json` output and
 the HTTP response body of every `Updated` endpoint for a handful of graphs — that is the
-Tier 2 regression net, and Tier 2 is now something we edit. `pso` is stochastic; seed it or
-compare structurally.
+Tier 2 regression net, and Tier 2 is now something we edit. **`pso` is stochastic — seed it
+and compare byte-for-byte under that seed;** a structural comparison cannot see a reordering
+of the linearisation extras, which is the failure mode Q3's acceptance criterion is aimed at.
+
+A third requirement, from §8 Q4: **record which corpus graphs omit a Scatter count.** They
+change from unrolling at DoP 4 to a hard error, and that list is what separates the sanctioned
+change from a regression when the corpus is re-run.
 
 Two coverage requirements the later phases depend on, both cheap to include now and expensive
 to retrofit:
@@ -456,7 +464,15 @@ to retrofit:
 **Phase 1 — envelopes and pipeline.** Introduce `artefacts.py` + `pipeline.py`. Rewrite
 `tool_commands.py` to compose stages wrapping the *existing* functions unchanged. Deletes
 the three CLI reprodata sites. Zero compiler changes, zero Tier 2 changes. Highest value,
-lowest risk — do this first.
+lowest risk — do this first. Ships one new test: annotate a PGT twice and assert the
+`signature` and every `pgt_blockhash` are unchanged — the invariant the `repro=` flag rests
+on (§8 Q8b).
+
+**Phase 1a — remove the silent defaults.** Independent of the restructure and worth landing
+on its own, before Phase 4: delete the Scatter `4` fallback (§5 row 5, client-mandated) and
+give Loop's missing-DoP path a real error (row 5b). One-line changes to `lg_node.py` today;
+after Phase 4 they are edits inside two new handlers, mixed into a much larger diff. Landing
+them alone means the corpus absorbs the new hard failures in isolation.
 
 **Phase 2 — split by transition.** Move Tier 1 code into `stages/*/` along the boundaries in
 §1.2. Mechanical moves. Update `web/` imports in the same PR — plus the one Tier 2 *string
@@ -613,6 +629,14 @@ references. Every claim below is grounded in a cited line. Four findings
 **contradicted assumptions in earlier drafts of this document** — Q3, Q5, Q7, Q8; each is
 marked ⚠ and the proposal has been corrected.
 
+**Client answers, 2026-08-18** closed the four items that source alone could not settle:
+Q4 (the Scatter `4` is a defect — removal mandated, the count becomes required), Q3
+(unchanged PG output after the linearisation move is a requirement, not just a check), Q10's
+schema half (validation belongs to `prepare/`; implementing that move is out of scope), and
+Q8's idempotency sub-question (answered from source against the client's rule — see Q8b).
+The deprecation window is owned by the client's team. Each answer is folded into its question
+below; "Still open" at the end of this section lists only what remains.
+
 ### Q1 — Is `convert_construct` prepare-time or unroll-time? ✅ Free to move
 
 **Answer: no external party observes the normalised LG. Moving it to unroll-time is
@@ -683,10 +707,26 @@ serialiser.
 **Effect on the proposal:** §5 row 2 and §3 revised. Synthesis moves to
 `partition/linearise.py` owned by the MySarkar-family algorithms that need it;
 `projections/gojs.py` becomes a pure serialiser. Confidence is high on the mechanism —
-the code is unambiguous — but the Phase 0 corpus must still confirm byte-identical PG output
-for `min_num_parts` and `pso` before Phase 6 lands.
+the code is unambiguous.
 
-### Q4 — Is failing loudly on a missing Scatter count acceptable? ◐ Partial — still needs product sign-off
+**Acceptance criterion (client, 2026-08-18): PG output must be unchanged after the
+linearisation move.** This was previously written as a corpus check to run; it is now a stated
+requirement, which makes it a hard gate on Phase 6 rather than an observation to record. Two
+consequences:
+
+- **No structural-equivalence escape for `min_num_parts`.** It is deterministic, so
+  "unchanged" means byte-identical PG, synthetic DROPs included — same count, same `oid`s,
+  same insertion order, same `node`/`island` stamps.
+- **`pso` needs a seed, not a looser comparison.** §6 Phase 0 offers "seed it or compare
+  structurally"; under this criterion the choice is made — seed it, and compare byte-for-byte
+  under that seed. A structural comparison cannot detect a reordering of the extras, which is
+  exactly what a botched move would produce.
+
+### Q4 — Is failing loudly on a missing Scatter count acceptable? ✅ Resolved — the default is a defect, and removing it is mandated
+
+**Answer (client, 2026-08-18): the `4` is not intentional. Removing it and making the Scatter
+count a required field is an assigned task, not a judgement call this proposal has to make.**
+The source comment `# dummy impl. TODO: Why is this here?` was accurate about its own origins.
 
 **What the code says:** loud failure is already the house style for two of the three
 branches; Scatter's silent `4` is the outlier.
@@ -701,9 +741,27 @@ branches; Scatter's silent `4` is the outlier.
   [lg_node.py:644-651](dlg/dropmake/lg_node.py#L644-L651). So Loop already fails on this
   input — just with an unhelpful error and no node name. Added as §5 row 5b.
 
-**Still open:** whether any graph in active use relies on the Scatter default. The scan
-cannot answer that — it needs the Phase 0 corpus plus product agreement. §5 row 5 stands as
-proposed, behind `--lenient`.
+**Three effects on the proposal.**
+
+1. **No `--lenient` escape for Scatter.** A required field with an opt-out is not required.
+   `ScatterHandler.degree_of_parallelism` raises `GInvalidNode` unconditionally when none of
+   `num_of_copies` / `num_of_splits` / `Number of copies` is present
+   [lg_node.py:619-629](dlg/dropmake/lg_node.py#L619-L629), naming the node and the three
+   accepted spellings. §5 row 5 split accordingly — 5 is now Scatter-only and strict.
+2. **`--lenient` narrows to the `categoryType` defaults.** It survives only for the Gather
+   input default and the `validate_link` write at
+   [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) — see new row 5c. Whether those two want the
+   same strict treatment was not part of the client's answer; asked under "Still open", and
+   the answer only shrinks the flag further.
+3. **The corpus expectation changes, and it is the one sanctioned output change.** Any
+   `eagle-test-graphs` graph that omits the Scatter count changes from *silently unrolling at
+   DoP 4* to *hard error*. Phase 0 must record which graphs those are so the diff is expected
+   rather than investigated; §6's acceptance criterion already carves this out.
+
+**Note the ordering trap.** Removing the default is a one-line change to `lg_node.py` today,
+and it is worth landing on its own — before Phase 4 — so the corpus absorbs the new failures
+in isolation rather than mixed into the `ScatterHandler` extraction. Same treatment for the
+Loop `TypeError` in row 5b.
 
 ### Q5 — ⚠ Which repos import `dlg.dropmake.*`? **`daliuge-engine`, from production code**
 
@@ -802,6 +860,39 @@ hook is the caller's job, and there are Tier 3 callers.
 engine's deploy path is not in the Phase 0 corpus and should not be, but a smoke run of
 `create_dlg_job.py` after Phase 1 is cheap insurance against the double-annotation regression.
 
+#### Q8b — Is `init_pgt_unroll_repro_data` idempotent? ✅ Yes, as the code stands today
+
+The client's rule (2026-08-18): *if the hash is included in the stamping function it is not
+safe; otherwise it should be safe.* Applied to the source, no previously-written hash is an
+input to the stamp, so a second application reproduces the first. The four steps, all in
+`daliuge-common/dlg/common/reproducibility/`:
+
+| Step | What it reads | Prior stamp an input? |
+|------|---------------|----------------------|
+| `accumulate_pgt_unroll_drop_data` → `pgt_unroll_block_fields` (`reproducibility_fields.py:199-223`) | `categoryType`, `dt`, `storage`, `rank` — plain drop fields | **No.** No hash field is in the list |
+| `append_pgt_repro_data` (`reproducibility.py:269-287`) | recomputes the Merkle root over those fields, then **resets** `pgt_parenthashes = {}` and overwrites `pgt_data` | **No** — it discards the previous stamp before writing |
+| `build_pgt_block_data` (`reproducibility.py:383-399`) | the freshly recomputed `pgt_data["merkleroot"]`, `lg_blockhash`, and the parenthashes rebuilt in this pass | **No.** It *writes* `pgt_blockhash` and never reads it. `lg_blockhash` comes from the LG stage and is never touched here, so it is constant across runs |
+| graph-level `signature = agglomerate_leaves(build_blockdag(...))` | the drops as just re-stamped | **No** — a pure function of the above |
+
+`extract_fields`'s `REMOVE_FIRST` op (`reproducibility_fields.py:59-60`) copies rather than
+mutates, so `init_pgt_partition_repro_data` is idempotent by the same argument.
+
+**Two effects.**
+
+1. **The `repro=` Pipeline flag is belt-and-braces, not load-bearing.** `create_dlg_job.py:535`
+   annotating an already-annotated PGT is wasteful — a second O(V+E) blockdag build — but not
+   corrupting. Keep the flag: it costs nothing, preserves the "engine owns its own hooks"
+   boundary from the table above, and means Phase 1 does not depend on this analysis staying
+   true. It is no longer a Phase 1 blocker.
+2. **This is an invariant, not a property — so pin it.** Idempotency holds *because* the field
+   lists contain no hash. Add one regression test alongside Phase 1 — annotate a PGT twice,
+   assert the `signature` and every `pgt_blockhash` are equal — so that a future rmode adding
+   a hash-valued field to `pgt_unroll_block_fields` fails loudly instead of silently making
+   the flag load-bearing again.
+
+**Confidence:** high on the code path, all four functions read directly. The client's
+condition is the general rule; this is that rule evaluated against today's field lists.
+
 ### Q9 — ⚠ Does `ConstructHandler` actually cover `unroll_to_tpl`? **Mostly — three of six methods were mis-specified**
 
 **Answer: the plugin decomposition holds, but the interface as first drawn would not have
@@ -860,6 +951,12 @@ survives; the interface sketch did not.
 root placement; the earlier "one anchor" rationale was weaker than it read. The schema's cost
 is one Tier 2 call-site edit, which is cheap and must not be forgotten.**
 
+**Ownership confirmed (client, 2026-08-18): the schema belongs to `prepare/`, because
+validation will be used there later. That later work is not in this scope** — so the file
+moves to `stages/prepare/` in Phase 2 and the `jsonschema` call stays in `web/`. The cross-tier
+reach below is therefore a *known interim state with a known end state*, not an open question:
+do not close it opportunistically during this migration.
+
 **No technical blocker to deep placement.** Both lookups go through
 `importlib.resources.files(<pkg>)` —
 [translator_utils.py:75-78](dlg/dropmake/web/translator_utils.py#L75-L78) for the schema,
@@ -890,7 +987,8 @@ argument.
 what `prepare/` produces, so the stage owns it by subject matter. But the stage does not
 *read* it — the only in-package reader is [translator_rest.py:493](dlg/dropmake/web/translator_rest.py#L493),
 a Tier 2 REST endpoint. So the placement is by ownership, not by usage, and it leaves a
-`web/` → `stages/prepare/` reach in place until validation itself moves.
+`web/` → `stages/prepare/` reach in place until validation itself moves — which is the
+client team's task, not ours.
 
 ⚠ **The required edit.** The Tier 2 lookup must be repointed in the same PR as the move:
 
@@ -905,8 +1003,9 @@ This is a **content edit to a Tier 2 file inside a Tier 1 phase** — permitted 
 rule because a Tier 1 move forced it, and it must be named in the PR description as such.
 Miss it and LG validation breaks on every REST call, silently: it is a string literal, so no
 shim covers it (Q7), no import fails, and the test suite stays green until an endpoint is hit.
-The natural end state is for `PrepareStage` to own validation too, at which point the reach
-disappears — see "Still open".
+The end state — `PrepareStage` owning the `jsonschema` call, and the reach disappearing — is
+confirmed as the direction but out of this scope; `stages/prepare/` is where the file waits
+for it.
 
 Rejected alternatives: `web/` beside its only reader (correct today, but bets that validation
 stays web-private, and the schema is not a web asset); package root (consumer-neutral, but
@@ -920,18 +1019,26 @@ checklist item.
 
 ### Still open
 
-- **Q4's product half** — is the Scatter `4` default load-bearing for real graphs?
-- **Q10's schema half** — does LG schema validation belong to `PrepareStage` or stay a web
-  concern? The file now lives in `stages/prepare/` but is still read from `web/`. Moving the
-  `jsonschema` call into the stage would close the reach, but it is a Tier 1 behaviour change
-  (validation would then run on the CLI path too, where it does not today) — decide before
-  Phase 7, not during Phase 2.
-- **Q8's double-annotation guard** — is `init_pgt_unroll_repro_data` idempotent? If it is, the
-  `repro=` Pipeline flag is belt-and-braces; if not, it is load-bearing. Answer before Phase 1.
-- **Q3's corpus confirmation** — PG output for `min_num_parts` / `pso` unchanged after the
-  linearisation move.
-- **Deprecation window** — how long the `dlg.dropmake.*` shims must live is now a
-  `daliuge-engine` release-coordination question, not a translator one.
+The client's answers of 2026-08-18 closed Q4, Q10's schema half, Q8's idempotency
+sub-question and the deprecation-window item; each is recorded in place above. What is left:
+
+- **The scope of `--lenient`** — the only decision still ours. Q4 makes the Scatter count
+  strict and unconditional, which leaves the flag covering just the two `categoryType`
+  defaults (§5 row 5c). If those want the same treatment, `--lenient` disappears entirely and
+  §5 rows 5/5b/5c collapse into "all silent defaults become errors". Worth asking with the
+  Q4 work, since the answer only shrinks the flag.
+
+**Answered, but still to be *verified* — these are gates, not questions:**
+
+- **Q3 (client requirement)** — PG output byte-identical for `min_num_parts` and `pso` after
+  the linearisation move, `pso` under a fixed seed. Gates Phase 6.
+- **Q8b (holds today, keep it holding)** — the annotate-twice regression test lands with
+  Phase 1, so the no-hash-in-the-stamp property cannot silently regress.
+- **Q4 (expected corpus drift)** — Phase 0 must record which corpus graphs omit a Scatter
+  count, so their new hard failure reads as the sanctioned change and not as breakage.
+
+**Deprecation window** — how long the `dlg.dropmake.*` shims live is handled by the client's
+team as `daliuge-engine` release coordination. Not a translator question, not tracked here.
 
 ---
 
@@ -961,6 +1068,7 @@ Conventions:
 | 2026-08-09 | Claude (Opus 5) | — | Interface-fit scan: `ConstructHandler` checked method-by-method against `lgn_to_pgn`, `_link_drops`, `unroll_to_tpl` and `validate_link`. **Fifth correction (§8 Q9)**: three of six methods were mis-specified — (a) `resolve_edges` cannot dispatch on `(source handler, target handler)`, because the four hardest cells have a leaf on both ends and key off the *enclosing* construct, `gid` relation, h-level and `_loop_aware_set`; key is now `(source enclosing construct, target enclosing construct, h-level relation)`; (b) `_link_drops` is `categoryType`-driven, not construct-driven, so it stays one shared `unroll/link.py` and `resolve_edges` returns pairs only; (c) `validate_as_source`/`validate_as_target` collapse to one pairwise `validate_link`. New §5 rows 9 (three passes mutate the logical model — link synthesis, the Service `categoryType` rewrite, the validator's default) and 10 (`lgn_to_pgn(recursive=False)` is dead — delete with MKN). Phase 4 gains an ordering note: `link.py` first, `LoopHandler` last. [ARCHITECTURE.md](ARCHITECTURE.md) §5.1/§5.2/§5.4 and §10 items 4, 13, 14 updated to match | n/a | — |
 | 2026-08-17 | Claude (Opus 5) | — | **Sixth correction (new §8 Q10)**: §3's justification for putting `lg.graph.schema` and `lib/` at the package root — "moving them deeper multiplies the strings that must be kept in sync" — was wrong. Each file has exactly one in-package literal, so depth costs one *longer* string, not more strings; `importlib.resources.files()` resolves any importable package and `setup.py`'s `package_files("dlg")` walk is depth-blind. Placement is now decided by consumer, and the two files split: **`lib/libmetis.*` moves into `stages/partition/algorithms/lib/`** beside the loader that reads it (anchor `dlg.translator.stages.partition.algorithms`), while **`lg.graph.schema` stays at the package root** — its only in-package consumer is `translator_rest.py:493`, a Tier 2 REST endpoint, so `prepare/` would be a home no consumer points at. Accepted cost: the deep anchor couples to stage layout, so the Q7 literal grep becomes a standing rule (new bullet in Notes for coding agents). New open question: does schema validation belong to `PrepareStage`? §3 layout, Phase 2, Phase 2b and the Q6 table updated to match | n/a | partly superseded |
 | 2026-08-17 | Claude (Opus 5) | — | **Q10 schema half revised** (supersedes the schema half of the row above; the `libmetis` half stands). `lg.graph.schema` now moves into **`stages/prepare/`**, not the package root — the stage owns the artefact the schema describes, even though the only in-package *reader* is Tier 2. Consequence recorded everywhere it bites: the lookup at `translator_rest.py:145` must become `file_as_string("lg.graph.schema", module="dlg.translator.stages.prepare")` **in the same PR as the move**, which makes it a sanctioned Tier 2 content edit inside a Tier 1 phase — the one exception to Phase 2's "import lines only" rule, and it must be named in the PR description. It is a string literal: no shim covers it, nothing fails at import, LG validation breaks on every REST call until an endpoint is exercised. **The schema move also relocates from Phase 2b to Phase 2**, since `stages/prepare/` is created there; `tools/checkGraph.py:14` and the `MANIFEST.in:5` glob ride along. Phase 2b's scope shrinks accordingly. Phase 2 gains a "run a REST validate call before merging" gate — the CLI path never touches the schema. Still-open question sharpened: moving `jsonschema` into `PrepareStage` would close the cross-tier reach but makes validation run on the CLI path, where it does not today — a behaviour change, decide before Phase 7 | n/a | — |
+| 2026-08-18 | Claude (Opus 5) | — | **Client answers folded in — four §8 questions closed.** (a) **Q4 resolved**: the Scatter `4` is not intentional; removing it and making the count required is an assigned task. `--lenient` no longer covers Scatter — §5 row 5 is now strict and unconditional, and the `categoryType` defaults split out as new row 5c, which is the flag's whole remaining scope. New **Phase 1a** lands the default removal plus the row 5b Loop error on its own, before Phase 4, so the corpus absorbs the new hard failures in isolation; Phase 0 must enumerate the corpus graphs that omit a Scatter count. (b) **Q3 promoted from check to requirement**: PG output must be *unchanged* after the linearisation move — byte-identical for `min_num_parts`, and `pso` seeded then compared byte-for-byte, since a structural comparison cannot see the extras being reordered. §6 Phase 0's "seed it or compare structurally" resolved to "seed it". (c) **Q10's schema half settled**: validation belongs to `prepare/` — the file moves there in Phase 2 as already planned, but moving the `jsonschema` call is the client team's work, so the `web/` → `stages/prepare/` reach is a known interim state and must not be closed opportunistically. (d) **Q8's idempotency sub-question answered from source** (new **Q8b**) against the client's rule — unsafe iff the stamp hashes a prior hash. It does not: `pgt_unroll_block_fields` lists only `categoryType`/`dt`/`storage`/`rank`, `append_pgt_repro_data` resets `pgt_parenthashes` and overwrites `pgt_data`, and `build_pgt_block_data` writes `pgt_blockhash` without ever reading it. So the `repro=` Pipeline flag is belt-and-braces, not a Phase 1 blocker — kept anyway, plus an annotate-twice regression test in Phase 1 so a future hash-valued field cannot regress it silently. (e) **Deprecation window** removed from "Still open" — client-owned release coordination. "Still open" now holds one decision (the scope of `--lenient`) and three verification gates | n/a | — |
 
 ### Notes for coding agents
 
