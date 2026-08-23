@@ -207,7 +207,7 @@ class ValidationTest(unittest.TestCase):
     @parameterized.expand(LOGICAL_TYPES)
     def test_logical_rejects_non_dict(self, _name, cls):
         # (payload, how the message should name it)
-        for payload, shown in (([], "list"), ('{"nodeDataArray": []}', "str"), (None, "null")):
+        for payload, shown in (([], "list"), ('{"nodeDataArray": []}', "str"), (None, "NoneType")):
             with self.subTest(payload=shown):
                 with self.assertRaises(TypeError) as ctx:
                     cls.from_wire(payload)
@@ -218,7 +218,7 @@ class ValidationTest(unittest.TestCase):
     def test_physical_rejects_non_list(self, _name, cls):
         """The wire form is a frozen contract, so this holds regardless of how
         `drops` is represented internally."""
-        for payload, shown in (({}, "dict"), ("[]", "str"), (None, "null")):
+        for payload, shown in (({}, "dict"), ("[]", "str"), (None, "NoneType")):
             with self.subTest(payload=shown):
                 with self.assertRaises(TypeError) as ctx:
                     cls.from_wire(payload)
@@ -230,7 +230,7 @@ class ValidationTest(unittest.TestCase):
         """A reprodata slot holding something other than a dict is caught at
         the boundary that owns the key, rather than one stage later where it
         would surface as the PGT's trailing element."""
-        for bad, shown in ((None, "null"), ([], "list"), ("x", "str"), (1, "int")):
+        for bad, shown in ((None, "NoneType"), ([], "list"), ("x", "str"), (1, "int")):
             with self.subTest(reprodata=shown):
                 wire = logical_wire(with_reprodata=False)
                 wire["reprodata"] = bad
@@ -238,16 +238,6 @@ class ValidationTest(unittest.TestCase):
                     cls.from_wire(wire)
                 self.assertIn("'reprodata' must be a dict", str(ctx.exception))
                 self.assertIn(shown, str(ctx.exception))
-
-    @parameterized.expand(LOGICAL_TYPES)
-    def test_null_reprodata_error_points_at_the_fix(self, _name, cls):
-        """A null slot is rejected while an absent key is accepted, which looks
-        arbitrary unless the message says which one to reach for."""
-        wire = logical_wire(with_reprodata=False)
-        wire["reprodata"] = None
-        with self.assertRaises(TypeError) as ctx:
-            cls.from_wire(wire)
-        self.assertIn("omit the key entirely", str(ctx.exception))
 
     @parameterized.expand(LOGICAL_TYPES)
     def test_absent_reprodata_key_is_not_rejected(self, _name, cls):

@@ -6,17 +6,6 @@ L = TypeVar("L", bound="LogicalArtefact")
 P = TypeVar("P", bound="PhysicalArtefact")
 
 
-def _wire_type(value) -> str:
-    """
-    Name a value as it appears in the JSON payload.
-
-    Only None is special-cased: someone reading this error is looking at a
-    .graph file, where the value is spelled `null` and `NoneType` appears
-    nowhere. Every other type name is already legible as-is.
-    """
-    return "null" if value is None else type(value).__name__
-
-
 @dataclass(frozen=True)
 class LogicalArtefact:
     """
@@ -41,7 +30,7 @@ class LogicalArtefact:
         if "reprodata" in payload and not isinstance(payload["reprodata"], dict):
             raise TypeError(
                 f"{cls.__name__} 'reprodata' must be a dict, "
-                f"got {type(payload['reprodata']).__name__ if 'reprodata' in payload else None}"
+                f"got {type(payload['reprodata']).__name__}"
             )
 
         return cls(source=deepcopy(payload))
