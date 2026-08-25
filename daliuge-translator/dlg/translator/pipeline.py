@@ -18,13 +18,11 @@ class Stage(Protocol[TIn, TOut]):
         """
         Transform the artefact.
         """
-        ...
 
     def stamp(self, artefact: TOut) -> TOut:
         """
         Apply this boundary's `init_*_repro_data` hook.
         """
-        ...
 
 
 class Pipeline(Generic[TIn, TOut]):

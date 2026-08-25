@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from dlg.translator.artefacts import LogicalGraphTemplate, PhysicalGraphTemplate
 from dlg.dropmake.pg_generator import unroll
