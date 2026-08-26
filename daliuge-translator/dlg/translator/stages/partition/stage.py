@@ -29,7 +29,7 @@ class PartitionStage:
                             num_islands=self._opts.num_islands,
                             partition_label=self._opts.partition_label,
                             **self._opts.algo_params),
-            reprodata=pgt.reprodata
+            reprodata=deepcopy(pgt.reprodata)
         )
 
     def stamp(self, pgtp: PhysicalGraphTemplatePartitioned) -> PhysicalGraphTemplatePartitioned:
