@@ -22,7 +22,7 @@ class PartitionStage:
 
     def run(self, pgt: PhysicalGraphTemplate) -> PhysicalGraphTemplatePartitioned:
         return PhysicalGraphTemplatePartitioned(
-            drops=partition(deepcopy(pgt.drops),
+            drops=partition(pgt=deepcopy(pgt.drops),
                             algo=self._opts.algo,
                             num_partitions=self._opts.num_partitions,
                             num_islands=self._opts.num_islands,
