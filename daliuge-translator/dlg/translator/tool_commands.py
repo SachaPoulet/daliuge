@@ -34,10 +34,15 @@ from dlg.common import tool
 from dlg.common.reproducibility.reproducibility import (
     init_lgt_repro_data,
     init_lg_repro_data,
-    init_pgt_unroll_repro_data,
-    init_pgt_partition_repro_data,
-    init_pg_repro_data,
 )
+
+from dlg.translator.stages.unroll.stage import UnrollStage, UnrollOptions
+from dlg.translator.stages.partition.stage import PartitionStage, PartitionOptions
+from dlg.translator.stages.map.stage import MapStage, MapOptions
+
+from dlg.translator.artefacts import LogicalGraphTemplate, PhysicalGraphTemplate, PhysicalGraphTemplatePartitioned
+from dlg.translator.pipeline import Pipeline
+from dlg.translator.errors import StageException
 
 from dlg.dropmake import pg_generator
 from dlg.dropmake.pgt import GPGTNoNeedMergeException
@@ -99,6 +104,44 @@ def parse_partition_algo_params(algo_params):
         for n, v in map(lambda p: p.split("="), algo_params)
         if n in _param_types
     }
+
+
+def _unroll_options(opts, apps) -> UnrollOptions:
+    return UnrollOptions(
+        oid_prefix=opts.oid_prefix,
+        zerorun=opts.zerorun,
+        app=apps[opts.app],
+    )
+
+
+def _partition_options(opts) -> PartitionOptions:
+    return PartitionOptions(
+        algo=opts.algo,
+        num_partitions=opts.partitions,
+        num_islands=opts.islands,
+        algo_params=parse_partition_algo_params(opts.algo_params or []),
+    )
+
+
+def _map_options(opts) -> MapOptions:
+    if opts.nodes:
+        nodes = [n for n in opts.nodes.split(",") if n]
+    else:
+        client = CompositeManagerClient(opts.host, opts.port, timeout=10)
+        nodes = [opts.host] + client.nodes()
+
+    n_nodes = len(nodes)
+    if n_nodes <= opts.islands:
+        raise Exception(
+            "#nodes (%d) should be bigger than number of islands (%d)"
+            % (n_nodes, opts.islands)
+        )
+
+    return MapOptions(
+        nodes=nodes,
+        num_islands=opts.islands,
+        co_host_dim=opts.co_host_dim,
+    )
 
 
 def partition(pgt, opts):
@@ -330,11 +373,12 @@ def dlg_unroll(parser, args):
     (opts, args) = parser.parse_args(args)
     tool.setup_logging(opts)
     dump = _setup_output(opts)
-    pgt = unroll(
-        opts.lg_path, opts.oid_prefix, zerorun=opts.zerorun, app=apps[opts.app]
-    )
+
+    with _open_i(opts.lg_path) as f:
+        lgt = LogicalGraphTemplate.from_wire(json.load(f))
+
+    dump(Pipeline([UnrollStage(_unroll_options(opts, apps))]).run(lgt).to_wire())
     # logger.debug(">>> pgt: %s", pgt)
-    dump(init_pgt_unroll_repro_data(pgt))
 
 
 def _add_partition_options(parser):
@@ -395,8 +439,8 @@ def dlg_partition(parser, args):
     tool.setup_logging(opts)
     dump = _setup_output(opts)
     with _open_i(opts.pgt_path) as fi:
-        pgt = json.load(fi)
-    if not isinstance(pgt, list):
+        wire = json.load(fi)
+    if not isinstance(wire, list):
         print("\nOption 'partition' expects an unrolled graph, which is a "
               "JSON-compatible list."
               "\nEither you have passed in the wrong file, "
@@ -404,19 +448,22 @@ def dlg_partition(parser, args):
         print("\n\nRun 'dlg unroll -h' for more information.\n")
 
         sys.exit()
+    pgt = PhysicalGraphTemplate.from_wire(wire)
 
-    repro = pgt.pop()  # TODO: Re-integrate
     try:
-        pgt = partition(pgt, opts)
-    except GPGTNoNeedMergeException:
-        print("\nThe combination of -N nodes and -i Islands does not work for "
-                "the graph provided. "
-              "\nThis is either a result of the parallelism of the graph being too low,"
-              " or i >= N."
-              "\nConsider reducing the number of islands.\n")
-    pgt.append(repro)
-    dump(init_pgt_partition_repro_data(pgt))
+        pgtp_wire = Pipeline([PartitionStage(_partition_options(opts))]).run(pgt).to_wire()
+    except StageException as e:
+        if not isinstance(e.__cause__, GPGTNoNeedMergeException):
+            raise
+        else:
+            print("\nThe combination of -N nodes and -i Islands does not work for "
+                  "the graph provided. "
+                  "\nThis is either a result of the parallelism of the graph being too low,"
+                  " or i >= N."
+                  "\nConsider reducing the number of islands.\n")
+        pgtp_wire = pgt.to_wire()
 
+    dump(pgtp_wire)
 
 def dlg_unroll_and_partition(parser, args):
     tool.add_logging_options(parser)
@@ -427,14 +474,10 @@ def dlg_unroll_and_partition(parser, args):
     tool.setup_logging(opts)
     dump = _setup_output(opts)
 
-    pgt = unroll(
-        opts.lg_path, opts.oid_prefix, zerorun=opts.zerorun, app=apps[opts.app]
-    )
-    init_pgt_unroll_repro_data(pgt)
-    repro = pgt.pop()  # TODO: Re-integrate
-    pgt = partition(pgt, opts)
-    pgt.append(repro)
-    dump(init_pgt_partition_repro_data(pgt))
+    with _open_i(opts.lg_path) as f:
+        lgt = LogicalGraphTemplate.from_wire(json.load(f))
+
+    dump(Pipeline([UnrollStage(_unroll_options(opts, apps)), PartitionStage(_partition_options(opts))]).run(lgt).to_wire())
 
 
 def dlg_map(parser, args):
@@ -495,29 +538,10 @@ def dlg_map(parser, args):
     tool.setup_logging(opts)
     dump = _setup_output(opts)
 
-
-    if opts.nodes:
-        nodes = [n for n in opts.nodes.split(",") if n]
-    else:
-        client = CompositeManagerClient(opts.host, opts.port, timeout=10)
-        nodes = [opts.host] + client.nodes()
-
-    n_nodes = len(nodes)
-    if n_nodes <= opts.islands:
-        raise Exception(
-            "#nodes (%d) should be bigger than number of islands (%d)"
-            % (n_nodes, opts.islands)
-        )
-
     with _open_i(opts.pgt_path) as f:
-        pgt = json.load(f)
+        pgtp = PhysicalGraphTemplatePartitioned.from_wire(json.load(f))
 
-    repro = pgt.pop()  # TODO: Re-include
-    pg = pg_generator.resource_map(
-        pgt, nodes, opts.islands, co_host_dim=opts.co_host_dim
-    )
-    pg.append(repro)
-    dump(init_pg_repro_data(pg))
+    dump(Pipeline([MapStage(_map_options(opts))]).run(pgtp).to_wire())
 
 
 def dlg_submit(parser, args):
