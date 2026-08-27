@@ -262,3 +262,63 @@ status = "ok"
 expect_drops = 11
 note = """Covers the `--app` post-pass, which overwrites dropclass with SleepApp on every \
 Application and sets sleep_time from execution_time."""
+
+# ---------------------------------------------------------------- reproducibility variant
+#
+# rmode 0 (NOTHING) is the CLI default and what every other case uses. It is not "no
+# reprodata": every DROP is still stamped, so the goldens already cover the stamping sites
+# #10 will move. This one case covers a *non-zero* mode so a mode-specific path cannot
+# regress unseen. One case is enough — rmode is a uniform per-DROP annotation pass, and the
+# full 0/1/2/4/5/6/7/8 sweep belongs to #8's dedicated idempotency test, not to a corpus
+# that would grow eightfold to hold it.
+
+[[case]]
+id = "testLoop-rmode1"
+graph = "logical_graphs/testLoop.graph"
+reproducibility = "1"
+status = "ok"
+expect_drops = 11
+note = "Covers rmode 1 (RERUN); every other case runs at the default rmode 0 (NOTHING)."
+
+# ---------------------------------------------------------------- partition settings
+#
+# Applied to every usable case, by golden generation (#6). Two settings, because one cannot
+# do both jobs.
+#
+# n2i1 is the only setting that works across all three algorithms: mysarkar and
+# min_num_parts raise GPGTNoNeedMergeException at 4 partitions even on a 22-DROP graph.
+# It is the comparable-across-the-corpus baseline.
+#
+# n8i2 is metis-only and exists because n2i1 leaves most of the corpus at a single partition
+# and a single island, which exercises none of the island-forming code. metis splits an
+# 11-DROP graph into 4-5 partitions across 2 islands. Small graphs will NoNeedMerge here;
+# that outcome is recorded per case rather than treated as an error.
+#
+# The `dlg map -N` host list is NOT recorded here, because it cannot be: it has to be sized
+# from the partitions a PGT-P *actually* contains, which is not the number requested.
+# `-N 2` is a target that mysarkar and min_num_parts overshoot on larger graphs — ArrayLoop
+# comes back with more than two. resource_map (pg_generator.py:255-257) takes the first
+# `map_islands` entries as island managers and leaves the rest as node managers, so an
+# undersized list dies with a bare `IndexError: list index out of range`.
+#
+# Nor is it the *count* of partitions: metis leaves gaps, putting an 11-DROP graph on
+# partitions #0, #2, #3, #5 and #7 — five partitions needing eight host entries, because
+# resource_map subscripts the list by the index in the label.
+#
+# golden.py therefore reads each PGT-P back, takes the highest node and island index it
+# contains, and builds `dim0..` + `nm0..` to cover them — passing that island count as
+# `map -i` too, for the same reason. Hosts are named rather than all "localhost" so a
+# change in which partition lands on which manager shows up as a golden diff instead of
+# hiding among identical strings.
+
+[[partition]]
+id = "n2i1"
+algorithms = ["metis", "mysarkar", "min_num_parts"]
+partitions = 2
+islands = 1
+
+[[partition]]
+id = "n8i2"
+algorithms = ["metis"]
+partitions = 8
+islands = 2

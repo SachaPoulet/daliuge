@@ -70,9 +70,14 @@ class Case:
             argv += ["-p", param]
         return argv
 
-    def unroll_argv(self) -> list[str]:
-        """The `dlg unroll` invocation for this case, reading the LG from stdin."""
+    def unroll_argv(self, lg_path: Path | None = None) -> list[str]:
+        """The `dlg unroll` invocation for this case.
+
+        Reads the LG from stdin unless `lg_path` names a file to read instead.
+        """
         argv = ["unroll", "-p", self.oid_prefix]
+        if lg_path is not None:
+            argv += ["-L", str(lg_path)]
         if self.zerorun:
             argv.append("-z")
         if self.app:

@@ -18,9 +18,12 @@ corpus/
 ├── graphs/
 │   ├── logical_graphs/      21 logical graphs
 │   └── graph_config/        3 logical graphs + 2 .graphConfig files
+├── golden/                  generated: the reference outputs, one directory per case
+│   └── INDEX.toml           generated: sha256 + shape of every artefact
 └── tools/
     ├── manifest.py          generate / verify MANIFEST.toml
-    └── cases.py             read / re-prove CASES.toml
+    ├── cases.py             read / re-prove CASES.toml
+    └── golden.py            generate / verify / show golden outputs
 ```
 
 ## Why the graphs are vendored rather than pip-installed
@@ -133,3 +136,112 @@ The vendored graphs are the work of ICRAR, from `ICRAR/EAGLE_test_repo`, which i
 **GPL-3.0**. DALiuGE itself is **LGPL-2.1-or-later**. These files are test data — never
 compiled, imported or linked into the distributed packages, and not part of any DALiuGE
 wheel — but the licence difference is real and is recorded here rather than glossed over.
+
+## Golden outputs
+
+`golden/` holds what the **pre-restructure** translator produces for every usable case —
+the reference each later phase is diffed against.
+
+```bash
+python3 tools/golden.py generate            # (re)produce golden/ from scratch
+python3 tools/golden.py verify              # re-run and compare, exit 1 on drift
+python3 tools/golden.py show <case> <name>  # print one artefact as JSON
+```
+
+Per case: `lg` (post-`fill`), `pgt` (post-`unroll`), then `pgtp` and `pg` for each
+partition setting × algorithm. `INDEX.toml` records a sha256 and the shape
+(elements, partitions, islands) of each, so drift is identified without decompressing.
+
+### No checkout dance was needed
+
+Goldens must come from `c96d83fb`, the recorded baseline. They do: this branch carries no
+translator source change from that commit — `git diff c96d83fb HEAD -- daliuge-*/dlg` is
+empty, and the installed packages are editable installs of this tree. The only Python added
+since the baseline is corpus tooling under `test/corpus/tools/`. **Before regenerating,
+re-check that diff.** Once a phase lands, the goldens can no longer be regenerated in place.
+
+### Why the files are gzipped
+
+The JSON is enormously repetitive — every DROP repeats the same reprodata and field
+scaffolding — so it compresses about 20-30×. `cont_img_mvp`'s PGT alone is 888 KB raw and
+30 KB gzipped. Uncompressed, the corpus would be tens of megabytes of files no human reads
+directly and no PR review can meaningfully diff.
+
+`gzip.compress(..., mtime=0)` is used deliberately: the default stamps the current clock
+into the gzip header, which would make every regeneration differ byte-for-byte even when
+the content is identical. Comparison is on the sha256 of the *decompressed* payload
+regardless, so the storage format cannot mask a real change.
+
+### Two CLI traps this tooling exists to absorb
+
+**Never read a stage's output from stdout.** `mysarkar` and `min_num_parts` print
+`Merging ugid ...` progress lines to stdout ahead of their JSON, so the documented
+`partition | map` pipe hands `map` an unparseable stream — the failure looks like corrupt
+JSON, not like a chatty algorithm. Every stage here writes with `-o` to a file, which is
+clean for all three algorithms.
+
+**`partition` swallows its own failure.** `GPGTNoNeedMergeException` is caught in
+`dlg_partition`, printed as prose, and the *unpartitioned* graph is emitted with exit
+code 0. A generator trusting the exit code would store an unpartitioned graph as a
+partitioned golden. `golden.py` matches that prose and records the outcome instead.
+
+### Partition settings
+
+Two, because one cannot do both jobs.
+
+| Setting | Algorithms | `-N` / `-i` | Why |
+|---|---|---|---|
+| `n2i1` | metis, mysarkar, min_num_parts | 2 / 1 | The only setting all three survive — mysarkar and min_num_parts hit NoNeedMerge at 4 partitions even on a 22-DROP graph. The comparable-across-the-corpus baseline. |
+| `n8i2` | metis | 8 / 2 | `n2i1` leaves most of the corpus at one partition and one island, exercising none of the island-forming code. Small graphs NoNeedMerge here; that is recorded per case, not treated as an error. |
+
+The `map -N` host list is **not** recorded in `CASES.toml`, because it cannot be sized in
+advance. `resource_map` takes the first `-i` entries as island managers and the rest as node
+managers, then subscripts each slice by the index parsed out of the DROP's label — so the
+list must cover the highest index the partitioner actually emitted. That is neither the
+requested `-N` (mysarkar and min_num_parts overshoot it on larger graphs) nor the number of
+distinct partitions (metis leaves gaps — an 11-DROP graph lands on `#0, #2, #3, #5, #7`:
+five partitions, eight entries needed). Undersized, `map` dies with a bare `IndexError`.
+
+`golden.py` reads each PGT-P back, takes the highest node and island index, and builds
+`dim0…` + `nm0…` to match, passing that island count as `map -i` for the same reason. Hosts
+are named rather than all `localhost` so a change in *which* partition lands on *which*
+manager surfaces as a diff instead of hiding among identical strings.
+
+### How much the three algorithms are actually worth
+
+Measured over the generated corpus, the coverage is not evenly distributed, and it is worth
+knowing that before trusting a green `verify`:
+
+| | Partitions produced |
+|---|---|
+| `metis` @ `n2i1` | 2 in all 28 cases |
+| `mysarkar` @ `n2i1` | 1 in 21 cases, 2 in 2, 3 in 5 |
+| `min_num_parts` @ `n2i1` | identical to `mysarkar`, in all 28 cases, byte for byte |
+| `metis` @ `n8i2` | 8 in 16 cases, 7 in 2 (10 cases NoNeedMerge) |
+
+Two consequences. **`mysarkar` and `min_num_parts` are the same golden**: `min_num_parts`
+subclasses the mysarkar scheduler and they do not diverge anywhere in this corpus. They are
+both kept — if a later phase makes them differ, that is a signal worth catching — but they
+are one algorithm's worth of coverage, not two. And **both collapse to a single partition on
+three quarters of the corpus**: they are bottom-up merging schedulers that treat `-N` as a
+ceiling rather than a target, so raising it changes nothing on most graphs (`ArrayLoop` goes
+3 → 5 → 6 partitions as `-N` goes 2 → 4 → 8; `testLoop` and `chiles_simple` stay at 1 no
+matter what). Real partitioning coverage rests on `metis`.
+
+Relatedly, NoNeedMerge is driven by **islands, not partitions** — `-N 16 -i 1` is fine where
+`-N 4 -i 2` is not, which matches the CLI's own advice to reduce the island count.
+
+### Algorithm coverage is 3 of 5, not by choice
+
+`known_algorithms()` offers five. Two do not work in the current build, so no golden can
+exist for them:
+
+| Algorithm | State |
+|---|---|
+| `metis`, `mysarkar`, `min_num_parts` | Usable (with `-o`; see above). |
+| `none` | `GPGTException: The graph has not been partitioned yet` — `to_pg_spec` rejects the unpartitioned graph the option exists to produce. |
+| `pso` | `ValueError: too many values to unpack (expected 2)` at `scheduler.py:837`; the installed `pso()` no longer returns a 2-tuple. |
+
+This narrows ARCHITECTURE_PROPOSAL §6, which asks for "all five algorithms" and treats
+`pso` as merely stochastic ("seed it and compare byte-for-byte"). `pso` is not stochastic
+here, it is broken, and `none` never worked through this path. Both want their own issues.
