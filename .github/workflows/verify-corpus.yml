@@ -1,0 +1,109 @@
+# Re-runs the Phase 0 golden corpus against the current translator.
+#
+# The corpus (daliuge-translator/test/corpus/) stores what the pre-restructure translator
+# produced for every test graph, generated at the baseline commit recorded in its
+# MANIFEST.toml. This workflow regenerates all of it and compares, so any unintended change
+# to translator output shows up as a red build rather than as a surprise several phases later.
+#
+# A red build here is not automatically a bug — a phase is *allowed* to change output when
+# the change is sanctioned. See the failure messages below and the corpus README.
+
+name: Verify Phase 0 corpus
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize]
+
+# The full run is ~15 minutes, so don't leave superseded runs queued behind a new push.
+concurrency:
+  group: verify-corpus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Re-run the corpus against the current translator
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned rather than a matrix: the corpus tooling reads TOML with `tomllib`, which is
+      # stdlib only from 3.11, and this job tests translator *output*, not Python support.
+      - uses: actions/setup-python@v6
+        name: Install Python
+        with:
+          python-version: "3.12"
+
+      # daliuge-common and daliuge-translator only. The engine is not needed — the corpus
+      # drives the `dlg` CLI and the translator's own REST app, neither of which imports it.
+      # Deliberately not `make test`, which clones EAGLE_test_repo at unpinned master; the
+      # corpus vendors its graphs precisely so upstream drift cannot move the goldens.
+      - name: Install daliuge-common and daliuge-translator
+        run: |
+          pip install -U pip setuptools wheel
+          pip install -e daliuge-common/
+          pip install -e daliuge-translator/
+
+      # Cheapest checks first, so the common failures surface in seconds rather than after
+      # the ten-minute golden sweep.
+
+      - name: Corpus inputs are unmodified
+        working-directory: daliuge-translator/test/corpus
+        run: |
+          python3 tools/manifest.py verify || {
+            echo "::error::A corpus input graph has been added, removed or edited."
+            echo "::error::These are pinned fixtures — editing one silently invalidates every"
+            echo "::error::stored golden. If the change is intended, run"
+            echo "::error::'python3 tools/manifest.py generate' and regenerate the goldens."
+            exit 1
+          }
+
+      - name: Expected drift is still empty and up to date
+        working-directory: daliuge-translator/test/corpus
+        run: |
+          python3 tools/drift.py report
+          git diff --exit-code EXPECTED_DRIFT.md || {
+            echo "::error::EXPECTED_DRIFT.md is out of date."
+            echo "::error::A corpus graph now triggers one of the sanctioned ARCHITECTURE_PROPOSAL"
+            echo "::error::section 5 rows (Scatter with no DoP, Loop with no iteration count, a node"
+            echo "::error::missing categoryType). Phase 0 measured this as zero, so the goldens were"
+            echo "::error::expected not to move at all when those land. Commit the regenerated file"
+            echo "::error::and say why in the PR."
+            exit 1
+          }
+
+      - name: Every case behaves as CASES.toml records
+        working-directory: daliuge-translator/test/corpus
+        run: |
+          python3 tools/cases.py check || {
+            echo "::error::A corpus case no longer matches its recorded behaviour."
+            echo "::error::This check is bidirectional: an 'ok' case that started failing is a"
+            echo "::error::regression, and a 'known-broken' case that started PASSING is also"
+            echo "::error::reported — if a change fixed one, update its entry in CASES.toml."
+            exit 1
+          }
+
+      - name: Tier 2 — gojs and HTTP responses are unchanged
+        working-directory: daliuge-translator/test/corpus
+        run: |
+          python3 tools/tier2.py verify || {
+            echo "::error::to_gojs_json output or an HTTP response body changed."
+            echo "::error::Tier 2 covers web/ and the two to_gojs_json implementations — the code"
+            echo "::error::the restructure edits rather than moves. Regenerate with"
+            echo "::error::'python3 tools/tier2.py generate' only once the change is understood."
+            exit 1
+          }
+
+      - name: CLI goldens — LG through PGT, PGT-P and PG
+        working-directory: daliuge-translator/test/corpus
+        run: |
+          python3 tools/golden.py verify || {
+            echo "::error::Translator output changed against the Phase 0 baseline."
+            echo "::error::That is the whole point of this corpus, so read the diff before"
+            echo "::error::regenerating. If the change is intended and sanctioned, run"
+            echo "::error::'python3 tools/golden.py generate' and commit the result, calling out"
+            echo "::error::in the PR which artefacts moved and why."
+            exit 1
+          }
