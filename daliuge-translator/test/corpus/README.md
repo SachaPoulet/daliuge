@@ -14,10 +14,13 @@ This is [#4](https://github.com/SachaPoulet/daliuge/issues/4).
 ```
 corpus/
 ├── MANIFEST.toml            generated: pins + sha256 of every vendored file
+├── CASES.toml               hand-written: how each graph is driven, and what it produces
 ├── graphs/
 │   ├── logical_graphs/      21 logical graphs
 │   └── graph_config/        3 logical graphs + 2 .graphConfig files
-└── tools/manifest.py        generate / verify MANIFEST.toml
+└── tools/
+    ├── manifest.py          generate / verify MANIFEST.toml
+    └── cases.py             read / re-prove CASES.toml
 ```
 
 ## Why the graphs are vendored rather than pip-installed
@@ -75,9 +78,38 @@ The two that do not pass fail for their own reasons, neither of them dependency-
 | `cont_img_mvp` | `fill` | `KeyError: 'param1'` — unbound template parameters; needs `-p param1=… -p …`, the way `test_tool_trans.py` feeds `ArrayLoop`. Recoverable. |
 | `ExampleSubgraphSimple` | `unroll` | `KeyError: 'fromPort'` — a defect in the current SubGraph path. Not recoverable from the CLI; excluded from the golden set and tracked as known-broken. |
 
-Those per-graph invocation details — fill parameters, which `.graphConfig` pairs with which
-graph, expected status — are formalised by the manifest in
-[#5](https://github.com/SachaPoulet/daliuge/issues/5), not here.
+## Driving the graphs — `CASES.toml`
+
+A graph on its own is not runnable: `cont_img_mvp` needs four fill parameters, the
+`graph_config/` graphs have two different config mechanisms, and one graph is expected to
+fail. `CASES.toml` records all of that, one entry per (graph, preparation) pair — 26 cases,
+25 of them usable. Golden generation reads it via `tools/cases.py`; nothing downstream should
+walk `graphs/` directly.
+
+```bash
+python3 tools/cases.py list      # the manifest as a table
+python3 tools/cases.py check     # re-run every case against its recorded expectation
+```
+
+`check` is a regression net in its own right, and it is bidirectional: an `ok` case that
+starts failing is a break, a `known-broken` case that starts passing is *also* reported, so a
+phase that accidentally fixes `ExampleSubgraphSimple` cannot do it silently.
+
+Three things the manifest pins down that are easy to get wrong:
+
+- **`fill` is not optional.** The CLI marks it deprecated, and a raw `.graph` fed straight to
+  `unroll` does translate — but its reprodata comes out as `{}` instead of stamped. Since
+  [#8](https://github.com/SachaPoulet/daliuge/issues/8) is about reprodata stamping, every
+  case goes through `fill` or `fill-config`.
+- **`-z` and `--app` stay off.** Zerorun rewrites `sleep_time` and `--app 1|2` overwrites
+  every Application's `dropclass` — both erase translator output the corpus exists to
+  protect. Wanted as a variant, they should be extra cases, not changed defaults.
+- **The two `graph_config` paths are different code.** An embedded `activeGraphConfigId` is
+  applied by `LG.__init__` during `unroll` with no CLI flag at all
+  ([lg.py:88](../../dlg/dropmake/lg.py#L88)); an external `.graphConfig` goes through
+  `fill-config` → `pg_generator.apply_config` instead. Both are covered. The external path
+  yields 79-83 DROPs against the embedded path's 23, and the EAGLE and non-EAGLE config
+  formats differ from each other by 4 DROPs — so neither is a stand-in for the other.
 
 ## Verifying
 

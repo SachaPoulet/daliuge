@@ -1,0 +1,231 @@
+# Phase 0 corpus — invocation manifest.
+#
+# One case per (graph, preparation) pair. A "case" is everything needed to drive one
+# logical graph through the translator reproducibly: which graph, how to turn it into an
+# LG, and what is expected to come out the other side.
+#
+# Golden generation (#6) walks this file; nothing downstream should hard-code a graph path.
+# Validate with: python3 tools/cases.py check
+#
+# Fields
+#   id            filesystem-safe case name; golden outputs are named after it
+#   graph         path under graphs/
+#   prepare       "fill" (default) or "fill-config"
+#   fill_params   -p arguments for `dlg fill`
+#   graph_config  path under graphs/, required when prepare = "fill-config"
+#   status        "ok" or "known-broken"
+#   expect_drops  DROP count of the resulting PGT, excluding the trailing reprodata element
+#   broken_stage  known-broken only: the CLI stage that raises
+#   broken_error  known-broken only: the exception line, used to detect a change in failure
+#   note          why this case exists, when that is not obvious
+
+[defaults]
+# `fill` is deprecated in the CLI help, but it is not optional here: feeding a raw .graph
+# straight to `unroll` succeeds and leaves reprodata as `{}`, whereas fill/fill-config stamp
+# it. Phase 1 #8 is specifically about that stamping, so every case goes through one of them.
+prepare = "fill"
+fill_params = []
+reproducibility = "0"
+
+# unroll options. Left at CLI defaults deliberately: `-z` zeroes sleep_time and `--app 1|2`
+# overwrites every Application's dropclass, both of which erase translator output we want to
+# regression-test. If a zerorun variant is wanted, add it as extra cases rather than changing
+# these defaults.
+oid_prefix = "1"
+zerorun = false
+app = 0
+
+# ---------------------------------------------------------------- logical_graphs
+
+[[case]]
+id = "ArrayLoop"
+graph = "logical_graphs/ArrayLoop.graph"
+status = "ok"
+expect_drops = 73
+
+[[case]]
+id = "ArrayLoop_Global"
+graph = "logical_graphs/ArrayLoop_Global.graph"
+status = "ok"
+expect_drops = 73
+
+[[case]]
+id = "branchTest"
+graph = "logical_graphs/branchTest.graph"
+status = "ok"
+expect_drops = 3
+
+[[case]]
+id = "chiles_simple"
+graph = "logical_graphs/chiles_simple.graph"
+status = "ok"
+expect_drops = 22
+
+[[case]]
+id = "cont_img_mvp"
+graph = "logical_graphs/cont_img_mvp.graph"
+status = "ok"
+expect_drops = 144
+fill_params = ["param1=hello", "param2=1", "param1.param2=hi", "param4.what=False"]
+note = """The only graph in the corpus carrying `~`-delimited template placeholders \
+(_LGTemplate uses `~`, not `$`). All four sit in a field "value" position, so any string \
+substitutes cleanly; these values match the ones test_tool_trans.py already passes. \
+Without them `fill` dies with KeyError: 'param1'."""
+
+[[case]]
+id = "eagle_gather_empty_update"
+graph = "logical_graphs/eagle_gather_empty_update.graph"
+status = "ok"
+expect_drops = 22
+
+[[case]]
+id = "eagle_gather_simple_update"
+graph = "logical_graphs/eagle_gather_simple_update.graph"
+status = "ok"
+expect_drops = 42
+
+[[case]]
+id = "eagle_gather_update"
+graph = "logical_graphs/eagle_gather_update.graph"
+status = "ok"
+expect_drops = 29
+
+[[case]]
+id = "earth_location"
+graph = "logical_graphs/earth_location.graph"
+status = "ok"
+expect_drops = 4
+
+[[case]]
+id = "ExampleSubgraphNoInput"
+graph = "logical_graphs/ExampleSubgraphNoInput.graph"
+status = "ok"
+expect_drops = 3
+
+[[case]]
+id = "ExampleSubgraphSimple"
+graph = "logical_graphs/ExampleSubgraphSimple.graph"
+status = "known-broken"
+broken_stage = "unroll"
+broken_error = "KeyError: 'fromPort'"
+note = """Defect in the current SubGraph path, not a missing dependency and not recoverable \
+from the CLI. No golden output is generated. Kept in the corpus so that a phase which \
+happens to fix it is noticed: `cases.py check` fails when this stops raising."""
+
+[[case]]
+id = "HelloWorld_Global"
+graph = "logical_graphs/HelloWorld_Global.graph"
+status = "ok"
+expect_drops = 2
+
+[[case]]
+id = "HelloWorld_simple"
+graph = "logical_graphs/HelloWorld_simple.graph"
+status = "ok"
+expect_drops = 2
+
+[[case]]
+id = "Plasma_test"
+graph = "logical_graphs/Plasma_test.graph"
+status = "ok"
+expect_drops = 6
+note = "Translates on a bare build; pyarrow.plasma is only needed to *execute* it."
+
+[[case]]
+id = "pyfunc_glob_shell_test"
+graph = "logical_graphs/pyfunc_glob_shell_test.graph"
+status = "ok"
+expect_drops = 7
+
+[[case]]
+id = "SharedMemoryTest_update"
+graph = "logical_graphs/SharedMemoryTest_update.graph"
+status = "ok"
+expect_drops = 8
+
+[[case]]
+id = "SuperBasicScatterGather"
+graph = "logical_graphs/SuperBasicScatterGather.graph"
+status = "ok"
+expect_drops = 6
+
+[[case]]
+id = "test-20190830-110556"
+graph = "logical_graphs/test-20190830-110556.graph"
+status = "ok"
+expect_drops = 2
+
+[[case]]
+id = "test_grpby_gather"
+graph = "logical_graphs/test_grpby_gather.graph"
+status = "ok"
+expect_drops = 15
+
+[[case]]
+id = "testLoop"
+graph = "logical_graphs/testLoop.graph"
+status = "ok"
+expect_drops = 11
+
+[[case]]
+id = "test_ports"
+graph = "logical_graphs/test_ports.graph"
+status = "ok"
+expect_drops = 6
+
+# ---------------------------------------------------------------- graph_config
+#
+# Two distinct code paths, both worth covering.
+#
+# Embedded: LG.__init__ calls apply_active_configuration (lg.py:88), so a graph carrying
+# activeGraphConfigId + graphConfigurations has its config applied during `unroll` with no
+# CLI flag at all. The three cases below exercise that.
+#
+# External: `dlg fill-config --graph_config X.graphConfig` routes through
+# pg_generator.apply_config -> graph_config.fill_config instead. The two cases at the end
+# exercise that, and produce visibly larger graphs (79-83 drops vs 23) because the external
+# config raises the loop count to 25.
+
+[[case]]
+id = "ArrayLoopLoop"
+graph = "graph_config/ArrayLoopLoop.graph"
+status = "ok"
+expect_drops = 19
+note = "Embedded config path: activeGraphConfigId is set and resolves."
+
+[[case]]
+id = "ArrayLoopNoActiveID"
+graph = "graph_config/ArrayLoopNoActiveID.graph"
+status = "ok"
+expect_drops = 7
+note = """Embedded config path, degenerate: no activeGraphConfigId and no \
+graphConfigurations. apply_active_configuration warns twice and returns the graph \
+untouched. Covers the warn-and-continue branch."""
+
+[[case]]
+id = "ArrayLoopScatter"
+graph = "graph_config/ArrayLoopScatter.graph"
+status = "ok"
+expect_drops = 23
+note = "Embedded config path with two graphConfigurations, one of them active."
+
+[[case]]
+id = "ArrayLoopScatter-LoopConfig"
+graph = "graph_config/ArrayLoopScatter.graph"
+prepare = "fill-config"
+graph_config = "graph_config/LoopConfig.graphConfig"
+status = "ok"
+expect_drops = 83
+note = """External config, EAGLE format. Pairing is not guesswork: the config's \
+modelData.graphLocation names ArrayLoopScatter.graph as its origin."""
+
+[[case]]
+id = "ArrayLoopScatter-LoopConfigNonEagle"
+graph = "graph_config/ArrayLoopScatter.graph"
+prepare = "fill-config"
+graph_config = "graph_config/LoopConfigNonEagle.graphConfig"
+status = "ok"
+expect_drops = 79
+note = """External config, bare non-EAGLE format — same target node and field as \
+LoopConfig, minus the EAGLE modelData wrapper. The 4-drop difference from that case is \
+the point: the two formats are not equivalent in effect."""
