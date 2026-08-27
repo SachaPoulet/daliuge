@@ -14,7 +14,7 @@ This is that list.
 | row5d | No `categoryType`, category in neither list | **0** | bare `KeyError: 'categoryType'` (lg_node.py:60) | `GInvalidNode` | #26 |
 | row5e | No `categoryType`, category `Data` | **0** | inferred `Application` (APP_TYPES wins) | depends which list keeps `Data` | #26 |
 
-Scanned 30 usable cases.
+Scanned 29 usable cases.
 
 ## Nothing to expect
 

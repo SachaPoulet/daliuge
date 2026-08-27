@@ -74,8 +74,32 @@ construction.
 | Graph | Purpose |
 |---|---|
 | `mpi_simple` | `HelloWorld_simple` with its PythonApp rewritten as an `Mpi` node carrying `num_of_procs = 3`. The DROP count is the proof: `LGNode.dop` takes the MPI branch and emits 3 application DROPs where a PythonApp emits 1. |
-| `service_simple` | `SuperBasicScatterGather` with its Gather rewritten as a Service. `convert_construct` gives it an `isService` input application, reaching the PGT as `categoryType=Application` / `category=Service`. |
+| `service_simple` | `SuperBasicScatterGather` with its Gather rewritten as a Service. `convert_construct` gives it an `isService` input application, reaching the PGT as `categoryType=Application` / `category=Service`. **Excluded from the goldens** — see below. |
 | `service_no_input_app` | Authored to fail, pinning a latent defect — see below. |
+
+### A Service construct gets a new identity on every translation
+
+`service_simple` carries `golden = false` in `CASES.toml`, because its PGT is **not
+byte-reproducible**. Translate the same graph twice and the Service DROP's `oid` and
+`lg_key` differ:
+
+```
+Service/GenericServiceApp  oid: 1_e9002f3c-…_0-0  !=  1_17529536-…_0-0
+```
+
+`convert_construct` gives the generated app node the construct's original id
+(`_create_from_node`: `new_node["id"] = node["id"]`) and then assigns the *construct* a
+fresh `uuid.uuid4()`. For Scatter and Gather that is harmless — the construct node is a
+group and never becomes a DROP, which is why the other 29 cases are stable. A Service
+construct does become a DROP, so the random id lands in the output.
+
+Narrower than it first looks: reprodata is unaffected. The graph-level `merkleroot` and
+every per-DROP hash are identical across runs, so this does not break the reproducibility
+signatures — it breaks byte-comparison only.
+
+The case is kept and still earns its place: `cases.py check` holds it to 7 DROPs, so a
+change in Service *structure* is still caught. Only `golden.py` and `drift.py` skip it,
+both of which need a reproducible artefact to work with.
 
 ### The Service branch at lg.py:750 cannot ever have worked
 
@@ -258,15 +282,15 @@ manager surfaces as a diff instead of hiding among identical strings.
 
 ### How much the three algorithms are actually worth
 
-Measured over the generated corpus, the coverage is not evenly distributed, and it is worth
-knowing that before trusting a green `verify`:
+Measured over the 29 cases that have goldens, the coverage is not evenly distributed, and it
+is worth knowing that before trusting a green `verify`:
 
 | | Partitions produced |
 |---|---|
-| `metis` @ `n2i1` | 2 in 29 cases, 1 in 1 (`mpi_simple`, whose 3 MPI ranks share one partition) |
-| `mysarkar` @ `n2i1` | 1 in 23 cases, 2 in 2, 3 in 5 |
-| `min_num_parts` @ `n2i1` | identical to `mysarkar`, in all 30 cases, byte for byte |
-| `metis` @ `n8i2` | 8 in 17 cases, 7 in 2 (11 cases NoNeedMerge) |
+| `metis` @ `n2i1` | 2 in 28 cases, 1 in 1 (`mpi_simple`, whose 3 MPI ranks share one partition) |
+| `mysarkar` @ `n2i1` | 1 in 22 cases, 2 in 2, 3 in 5 |
+| `min_num_parts` @ `n2i1` | identical to `mysarkar`, in all 29 cases, byte for byte |
+| `metis` @ `n8i2` | 8 in 16 cases, 7 in 2 (11 cases NoNeedMerge) |
 
 Two consequences. **`mysarkar` and `min_num_parts` are the same golden**: `min_num_parts`
 subclasses the mysarkar scheduler and they do not diverge anywhere in this corpus. They are

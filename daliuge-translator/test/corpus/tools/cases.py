@@ -39,6 +39,7 @@ class Case:
     zerorun: bool
     app: int
     graph_config: Path | None = None
+    golden: bool = True
     expect_drops: int | None = None
     broken_stage: str | None = None
     broken_error: str | None = None
@@ -47,6 +48,16 @@ class Case:
     @property
     def ok(self) -> bool:
         return self.status == "ok"
+
+    @property
+    def goldenable(self) -> bool:
+        """Whether this case can produce a stable golden.
+
+        A case is excluded when the translator's output for it is not byte-reproducible —
+        not a property of the case, but of a defect it exposes. It stays a case: the DROP
+        count is still checked, and the exclusion is documented at its entry.
+        """
+        return self.ok and self.golden
 
     @property
     def expected_failure(self) -> tuple[str, str]:
@@ -112,6 +123,7 @@ def load_cases() -> list[Case]:
             zerorun=merged["zerorun"],
             app=merged["app"],
             graph_config=GRAPHS / config if config else None,
+            golden=merged.get("golden", True),
             expect_drops=merged.get("expect_drops"),
             broken_stage=merged.get("broken_stage"),
             broken_error=merged.get("broken_error"),

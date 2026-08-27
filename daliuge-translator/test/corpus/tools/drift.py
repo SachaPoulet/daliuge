@@ -28,7 +28,7 @@ try:                                    # `python3 -m tools.drift`
     from .golden import read_golden
 except ImportError:                     # `python3 tools/drift.py`
     from cases import Case, load_cases  # type: ignore[import-not-found,no-redef]
-    from golden import read_golden      # type: ignore[import-not-found,no-redef]
+    from golden import read_golden  # type: ignore[import-not-found,no-redef,attr-defined]
 
 CORPUS = Path(__file__).resolve().parent.parent
 REPORT = CORPUS / "EXPECTED_DRIFT.md"
@@ -104,7 +104,8 @@ def scan_raw(name: str, raw: bytes) -> Findings:
 
 
 def collect() -> list[Findings]:
-    return [scan(case) for case in load_cases() if case.ok]
+    # Reads each case's `lg` golden, so it can only cover cases that have one.
+    return [scan(case) for case in load_cases() if case.goldenable]
 
 
 ROWS = [

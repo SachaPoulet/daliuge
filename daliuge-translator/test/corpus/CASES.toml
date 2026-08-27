@@ -27,6 +27,11 @@ prepare = "fill"
 fill_params = []
 reproducibility = "0"
 
+# Whether this case can produce a stable golden. Cases that cannot are still cases —
+# `cases.py check` still holds them to their DROP count — they are just skipped by
+# `golden.py` and `drift.py`, both of which need a reproducible artefact to work with.
+golden = true
+
 # unroll options. Left at CLI defaults deliberately: `-z` zeroes sleep_time and `--app 1|2`
 # overwrites every Application's dropclass, both of which erase translator output we want to
 # regression-test. If a zerorun variant is wanted, add it as extra cases rather than changing
@@ -349,6 +354,7 @@ id = "service_simple"
 graph = "authored/service_simple.graph"
 status = "ok"
 expect_drops = 7
+golden = false
 note = """Minimal Service coverage, from SuperBasicScatterGather with its Gather rewritten \
 as a Service. `convert_construct` gives the construct an `isService` input application, \
 which reaches the PGT as `categoryType=Application` / `category=Service` / \

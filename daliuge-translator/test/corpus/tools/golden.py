@@ -216,7 +216,7 @@ def load_index() -> dict[tuple[str, str], dict[str, Any]]:
 # --------------------------------------------------------------------- commands
 
 def _usable(only: str | None) -> list[Case]:
-    cases = [c for c in load_cases() if c.ok]
+    cases = [c for c in load_cases() if c.goldenable]
     if only:
         cases = [c for c in cases if c.id == only]
         if not cases:
