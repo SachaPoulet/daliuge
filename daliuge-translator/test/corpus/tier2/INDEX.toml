@@ -1,0 +1,244 @@
+# Tier 2 corpus — GENERATED, do not hand-edit.
+# Regenerate with: python3 tools/tier2.py generate
+# Verify with:     python3 tools/tier2.py verify
+
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "gojs.pgt"
+sha256 = "1fbe27065a7a3ef068a28191584878d616c537c856fdf054494f1686c141eb4b"
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "gojs.metis"
+sha256 = "29beb8f2019470d1ef79e024467916e88fb127ebfe17c2b164cd0c6b089b72d1"
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "rest.lg_fill"
+sha256 = "c795704a131425b14e649d7c9af69b08fd790b270320cb68db1a17f13903b7bf"
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "rest.unroll"
+sha256 = "bfe47df5c673789f54fa92b3542cd4431b8bc9e48601d8a900425c70a02d84f6"
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "rest.partition"
+sha256 = "9555e1b4d1d1829403237f2fe06e00012e1586fa9b8caf3f7b359b885da4d195"
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "rest.unroll_and_partition"
+sha256 = "9555e1b4d1d1829403237f2fe06e00012e1586fa9b8caf3f7b359b885da4d195"
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "rest.map"
+sha256 = "acefac3de2af7282d58c59608ad259396a0d172026629d28542b80a09d6a4914"
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "rest.gen_pg_spec"
+sha256 = "88b13f6414502b00b72ff1cb34a961031775f89a930925c71d534b0692120d4f"
+
+[[artefact]]
+case = "testLoop"
+name = "gojs.pgt"
+sha256 = "d55f514132ef5777ca0bdcf1727f6b49cca25c23c6140fc9f669674c3c0a96b7"
+
+[[artefact]]
+case = "testLoop"
+name = "gojs.metis"
+sha256 = "f68356676bb89421f4d7dec3ad0084fb92e6c56132fa366145a575570d5a739a"
+
+[[artefact]]
+case = "testLoop"
+name = "rest.lg_fill"
+sha256 = "89975f42db32ebe00a0850cb8fa510f44b37027c662af679d868b23f7224f200"
+
+[[artefact]]
+case = "testLoop"
+name = "rest.unroll"
+sha256 = "cad5c4dc22cdf4a934b85f68f41019e8f78271f2c337c675a1b1d2a777c4ccfa"
+
+[[artefact]]
+case = "testLoop"
+name = "rest.partition"
+sha256 = "72788016a4e9df57c9a6f44794fc99d838fdef9dd86c64536e1d3047147f943c"
+
+[[artefact]]
+case = "testLoop"
+name = "rest.unroll_and_partition"
+sha256 = "72788016a4e9df57c9a6f44794fc99d838fdef9dd86c64536e1d3047147f943c"
+
+[[artefact]]
+case = "testLoop"
+name = "rest.map"
+sha256 = "fb4edbd0b5a0c1ca5d322b01801c9d67103c7db3a4be1d520ce9a8488851126e"
+
+[[artefact]]
+case = "testLoop"
+name = "rest.gen_pg_spec"
+sha256 = "a4a272e2f7c1e5fcca98c1acf6a75fe0e73ddc201d5f5f4b4881ca3683e3662c"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "gojs.pgt"
+sha256 = "bb82ffe9c1b8b38424a241168f7b7605d7ec1e90c543a857b22b0318a9211425"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "gojs.metis"
+sha256 = "178c330da412c2ee89b2280626078f14616a0c77e079d48c97b59cc0b5d849d4"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "rest.lg_fill"
+sha256 = "0cc21d8823b82cbd7b17e76dce50c53ae321d50e47c8f6d9b95eff58933e988c"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "rest.unroll"
+sha256 = "9b1c005b9918370cd17fc2352604b9b4693be0ad1a2176ee79e8fef24c50c8b2"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "rest.partition"
+sha256 = "01910a1aee31e6b95099fecd00de19b52804a8ee36923dc188494bcc0acb03c5"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "rest.unroll_and_partition"
+sha256 = "01910a1aee31e6b95099fecd00de19b52804a8ee36923dc188494bcc0acb03c5"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "rest.map"
+sha256 = "40b476d9a135165d874886aae18dbd9b95d887dc81f5fa63d0f72acbd982009c"
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "rest.gen_pg_spec"
+sha256 = "7f7095464d4f3e82c7b126e78b1af94145ac526ca7a6926177582dfe6783a998"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "gojs.pgt"
+sha256 = "567e8c0212dc279da8f04d629531580e9ac5c872641564cba8146ca482c6622c"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "gojs.metis"
+sha256 = "4bb40fd4c9e1ba43fbc3bebd77a064885f298c0905a0e27a1a9b3db56d2fd0a3"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "rest.lg_fill"
+sha256 = "87322b58265c45362a1741e1a9084e0594f0ee451165dd2d0c18fd03b04ad802"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "rest.unroll"
+sha256 = "ec6d0cd7d338f445ddef8df248ffc8efe02d7e34e775af7a532d69537236c1a7"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "rest.partition"
+sha256 = "366d404b05151dfa89c5d3cdf6b315a1139b33795695419cba273a7b31b22f30"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "rest.unroll_and_partition"
+sha256 = "366d404b05151dfa89c5d3cdf6b315a1139b33795695419cba273a7b31b22f30"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "rest.map"
+sha256 = "fc7ff61515dfbe005d7d8897e5f843356a54baa6c9e6ab82f1bbf6c8881420a4"
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "rest.gen_pg_spec"
+sha256 = "68db2c62ce2b4745bb0c614d5be1bca87560b59f303d2075a36fb3c560b5556b"
+
+[[artefact]]
+case = "chiles_simple"
+name = "gojs.pgt"
+sha256 = "c0cb7d6ec6d79ac5b2dbdf37ac7f6a452a2e80dff453216b3556755be1a3d283"
+
+[[artefact]]
+case = "chiles_simple"
+name = "gojs.metis"
+sha256 = "9011461b28e4fbdbad1a7b51f81a40272fcaa26777b80cb6daa304406cd75f04"
+
+[[artefact]]
+case = "chiles_simple"
+name = "rest.lg_fill"
+sha256 = "391155a843f53fb3e8002c86ba36a37c72169c095572d48ea4477437ada1a125"
+
+[[artefact]]
+case = "chiles_simple"
+name = "rest.unroll"
+sha256 = "f56b8a4f71da293df8844c13dba604bdbf780f3e4315101beb4f8e0e7c44d9b1"
+
+[[artefact]]
+case = "chiles_simple"
+name = "rest.partition"
+sha256 = "9291d18201401018f2f04000650a3f5c2b88211f85463ff06043da044d173343"
+
+[[artefact]]
+case = "chiles_simple"
+name = "rest.unroll_and_partition"
+sha256 = "9291d18201401018f2f04000650a3f5c2b88211f85463ff06043da044d173343"
+
+[[artefact]]
+case = "chiles_simple"
+name = "rest.map"
+sha256 = "0ec0cc70d94e87680f73f30746d32aa5d3e762f0434fe5d62075a1622122d767"
+
+[[artefact]]
+case = "chiles_simple"
+name = "rest.gen_pg_spec"
+sha256 = "51dc7d56270e4976bfe7cb21b452db8609c891a3b3d2ee7b975413a97c54da3d"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "gojs.pgt"
+sha256 = "096caf33e998070926aba4b9d75644929c228d85bfee1d9aaa9485acbbb81fce"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "gojs.metis"
+sha256 = "2843b48d168b540843e6ef5514bcb5e47512aa9ad396d2650dbe50f2d2ce99c8"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "rest.lg_fill"
+sha256 = "652e7e4a7b542579a345962a96db3461692675ab466845374e2b74db122f87a0"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "rest.unroll"
+sha256 = "b4d88a865144905a0f6052466b54896efb8344885ceace50fa32c5e209898e94"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "rest.partition"
+sha256 = "bc13c8b088b6deeb044145c07a146eb633bfbecc20824a8f74873200fa739217"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "rest.unroll_and_partition"
+sha256 = "bc13c8b088b6deeb044145c07a146eb633bfbecc20824a8f74873200fa739217"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "rest.map"
+sha256 = "2d4e6b85b273058c50677f8c7d8b9b73f480081adf4c0ebf4935dc560b32d6a2"
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "rest.gen_pg_spec"
+sha256 = "4361df8429bd92cdf7419d7fcd81c82857743c66ede75a3e61c2379422d3421e"

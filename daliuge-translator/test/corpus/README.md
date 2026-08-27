@@ -18,12 +18,15 @@ corpus/
 ├── graphs/
 │   ├── logical_graphs/      21 logical graphs
 │   └── graph_config/        3 logical graphs + 2 .graphConfig files
-├── golden/                  generated: the reference outputs, one directory per case
+├── golden/                  generated: CLI reference outputs, one directory per case
 │   └── INDEX.toml           generated: sha256 + shape of every artefact
+├── tier2/                   generated: gojs + HTTP reference outputs
+│   └── INDEX.toml
 └── tools/
     ├── manifest.py          generate / verify MANIFEST.toml
     ├── cases.py             read / re-prove CASES.toml
-    └── golden.py            generate / verify / show golden outputs
+    ├── golden.py            generate / verify / show CLI goldens
+    └── tier2.py             generate / verify / show gojs + HTTP goldens
 ```
 
 ## Why the graphs are vendored rather than pip-installed
@@ -245,3 +248,71 @@ exist for them:
 This narrows ARCHITECTURE_PROPOSAL §6, which asks for "all five algorithms" and treats
 `pso` as merely stochastic ("seed it and compare byte-for-byte"). `pso` is not stochastic
 here, it is broken, and `none` never worked through this path. Both want their own issues.
+
+## Tier 2 — gojs and HTTP
+
+`golden/` covers the CLI, which is Tier 1 code the restructure mostly *moves*. `tier2/`
+covers what it actually *edits*: `web/` and the two `to_gojs_json` implementations.
+
+```bash
+python3 tools/tier2.py generate            # (re)produce tier2/ from scratch
+python3 tools/tier2.py verify              # re-run and compare, exit 1 on drift
+python3 tools/tier2.py show <case> <name>
+```
+
+Both commands start their own translator on a free port with throwaway graph directories
+and shut it down afterwards — nothing needs to be running first.
+
+Six graphs (§6 asks for "a handful"), chosen to span the construct vocabulary rather than
+for size: `HelloWorld_simple`, `testLoop`, `SuperBasicScatterGather`, `test_grpby_gather`,
+`chiles_simple`, `ArrayLoopScatter`. Eight artefacts each, 48 in total, 172 KB stored.
+
+Per case: `gojs.pgt` and `gojs.metis` — `PGT.to_gojs_json` and `MetisPGTP.to_gojs_json` are
+different implementations and the restructure touches both, so both are captured (they
+differ visibly: 11 nodes against 13 on `testLoop`, the PGTP adding partition groups). Then
+the five `Updated` routes: `rest.lg_fill`, `rest.unroll`, `rest.partition`,
+`rest.unroll_and_partition`, `rest.map`. Then `rest.gen_pg_spec`.
+
+`gen_pg_spec` is an `Original` route, not an `Updated` one. It is here because §5 (line 121)
+states that two cleanup sites stay untouched unless the Phase 0 HTTP corpus covers it — so
+it is covered deliberately rather than left to chance.
+
+`ArrayLoopScatter-LoopConfig` is deliberately **not** in the subset: no `Updated` route
+applies an external `.graphConfig`, so driving it over HTTP would exercise the embedded
+config path under a name claiming otherwise. That path stays a CLI-golden concern.
+
+### Determinism needed two fixes here that the CLI did not
+
+**Every unrolling route must be given an `oid_prefix`.** Without one, `LG.__init__`
+(lg.py:73-75) falls back to `datetime.now()` for the session id and every OID in the
+response carries a wall clock. The CLI never showed this because `dlg unroll` defaults
+`--oid-prefix` to `1`.
+
+**`/gen_pg_spec` cannot be pinned that way and is normalised instead.** It reads a PGT
+registered by `/gen_pgt`, and `gen_pgt` accepts no `oid_prefix` at all, so its session id is
+always a timestamp. Its `root_uids` are also unstable: `list(get_roots(...))` iterates a
+**set**, and Python randomises string hashing per process, so a freshly started server
+reorders them — same members, different order, while the `pg_spec` beside them is
+byte-stable. `_normalise` masks the timestamp and sorts `root_uids`. Both are noise with no
+information in them; nothing else is normalised, because masking a pinned artefact could
+hide a real change.
+
+### Two defects this corpus pins down
+
+**The `Updated` `/map` route is broken.** It declares `nodes: str` and passes it to
+`resource_map` unsplit, so `resource_map` slices the *string*. The CLI splits on `,` first
+(`tool_commands.dlg_map`); this route never does. The goldens record the contrast directly:
+
+| | `node` values | `island` values |
+|---|---|---|
+| CLI `map` | `nm0`, `nm1` | `dim0` |
+| REST `/map` | `i`, `m` | `d` |
+
+Single characters. The `len(nodes) <= num_islands` guard above it measures string length, so
+it never fires. Captured as-is — baseline is baseline — but fixing it will move this golden.
+
+**`unroll` mutates the logical graph it is given.** Unrolling the same parsed dict twice
+fails the second time with `KeyError: 'fromPort'` — which is also
+`ExampleSubgraphSimple`'s known-broken signature, so the two may share a cause. `tier2.py`
+re-parses per unroll. This is §5 row 9 ("three passes mutate the logical model") showing up
+in practice; the REST routes are safe only because `load_graph` re-parses per request.
