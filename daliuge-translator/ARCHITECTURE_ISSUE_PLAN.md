@@ -567,8 +567,14 @@ edge is resolved.
 Also lands here, since they are all "a pass mutates the logical model" (§5 row 9):
 - `lgn_to_pgn` appends to `self._lg_links` *while* the link loop iterates it → link synthesis
   becomes a pre-pass, so the link set is frozen before pass 2 reads it
-- the Service branch rewrites `tlgn["categoryType"]` mid-wiring
-  ([lg.py:750-755](dlg/dropmake/lg.py#L750-L755)) → moves into `ServiceHandler.instantiate`
+- ~~the Service branch rewrites `tlgn["categoryType"]` mid-wiring
+  ([lg.py:750-755](dlg/dropmake/lg.py#L750-L755)) → moves into `ServiceHandler.instantiate`~~
+  → **delete it instead.** Phase 0 proved the branch cannot ever have run: it subscripts an
+  `LGNode`, which has no `__setitem__`. Unreachable for a Service *with* an input application
+  (`convert_construct` moves the construct's id onto the generated app node, so a link "into
+  the Service" targets the app), and for one *without* it raises
+  `TypeError: 'LGNode' object does not support item assignment`. Corpus case:
+  `service_no_input_app`. See §5 row 9b.
 
 Delete `lgn_to_pgn(recursive=False)` ([lg.py:352-359](dlg/dropmake/lg.py#L352-L359)) — dead,
 both call sites take the default. `pgtp.py:267`'s `recursive` is METIS's bisection flag, not
@@ -658,9 +664,12 @@ a delegating method with an identical signature.
 ⚠ **Client requirement: PG output must be unchanged after this move.**
 - `min_num_parts` is deterministic → byte-identical PG, synthetic DROPs included: same count,
   same `oid`s, same insertion order, same `node`/`island` stamps.
-- `pso` is stochastic → fix the seed and compare byte-for-byte under it. A structural
-  comparison cannot see the extras being reordered, which is exactly what a botched move
-  produces.
+- ~~`pso` is stochastic → fix the seed and compare byte-for-byte under it.~~ **`pso` does not
+  run at all** — `ValueError: too many values to unpack (expected 2)` at
+  [scheduler.py:837](dlg/dropmake/scheduler.py#L837). There is no golden for it and nothing
+  to seed, so this move cannot be verified against `pso`; `min_num_parts` and `mysarkar`
+  carry the check instead. Note those two are byte-identical to each other on every corpus
+  case, so they are one comparison, not two. See §6.
 
 GOJS payload shape is a Tier 3 contract — the bundled viewer parses it. Do not touch it.
 

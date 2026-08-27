@@ -122,6 +122,13 @@ last commit, verified against the Phase 0 HTTP corpus. If that corpus does not c
 `gen_pg_spec`, leave these two alone rather than editing blind: the cleanup is worth 10 sites,
 not 12, if the alternative is an unverified change to EAGLE's path.
 
+> ✅ **Resolved — the corpus covers it.** `rest.gen_pg_spec` is captured for all six Tier 2
+> graphs, so the cleanup keeps all 12 sites. Note its response cannot be pinned by
+> `oid_prefix` the way the `Updated` routes are — `gen_pgt` accepts no such parameter, so
+> `LG.__init__` falls back to `datetime.now()` — and its `root_uids` come from
+> `list(get_roots(...))` over a *set*, which Python reorders per process. The corpus
+> normalises exactly those two things and nothing else.
+
 ### 1.2 Transitions are split across files with no declared ownership
 
 | Transition | Currently spread over | Consequence |
@@ -553,8 +560,14 @@ class InstanceId:
 | 6 | `convert_mkn` / `convert_mkn_all_share_m` [dm_utils.py:170](dlg/dropmake/dm_utils.py#L170) are unreachable | **delete** — confirmed dead *and* already broken (§8 Q2) | none |
 | 7 | Vestigial `self._metis_path = "gpmetis"` alongside the Python binding | `algorithms/metis.py` picks one mechanism | none |
 | 8 | `LG.unroll_to_tpl` documented as not thread-safe; `translator_rest` compensates with module-level semaphores | stages hold no mutable instance state across `run()`, so the core is no longer the reason for the semaphores | **none — semaphores stay.** Removing them is a web-side concurrency decision, out of scope |
-| 9 | Three passes mutate the logical model: `lgn_to_pgn` appends to `self._lg_links` *while* §5.2 iterates it, `unroll_to_tpl` rewrites a Service target's `categoryType`/`category` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755), `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | `synthesise_links` runs as a pre-pass before `instantiate.py`, so the link set is frozen before pass 2 reads it; the Service rewrite moves into `ServiceHandler.instantiate`; the `categoryType` write is deleted outright, since row 5c shows it cannot fire | none |
+| 9 | Three passes mutate the logical model: `lgn_to_pgn` appends to `self._lg_links` *while* §5.2 iterates it, `unroll_to_tpl` rewrites a Service target's `categoryType`/`category` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755), `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | `synthesise_links` runs as a pre-pass before `instantiate.py`, so the link set is frozen before pass 2 reads it; ~~the Service rewrite moves into `ServiceHandler.instantiate`~~ **the Service rewrite is deleted — it cannot ever have run** (see row 9b); the `categoryType` write is deleted outright, since row 5c shows it cannot fire | none |
+| 9b | **The Service rewrite in row 9 is dead code, not behaviour.** `tlgn["categoryType"] = "Application"` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755) subscripts an `LGNode`, a class with no `__setitem__`. It is unreachable for a Service *with* an input application — `convert_construct` moves the construct's id onto the generated app node, so a link "into the Service" targets the app and the branch never runs — and for a Service *without* one it runs and raises `TypeError: 'LGNode' object does not support item assignment`. Verified with an authored graph, `service_no_input_app`, now a known-broken corpus case | **delete**, with rows 6 and 10 — do not port it into `ServiceHandler.instantiate` | none |
+| 9c | `convert_construct` assigns every construct a fresh `uuid.uuid4()` [dm_utils.py:457](dlg/dropmake/dm_utils.py#L457). Harmless for Scatter/Gather, whose construct node is a group and never becomes a DROP — but a **Service** construct does, so its `oid`/`lg_key` differ on every translation and the same graph yields a different PGT. Reprodata is unaffected: graph-level `merkleroot` and every per-DROP hash are stable | give the construct a derived id, not a random one; until then `service_simple` carries `golden = false` in the corpus because no stable golden exists for it | none — but it blocks byte-comparison for any Service graph |
 | 10 | `lgn_to_pgn(recursive=False)` [lg.py:352-359](dlg/dropmake/lg.py#L352-L359) — deep-copies children onto `_start_list` — is unreachable; both call sites take the default, and `pgtp.py:267`'s `recursive` is METIS's bisection flag | **delete**, with the MKN batch (row 6) | none |
+| 11 | `unroll` **mutates the logical graph dict it is given**. A second `unroll` of the same parsed object raises `KeyError: 'fromPort'` at [lg.py:499](dlg/dropmake/lg.py#L499) — the same signature as the corpus's known-broken `ExampleSubgraphSimple`, which may share a cause. This is row 9 observed from outside; the REST routes survive it only because `load_graph` re-parses per request | binding on §4: an `UnrollStage.run()` must not assume it can be called twice on one `LogicalGraph` envelope, or must deep-copy on entry. Worth an explicit test | none |
+| 12 | `resource_map(pgt, nodes, num_islands, co_host_dim)` [pg_generator.py:244](dlg/dropmake/pg_generator.py#L244) accepts `co_host_dim` and **never reads it** in the body, despite a docstring comment describing what it would do | **delete the parameter**, with rows 6/10 — or implement it, but not silently keep it | none |
+| 13 | The `Updated` `/map` route declares `nodes: str` and passes it to `resource_map` unsplit [translator_rest.py:1018](dlg/dropmake/web/translator_rest.py#L1018), so `resource_map` slices the *string*: every DROP lands on a single-character "host" (`node: "i"`, `island: "d"` where the CLI gives `nm0`/`dim0`). The `len(nodes) <= num_islands` guard above it measures string length and never fires. The CLI splits on `,` first (`tool_commands.dlg_map`); this route never does | split the string, as the CLI does. Tier 2 captures the broken output as baseline, so the fix will move `rest.map` — expected, not a regression | Tier 2 only; no PGT change |
+| 14 | `map`'s host list must be at least `islands + max_partition_index + 1` long, and `resource_map` subscripts it by the index parsed out of each DROP's label. Undersized, it dies with a bare `IndexError: list index out of range` naming nothing. The required size is neither the requested `-N` (mysarkar overshoots it) nor the count of distinct partitions (metis leaves gaps — `#0,#2,#3,#5,#7` is five partitions needing eight entries) | raise a `GInvalidNode`-style error naming the shortfall. Low priority, but it cost real time during Phase 0 | none |
 
 **Explicitly not addressed:** splitting the `Original` / `Updated` REST generations, and
 extracting HTML rendering from `translator_rest.py`. Both are app restructuring, which the
@@ -569,26 +582,49 @@ output for the `eagle-test-graphs` corpus except where §5 rows 5/5b/5c are deli
 enabled — those are sanctioned changes, and the graphs they affect must be enumerated in
 Phase 0 so the drift is expected rather than investigated.
 
-**Phase 0 — golden corpus.** Before touching code: pin `eagle-test-graphs`, run every graph
-through `unroll`, `partition` (all five algorithms, fixed `--oid_prefix` for determinism)
-and `map`, and store the outputs. Add a second corpus capturing `to_gojs_json` output and
-the HTTP response body of every `Updated` endpoint for a handful of graphs — that is the
-Tier 2 regression net, and Tier 2 is now something we edit. **`pso` is stochastic — seed it
-and compare byte-for-byte under that seed;** a structural comparison cannot see a reordering
-of the linearisation extras, which is the failure mode Q3's acceptance criterion is aimed at.
+**Phase 0 — golden corpus. ✅ Built.** It lives in
+[`daliuge-translator/test/corpus/`](test/corpus/) — on the `issue-4-Bundle_test_graphs`
+branch, so the links in this section resolve only once #4 merges. Its README is the
+reference; this section records what the plan below got wrong.
 
-A third requirement, from §8 Q4: **record which corpus graphs omit a Scatter count.** They
-change from unrolling at DoP 4 to a hard error, and that list is what separates the sanctioned
-change from a regression when the corpus is re-run.
+The corpus vendors the graphs rather than depending on `eagle-test-graphs` at whatever
+`master` happens to be, pinned to `2f1db6c` (release v0.2.4) with the generating DALiuGE
+pinned to `c96d83fb`. 32 cases, 30 usable; 268 CLI artefacts (`lg`/`pgt`/`pgtp`/`pg`) and 48
+Tier 2 artefacts, all gzipped and compared on the sha256 of the decompressed payload.
+`tools/golden.py verify` regenerates everything and diffs it; `tools/cases.py check` holds
+each case to its DROP count in both directions, so a *known-broken* case that starts passing
+is reported too.
 
-Two coverage requirements the later phases depend on, both cheap to include now and expensive
-to retrofit:
+Four corrections to the plan as written above, all found by building it:
 
-- **`metis` must actually run** — it is the only algorithm that loads the bundled
-  `libmetis`, so it is the only one that would catch the Phase 2 package-path breakage (§8 Q6).
-- **`Original`'s `gen_pg_spec` must be in the HTTP corpus** if Phase 7 is to touch its two
-  reprodata sites (§1.1). Without it, that part of the cleanup is not verifiable and should
-  be dropped.
+- **"All five algorithms" is three.** `pso` raises `ValueError: too many values to unpack`
+  at [scheduler.py:837](dlg/dropmake/scheduler.py#L837) — the installed `pso()` no longer
+  returns a 2-tuple — and `none` raises `GPGTException: The graph has not been partitioned
+  yet` from `to_pg_spec`. **`pso` is not stochastic, it is broken**, so the "seed it and
+  compare byte-for-byte" instruction has nothing to seed. Corpus covers `metis`, `mysarkar`
+  and `min_num_parts`.
+- **Two of those three cannot be used through a pipe.** `mysarkar` and `min_num_parts` print
+  `Merging ugid ...` to *stdout* ahead of their JSON, so `partition | map` hands `map` an
+  unparseable stream. Every stage must be written with `-o` to a file.
+- **Their coverage is thinner than three algorithms suggests.** `min_num_parts` is
+  byte-identical to `mysarkar` on all 29 goldened cases, and both collapse to a single
+  partition on ~three quarters of them — they are bottom-up mergers treating `-N` as a
+  ceiling. Real partitioning coverage rests on `metis`, which the plan already required for
+  its own reason (§8 Q6).
+- **`partition` swallows its own failure.** `GPGTNoNeedMergeException` is caught in
+  `dlg_partition`, printed as prose, and the *unpartitioned* graph is emitted with exit code
+  0 — so a generator trusting the exit code files an unpartitioned graph as a partitioned
+  golden.
+
+The third requirement — **record which corpus graphs omit a Scatter count** — is discharged
+in [`EXPECTED_DRIFT.md`](test/corpus/EXPECTED_DRIFT.md), generated by `tools/drift.py`, and
+**the answer is zero**; see the amended §8 Q4.
+
+Both coverage requirements are met. `metis` runs on every case. `Original`'s `gen_pg_spec`
+**is** in the HTTP corpus, so the Phase 7 cleanup keeps its full reach — see §1.1. It also
+turns out to be the only artefact anywhere in either corpus that pins `humanReadableKey`:
+[pgt.py:336](dlg/dropmake/pgt.py#L336) writes it only when `_gojs_key_dict` is populated, and
+the PGTP subclasses never populate it, so the CLI path omits the field entirely.
 
 **Phase 1 — envelopes and pipeline.** Introduce `artefacts.py` + `pipeline.py`. Rewrite
 `tool_commands.py` to compose stages wrapping the *existing* functions unchanged. Deletes
@@ -860,10 +896,12 @@ consequences:
 - **No structural-equivalence escape for `min_num_parts`.** It is deterministic, so
   "unchanged" means byte-identical PG, synthetic DROPs included — same count, same `oid`s,
   same insertion order, same `node`/`island` stamps.
-- **`pso` needs a seed, not a looser comparison.** §6 Phase 0 offers "seed it or compare
-  structurally"; under this criterion the choice is made — seed it, and compare byte-for-byte
-  under that seed. A structural comparison cannot detect a reordering of the extras, which is
-  exactly what a botched move would produce.
+- ~~**`pso` needs a seed, not a looser comparison.**~~ **Moot — `pso` does not run.** It
+  raises `ValueError: too many values to unpack (expected 2)` at
+  [scheduler.py:837](dlg/dropmake/scheduler.py#L837); the installed `pso()` no longer returns
+  a 2-tuple. There is nothing to seed and no golden to compare, so this acceptance criterion
+  has no `pso` case to apply to until the call is fixed. The reasoning still stands for any
+  algorithm that is stochastic *and* working — none currently is.
 
 ### Q4 — Is failing loudly on a missing Scatter count acceptable? ✅ Resolved — the default is a defect, and removing it is mandated
 
@@ -900,6 +938,21 @@ branches; Scatter's silent `4` is the outlier.
    `eagle-test-graphs` graph that omits the Scatter count changes from *silently unrolling at
    DoP 4* to *hard error*. Phase 0 must record which graphs those are so the diff is expected
    rather than investigated; §6's acceptance criterion already carves this out.
+
+   > ✅ **Enumerated, and the answer is zero.** [`EXPECTED_DRIFT.md`](test/corpus/EXPECTED_DRIFT.md)
+   > scans every usable case for rows 5, 5b, 5d and 5e and finds **no** graph triggering any
+   > of them: every Scatter carries a DoP field, every Loop an iteration count, every node a
+   > `categoryType`. Two consequences, and the second is easy to miss.
+   >
+   > The acceptance criterion is *stronger* than drafted: there is no sanctioned drift to
+   > excuse, so the goldens must not move **at all** when these land. Any diff is a
+   > regression.
+   >
+   > And the corpus cannot **test** the new error paths — it contains no input that reaches
+   > them. Each of those changes needs its own unit tests with purpose-built malformed
+   > graphs; Phase 0 does not cover them and cannot be made to without authoring inputs
+   > whose only purpose is to fail. The scanner itself is positively controlled against
+   > deliberately malformed graphs, so the zero is a measurement rather than a silence.
 
 **Note the ordering trap.** Removing the default is a one-line change to `lg_node.py` today,
 and it is worth landing on its own — before Phase 4 — so the corpus absorbs the new failures
@@ -956,6 +1009,9 @@ with no `lib/` in it. The literals must be edited, not shimmed.
 
 **Corpus implication:** the Phase 0 corpus must include at least one `metis` run, or this
 class of breakage ships undetected — every other algorithm is pure Python.
+
+> ✅ **Satisfied.** `metis` runs on every goldened case, at two partition settings. It is
+> also the *only* algorithm carrying real partitioning coverage — see the amended §6.
 
 ### Q7 — Does an import rewrite cover the whole move? ⚠ No — two string-literal lookups
 
