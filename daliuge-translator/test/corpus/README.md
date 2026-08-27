@@ -22,11 +22,13 @@ corpus/
 │   └── INDEX.toml           generated: sha256 + shape of every artefact
 ├── tier2/                   generated: gojs + HTTP reference outputs
 │   └── INDEX.toml
+├── EXPECTED_DRIFT.md        generated: which graphs the sanctioned §5 breaks will move
 └── tools/
     ├── manifest.py          generate / verify MANIFEST.toml
     ├── cases.py             read / re-prove CASES.toml
     ├── golden.py            generate / verify / show CLI goldens
-    └── tier2.py             generate / verify / show gojs + HTTP goldens
+    ├── tier2.py             generate / verify / show gojs + HTTP goldens
+    └── drift.py             enumerate §5 drift into EXPECTED_DRIFT.md
 ```
 
 ## Why the graphs are vendored rather than pip-installed
@@ -316,3 +318,33 @@ fails the second time with `KeyError: 'fromPort'` — which is also
 `ExampleSubgraphSimple`'s known-broken signature, so the two may share a cause. `tier2.py`
 re-parses per unroll. This is §5 row 9 ("three passes mutate the logical model") showing up
 in practice; the REST routes are safe only because `load_graph` re-parses per request.
+
+## Expected drift
+
+§6 permits exactly one kind of golden change — the sanctioned §5 breaks — and requires the
+affected graphs to be enumerated during Phase 0, so a golden that moves in Phase 1a is
+*expected* rather than investigated.
+
+```bash
+python3 tools/drift.py report     # rewrite EXPECTED_DRIFT.md
+python3 tools/drift.py show       # print without writing
+```
+
+**The answer is zero: no corpus graph triggers any of the four rows.** Every Scatter carries
+a DoP field, every Loop an iteration count, every node a `categoryType`.
+
+That is a result, not an absence. It means #14, #15 and #26 can turn all four into hard
+errors and **the goldens must not move at all** — any diff during those issues is a genuine
+regression, not sanctioned drift. It also means the corpus cannot *test* the new error
+paths; those issues need their own unit tests with purpose-built malformed graphs.
+
+Rows 5 and 5b are decided by building each graph's real `LG` and asking the real `LGNode`
+predicates, rather than by matching category strings in the scanner — which would drift from
+the translator the moment either side changed. Rows 5d/5e are decided on the node dict as
+`LGNode` receives it, since both concern what the `jd` setter does with a node arriving
+without a `categoryType`.
+
+A scanner that reports nothing is indistinguishable from a broken one, so every row was
+positively controlled against a deliberately malformed graph, and every row fired. The
+controls are recorded in `EXPECTED_DRIFT.md`; `scan_raw()` is split out from `scan()` so
+they can be run against synthetic graphs.
