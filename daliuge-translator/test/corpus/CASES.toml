@@ -229,3 +229,36 @@ expect_drops = 79
 note = """External config, bare non-EAGLE format — same target node and field as \
 LoopConfig, minus the EAGLE modelData wrapper. The 4-drop difference from that case is \
 the point: the two formats are not equivalent in effect."""
+
+# ---------------------------------------------------------------- unroll flag variants
+#
+# `-z` and `--app` are post-passes inside pg_generator.unroll (lines 83-94), applied to the
+# DROP list after lg.unroll_to_tpl() returns — so they are translator code the restructure
+# will move, and they need *some* cover. They do not need cover on every graph: both are
+# mechanical field rewrites over the drop list, independent of graph shape.
+#
+# Two cases on one carrier graph is the whole cost. testLoop is the carrier because it is
+# the smallest corpus graph where *both* flags actually change the output: `--app` alters
+# every graph that has an Application, but `-z` only bites where a dropspec carries
+# `sleep_time`, which most corpus graphs do not (HelloWorld_simple, SuperBasicScatterGather,
+# test_ports and ArrayLoop are all unaffected by it).
+#
+# Note these earn their keep in #6, not here: neither flag changes the DROP *count*, so
+# `cases.py check` cannot see a regression in them. Only a golden diff can.
+
+[[case]]
+id = "testLoop-zerorun"
+graph = "logical_graphs/testLoop.graph"
+zerorun = true
+status = "ok"
+expect_drops = 11
+note = "Covers the `-z` post-pass, which zeroes sleep_time on every dropspec that has one."
+
+[[case]]
+id = "testLoop-app1"
+graph = "logical_graphs/testLoop.graph"
+app = 1
+status = "ok"
+expect_drops = 11
+note = """Covers the `--app` post-pass, which overwrites dropclass with SleepApp on every \
+Application and sets sleep_time from execution_time."""

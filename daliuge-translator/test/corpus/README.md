@@ -82,8 +82,8 @@ The two that do not pass fail for their own reasons, neither of them dependency-
 
 A graph on its own is not runnable: `cont_img_mvp` needs four fill parameters, the
 `graph_config/` graphs have two different config mechanisms, and one graph is expected to
-fail. `CASES.toml` records all of that, one entry per (graph, preparation) pair — 26 cases,
-25 of them usable. Golden generation reads it via `tools/cases.py`; nothing downstream should
+fail. `CASES.toml` records all of that, one entry per (graph, preparation) pair — 28 cases,
+27 of them usable. Golden generation reads it via `tools/cases.py`; nothing downstream should
 walk `graphs/` directly.
 
 ```bash
@@ -101,9 +101,14 @@ Three things the manifest pins down that are easy to get wrong:
   `unroll` does translate — but its reprodata comes out as `{}` instead of stamped. Since
   [#8](https://github.com/SachaPoulet/daliuge/issues/8) is about reprodata stamping, every
   case goes through `fill` or `fill-config`.
-- **`-z` and `--app` stay off.** Zerorun rewrites `sleep_time` and `--app 1|2` overwrites
-  every Application's `dropclass` — both erase translator output the corpus exists to
-  protect. Wanted as a variant, they should be extra cases, not changed defaults.
+- **`-z` and `--app` stay off by default.** Zerorun rewrites `sleep_time` and `--app 1|2`
+  overwrites every Application's `dropclass` — both erase translator output the corpus
+  exists to protect. They are still translator code the restructure will move, so they get
+  two dedicated cases on `testLoop` rather than a flag on every case: both are mechanical
+  rewrites over the DROP list, independent of graph shape, so one carrier graph covers
+  them. `testLoop` is that carrier because it is the smallest corpus graph where *both*
+  flags change the output — `--app` bites on any graph with an Application, but `-z` only
+  bites where a dropspec carries `sleep_time`, which most corpus graphs lack.
 - **The two `graph_config` paths are different code.** An embedded `activeGraphConfigId` is
   applied by `LG.__init__` during `unroll` with no CLI flag at all
   ([lg.py:88](../../dlg/dropmake/lg.py#L88)); an external `.graphConfig` goes through
