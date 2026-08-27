@@ -18,9 +18,15 @@ CORPUS = Path(__file__).resolve().parent.parent
 MANIFEST = CORPUS / "MANIFEST.toml"
 GRAPHS = CORPUS / "graphs"
 
-# Where the vendored files came from, upstream. Everything under graphs/ is a
-# verbatim copy of the same-named file under this prefix at the pinned commit.
+# Where the vendored files came from, upstream. Everything under graphs/ *except*
+# graphs/authored/ is a verbatim copy of the same-named file under this prefix at the
+# pinned commit.
 UPSTREAM_PREFIX = "eagle_test_graphs/daliuge_tests/translator"
+
+# Graphs we wrote ourselves, because no upstream repository contains one. They carry no
+# upstream path and are not covered by the pins — recording them as vendored would be a
+# false provenance claim.
+AUTHORED_DIR = "authored"
 
 PINS = {
     "eagle_test_repo_url": "https://github.com/ICRAR/EAGLE_test_repo",
@@ -55,10 +61,12 @@ def generate() -> int:
 
     for path in corpus_files():
         rel = path.relative_to(GRAPHS).as_posix()
+        origin = ('origin = "authored"' if rel.startswith(f"{AUTHORED_DIR}/")
+                  else f'upstream = "{UPSTREAM_PREFIX}/{rel}"')
         lines += [
             "[[files]]",
             f'path = "{rel}"',
-            f'upstream = "{UPSTREAM_PREFIX}/{rel}"',
+            origin,
             f'sha256 = "{digest(path)}"',
             "",
         ]

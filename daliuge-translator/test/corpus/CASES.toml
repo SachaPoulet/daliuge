@@ -322,3 +322,48 @@ id = "n8i2"
 algorithms = ["metis"]
 partitions = 8
 islands = 2
+
+# ---------------------------------------------------------------- authored graphs
+#
+# Written for this corpus, not vendored — see graphs/authored/ and the `origin` field in
+# MANIFEST.toml. They exist because a coverage audit found Service and MPI at **zero**
+# nodes across all 28 vendored cases, and neither `ICRAR/EAGLE-graph-repo` (121 graphs) nor
+# `EAGLE_test_repo` (90) contains a single translatable graph using either. Phase 3 (#22,
+# #23) and Phase 4 rework exactly those constructs, so without these the edits are blind.
+#
+# Both are derived from existing corpus graphs rather than written from scratch, so the
+# EAGLE schema — ports, field shapes, modelData — stays valid by construction.
+
+[[case]]
+id = "mpi_simple"
+graph = "authored/mpi_simple.graph"
+status = "ok"
+expect_drops = 4
+note = """Minimal MPI coverage, from HelloWorld_simple with its PythonApp rewritten as an \
+`Mpi` node carrying `num_of_procs = 3`. The count is the proof it works: `LGNode.dop` takes \
+the MPI branch and emits 3 application DROPs where a PythonApp emits 1, so 4 DROPs total \
+against HelloWorld_simple's 2."""
+
+[[case]]
+id = "service_simple"
+graph = "authored/service_simple.graph"
+status = "ok"
+expect_drops = 7
+note = """Minimal Service coverage, from SuperBasicScatterGather with its Gather rewritten \
+as a Service. `convert_construct` gives the construct an `isService` input application, \
+which reaches the PGT as `categoryType=Application` / `category=Service` / \
+`storage=Service`."""
+
+[[case]]
+id = "service_no_input_app"
+graph = "authored/service_no_input_app.graph"
+status = "known-broken"
+broken_stage = "unroll"
+broken_error = "TypeError: 'LGNode' object does not support item assignment"
+note = """Authored to pin a latent defect, and expected to fail. A Service construct with \
+no input application is skipped by `convert_construct` (it needs an app keyword), so a link \
+into it still targets the *group* node and reaches the Service branch at lg.py:750, which \
+does `tlgn["categoryType"] = "Application"` on an `LGNode` — a class with no `__setitem__`. \
+That branch therefore cannot ever have worked. §5 row 9 plans to move it into \
+`ServiceHandler.instantiate`; this case is the evidence it is dead code to delete rather \
+than behaviour to preserve. `cases.py check` reports when it stops raising."""

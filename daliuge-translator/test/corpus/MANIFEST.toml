@@ -13,6 +13,21 @@ daliuge_baseline_commit = "c96d83fb56d523bfcf43e061a822e960dc48a2f6"
 upstream_prefix = "eagle_test_graphs/daliuge_tests/translator"
 
 [[files]]
+path = "authored/mpi_simple.graph"
+origin = "authored"
+sha256 = "4ba189f0351dc1d3769192716932659a827958c5737e53a80c68005cb7bb6d93"
+
+[[files]]
+path = "authored/service_no_input_app.graph"
+origin = "authored"
+sha256 = "0645bb8ddf10da9c9ad5a468d8ffeaa22379ee23e3105f16a70ff2984ee0b752"
+
+[[files]]
+path = "authored/service_simple.graph"
+origin = "authored"
+sha256 = "1b4129180e291c55d43cfb19f8753e582e0e0c7bebad550d59ae8430fdf08e45"
+
+[[files]]
 path = "graph_config/ArrayLoopLoop.graph"
 upstream = "eagle_test_graphs/daliuge_tests/translator/graph_config/ArrayLoopLoop.graph"
 sha256 = "1519865f782f1c095205a134ae9037ae2a388c2d862ac4d62980c3bf110ba234"

@@ -16,8 +16,9 @@ corpus/
 ├── MANIFEST.toml            generated: pins + sha256 of every vendored file
 ├── CASES.toml               hand-written: how each graph is driven, and what it produces
 ├── graphs/
-│   ├── logical_graphs/      21 logical graphs
-│   └── graph_config/        3 logical graphs + 2 .graphConfig files
+│   ├── logical_graphs/      21 logical graphs (vendored)
+│   ├── graph_config/        3 logical graphs + 2 .graphConfig files (vendored)
+│   └── authored/            3 graphs written for this corpus
 ├── golden/                  generated: CLI reference outputs, one directory per case
 │   └── INDEX.toml           generated: sha256 + shape of every artefact
 ├── tier2/                   generated: gojs + HTTP reference outputs
@@ -54,6 +55,49 @@ recorded. `MANIFEST.toml` is the audit trail back to upstream.
 Every vendored `.graph` / `.graphConfig` file is byte-identical to the one the pinned
 `eagle_test_graphs==0.2.4` wheel installs, so results measured against the installed package
 and against this directory are interchangeable.
+
+## Authored graphs
+
+`graphs/authored/` holds three graphs written for this corpus rather than vendored. They
+carry `origin = "authored"` in `MANIFEST.toml` instead of an upstream path, and the pins do
+not apply to them — recording them as vendored would be a false provenance claim.
+
+They exist because a coverage audit found **Service and MPI at zero nodes** across all 28
+vendored cases, and neither `ICRAR/EAGLE-graph-repo` (121 graphs) nor `EAGLE_test_repo`
+(90) contains a single *translatable* graph using either. Phase 3 (#22, #23) and Phase 4
+rework exactly those constructs, so without these the edits would be made blind.
+
+Both working graphs are derived from existing corpus graphs rather than written from
+scratch, so the EAGLE schema — ports, field shapes, `modelData` — stays valid by
+construction.
+
+| Graph | Purpose |
+|---|---|
+| `mpi_simple` | `HelloWorld_simple` with its PythonApp rewritten as an `Mpi` node carrying `num_of_procs = 3`. The DROP count is the proof: `LGNode.dop` takes the MPI branch and emits 3 application DROPs where a PythonApp emits 1. |
+| `service_simple` | `SuperBasicScatterGather` with its Gather rewritten as a Service. `convert_construct` gives it an `isService` input application, reaching the PGT as `categoryType=Application` / `category=Service`. |
+| `service_no_input_app` | Authored to fail, pinning a latent defect — see below. |
+
+### The Service branch at lg.py:750 cannot ever have worked
+
+A Service construct *with* an input application is rewritten by `convert_construct`, which
+moves the construct's id onto the generated app node — so a link "into the Service" actually
+targets the app, and the Service branch in `unroll_to_tpl` never runs.
+
+Give the construct **no** input application and `convert_construct` skips it (it requires an
+app keyword), so the link still targets the group, the branch runs, and:
+
+```
+TypeError: 'LGNode' object does not support item assignment
+```
+
+because [lg.py:750-755](../../dlg/dropmake/lg.py#L750-L755) does
+`tlgn["categoryType"] = "Application"` on an `LGNode`, a class with no `__setitem__`.
+
+This matters for Phase 4. §5 row 9 plans to move that rewrite into
+`ServiceHandler.instantiate` as behaviour to preserve. It is not behaviour — it is
+unreachable-or-crashing code, in the same category as rows 6 and 10, and should be deleted
+rather than ported. `service_no_input_app` pins it: `cases.py check` reports when it stops
+raising.
 
 ## What was vendored, and what was not
 
