@@ -1,0 +1,1901 @@
+# Phase 0 goldens — GENERATED, do not hand-edit.
+# Regenerate with: python3 tools/golden.py generate
+# Verify with:     python3 tools/golden.py verify
+
+# skipped: branchTest/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: earth_location/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: ExampleSubgraphNoInput/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: HelloWorld_Global/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: HelloWorld_simple/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: Plasma_test/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: SuperBasicScatterGather/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: test-20190830-110556/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: test_ports/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: ArrayLoopNoActiveID/n8i2.metis: no-need-merge (too few DROPs for this setting)
+# skipped: mpi_simple/n8i2.metis: no-need-merge (too few DROPs for this setting)
+
+[[artefact]]
+case = "ArrayLoop"
+name = "lg"
+sha256 = "dc119c9f24ee301c1d4a2ee6eefe02993dc2038d629927a33b21c3143b16fb46"
+elements = 8
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pgt"
+sha256 = "6039fa8da177f81f410879bf892095c0bec1cf9a788158417119decf48906e01"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pgtp.n2i1.metis"
+sha256 = "e7c18ccd8868c0dee1f2e364530939f67b55fdeac9f87020cfae99b7d0be892d"
+elements = 73
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pg.n2i1.metis"
+sha256 = "c9200e7b68329ce545e6bce9a22d15606a688be43afa31b34d34b163bf7c80ef"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "ac2d281c8aa0ceb445d33c8fa9b6ca1706fde43fb9e34be05d2ee3c3996ff7c2"
+elements = 73
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pg.n2i1.mysarkar"
+sha256 = "386c0f105260cd48aec06159b2bd5b0354b9b81e3ce8a409ad9c8da303173f97"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "ac2d281c8aa0ceb445d33c8fa9b6ca1706fde43fb9e34be05d2ee3c3996ff7c2"
+elements = 73
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pg.n2i1.min_num_parts"
+sha256 = "386c0f105260cd48aec06159b2bd5b0354b9b81e3ce8a409ad9c8da303173f97"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pgtp.n8i2.metis"
+sha256 = "b17bf4ae1b1e227e51ab6cc483d31f7c771cc0e19a1ccaa5d1dc7b071969356e"
+elements = 73
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "ArrayLoop"
+name = "pg.n8i2.metis"
+sha256 = "b5f8dca68b874bf3f051d736e385f1389f0efdd0ddedf7d40506721acde20a3a"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "lg"
+sha256 = "112b19763c6f5fd2e7ce73e97537f8926a4a1ba019c1c36c2e35ffc8849cbe03"
+elements = 9
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pgt"
+sha256 = "4726441ed0549c34057e584062a7433549be1049e9afb555a532c0b7a17e0540"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pgtp.n2i1.metis"
+sha256 = "936d6faedd3f1f763446439815061f156d81579fa1e565c866df37ef3e1b294e"
+elements = 73
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pg.n2i1.metis"
+sha256 = "de6a3b402acb9ee328bd0ec547f205da3cb9f1c24db6deb4d401a6669eb8973c"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "3db1f80b91409494494baeed19e47f2169e96d2bb2b0ff8150160d70fb047534"
+elements = 73
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pg.n2i1.mysarkar"
+sha256 = "e30aabbe1db113fd4267823c3f93422f1f18d1e3fcc27128f6d962d4a2b83b48"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "3db1f80b91409494494baeed19e47f2169e96d2bb2b0ff8150160d70fb047534"
+elements = 73
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pg.n2i1.min_num_parts"
+sha256 = "e30aabbe1db113fd4267823c3f93422f1f18d1e3fcc27128f6d962d4a2b83b48"
+elements = 73
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pgtp.n8i2.metis"
+sha256 = "903938258226342659c0b1df7393e7b86d9c518be1a68dc49ec9e5b15cd49b6a"
+elements = 73
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "ArrayLoop_Global"
+name = "pg.n8i2.metis"
+sha256 = "ea528af3d1b18e35285eb4938538ddb8f80e164e7121ed42648ec8b6526952fb"
+elements = 73
+
+[[artefact]]
+case = "branchTest"
+name = "lg"
+sha256 = "6ede914864c477a49f7b1bd9fd748759c86b4eb19a7ae342d5dbbbe1ab5ce485"
+elements = 3
+
+[[artefact]]
+case = "branchTest"
+name = "pgt"
+sha256 = "c089cf37b8f295c153e2890582c5f7e8bcd0ef74b0e87cfd0bcfae53ca5c00a5"
+elements = 3
+
+[[artefact]]
+case = "branchTest"
+name = "pgtp.n2i1.metis"
+sha256 = "7fabce552e74f8befcfc73f69a652d85adb4d8f6fc08517685e551eeb8085e3b"
+elements = 3
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "branchTest"
+name = "pg.n2i1.metis"
+sha256 = "8940116654de92a2393776ecf1f2dc2a33b20eb2ee3fc619430e96334566cb6a"
+elements = 3
+
+[[artefact]]
+case = "branchTest"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "6bb9a287d7569b75b1de67486172a40ab0a75127b9a8b0c75a5193d5aa5ee8ec"
+elements = 3
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "branchTest"
+name = "pg.n2i1.mysarkar"
+sha256 = "e01e09fd74465d7173bdf7c9f9d29d7294e52288fd1017da6594661de897dda0"
+elements = 3
+
+[[artefact]]
+case = "branchTest"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "6bb9a287d7569b75b1de67486172a40ab0a75127b9a8b0c75a5193d5aa5ee8ec"
+elements = 3
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "branchTest"
+name = "pg.n2i1.min_num_parts"
+sha256 = "e01e09fd74465d7173bdf7c9f9d29d7294e52288fd1017da6594661de897dda0"
+elements = 3
+
+[[artefact]]
+case = "chiles_simple"
+name = "lg"
+sha256 = "daa97740de8f7a564baac3d8fb70b401b50e746101e785322aa08b670b2d3aff"
+elements = 22
+
+[[artefact]]
+case = "chiles_simple"
+name = "pgt"
+sha256 = "d7d145d3937a32a94d8bd6db282c0317a01b20c8d2bf62d6e14c4bcb18ed55f0"
+elements = 22
+
+[[artefact]]
+case = "chiles_simple"
+name = "pgtp.n2i1.metis"
+sha256 = "6a9b7cb7e5fda7648fc6f31e49a79458ab08dd8be8dd6ad7ec5ae44951318796"
+elements = 22
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "chiles_simple"
+name = "pg.n2i1.metis"
+sha256 = "731e0318eb8555d9d3b4242d3e7810d99f7a112d742e1c4d84592a0ae4cbdf0f"
+elements = 22
+
+[[artefact]]
+case = "chiles_simple"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "9424ae1f2b4f2cd8c5427949b705623d5c1fea5abba2fab2e319dc6a6d434487"
+elements = 22
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "chiles_simple"
+name = "pg.n2i1.mysarkar"
+sha256 = "6f036611ae46c387bfb58bc19272cda7360348933c92d2ddfe8838047657eb9e"
+elements = 22
+
+[[artefact]]
+case = "chiles_simple"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "9424ae1f2b4f2cd8c5427949b705623d5c1fea5abba2fab2e319dc6a6d434487"
+elements = 22
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "chiles_simple"
+name = "pg.n2i1.min_num_parts"
+sha256 = "6f036611ae46c387bfb58bc19272cda7360348933c92d2ddfe8838047657eb9e"
+elements = 22
+
+[[artefact]]
+case = "chiles_simple"
+name = "pgtp.n8i2.metis"
+sha256 = "ebdb1229396cdf15144f4206434f5db8065a838c5edf01eb06d8516db2dc2dfe"
+elements = 22
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "chiles_simple"
+name = "pg.n8i2.metis"
+sha256 = "7e0d35d2f3185e2a88b3e1c975e2810fdfdf87e1bb2909aa1d40ea5c2d067a6c"
+elements = 22
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "lg"
+sha256 = "a9e4296463ecb3273cd6c1d44cefdf3bb7102f132988e57e1add0897ff4894ab"
+elements = 45
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pgt"
+sha256 = "e9b17eb4a8957fcdd019936aacdff2bfe7afaed90f79ffec030e0f9167b9b3b7"
+elements = 144
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pgtp.n2i1.metis"
+sha256 = "b45e21164769492cc99079bb784ee64bd7077fbc87d8d054f2ab94169ef902cb"
+elements = 144
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pg.n2i1.metis"
+sha256 = "cb9ac43d1edb00b7cb21c78b4ba324b02cf983b778da0b9331169e7623bbc042"
+elements = 144
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "3c60340a726ad8eb11bfd74150967548cc2ac7f4038a30b651e3f433d2923119"
+elements = 144
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pg.n2i1.mysarkar"
+sha256 = "5407b678d3b5c85783e5f73f44d5aa495347e7553f6fe93356ae0606b611fca4"
+elements = 144
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "3c60340a726ad8eb11bfd74150967548cc2ac7f4038a30b651e3f433d2923119"
+elements = 144
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pg.n2i1.min_num_parts"
+sha256 = "5407b678d3b5c85783e5f73f44d5aa495347e7553f6fe93356ae0606b611fca4"
+elements = 144
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pgtp.n8i2.metis"
+sha256 = "f5c9e50ce158cfe7efebfa72582943be607d9e920434ede47e31e8d6c0a27aa3"
+elements = 144
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "cont_img_mvp"
+name = "pg.n8i2.metis"
+sha256 = "1fb3c9c77d20b7324d499e5dccdbfccf96e5b56f8893863dc945058436654a95"
+elements = 144
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "lg"
+sha256 = "18cc944f35bce5d0e9f8203abded64e32e5f7c4ebfc84327834179a29761e321"
+elements = 9
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pgt"
+sha256 = "c68692bbf051a75d2c11fac1881f54f0003a0d43b46a2ce95e8606dd48d80ebe"
+elements = 22
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pgtp.n2i1.metis"
+sha256 = "70506d10c580e24050382668b933a985076a170b2ec1a43f6209397bda56a374"
+elements = 22
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pg.n2i1.metis"
+sha256 = "967559a0bcc1e89b29048618c0c99d36f5e6339d979215e555a7a9f81f041065"
+elements = 22
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "a14c1c777158fc068cf825dc6704b2234bb4985ffcd4c90088d192adce5e761b"
+elements = 22
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pg.n2i1.mysarkar"
+sha256 = "02b407b3ce3eed186f63bd14ba883482d646bb14e2b6259907e486d3b8be5157"
+elements = 22
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "a14c1c777158fc068cf825dc6704b2234bb4985ffcd4c90088d192adce5e761b"
+elements = 22
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pg.n2i1.min_num_parts"
+sha256 = "02b407b3ce3eed186f63bd14ba883482d646bb14e2b6259907e486d3b8be5157"
+elements = 22
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pgtp.n8i2.metis"
+sha256 = "97cd8424ec9326bd44fc52b96e036f40e96a15f11da47855a2192895d6be0261"
+elements = 22
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "eagle_gather_empty_update"
+name = "pg.n8i2.metis"
+sha256 = "b966651b92eeca64fb9d4780830c25f9119c0107f925479cd3c2819f87072777"
+elements = 22
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "lg"
+sha256 = "20d395c3aa5f0dad86df038793d10aa0df37e6f3d116f4c508a7c8b01b5904cb"
+elements = 14
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pgt"
+sha256 = "50d099c6691c87d14aab36d4e6fcbb8b03390adaf02ee3687858ee58648dcd70"
+elements = 42
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pgtp.n2i1.metis"
+sha256 = "7b4fdf0c2ebe0b62ff0562fc06276c82448e8d04cf909a85a8d365e660fecd5b"
+elements = 42
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pg.n2i1.metis"
+sha256 = "3e30ff82cb9c0c6ca9fdfb153f118338775bf846110475159e915e32b367e04c"
+elements = 42
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "02f2d3bd0f3741524ce9428ef3414421da4b043bec6b7cf33ca391210e9f51cb"
+elements = 42
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pg.n2i1.mysarkar"
+sha256 = "9eaa982b4cb4137325173ea1b08ddd1bfb89ccd30f916f349ba45628bb5039c9"
+elements = 42
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "02f2d3bd0f3741524ce9428ef3414421da4b043bec6b7cf33ca391210e9f51cb"
+elements = 42
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pg.n2i1.min_num_parts"
+sha256 = "9eaa982b4cb4137325173ea1b08ddd1bfb89ccd30f916f349ba45628bb5039c9"
+elements = 42
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pgtp.n8i2.metis"
+sha256 = "51e3794e22a6bb030428ac46c2bb307ec1c4d955678d62a62435cf58d79b34fb"
+elements = 42
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "eagle_gather_simple_update"
+name = "pg.n8i2.metis"
+sha256 = "0859b32e0d12755162f2174c495bce515dc6c617b56da480e3d3ecec202bfb13"
+elements = 42
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "lg"
+sha256 = "1943c1bcfee71fef07ec64c34209aa98e673e6c0076640bed87902453720fd85"
+elements = 12
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pgt"
+sha256 = "60b9ea6d77b5d3438e633e4bff9378d1c2b0a21604808a803398fd704440cafc"
+elements = 29
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pgtp.n2i1.metis"
+sha256 = "30ff91940fa5684bdbbcc82c2e44b0236684fd408d0069881c53a462db58578b"
+elements = 29
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pg.n2i1.metis"
+sha256 = "bd8dfcb46eb31dfe67bf3fcf78fb209782d46306bd2f65621d0d81464d88e5dc"
+elements = 29
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "62563d4381e2fb764ac4e245100840f437ae23cd1104b39b71d77cf4964f14af"
+elements = 29
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pg.n2i1.mysarkar"
+sha256 = "0f35ac92c3aac2eca8d1a279bdec3348591532cb4eca541300eab54afc329bfb"
+elements = 29
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "62563d4381e2fb764ac4e245100840f437ae23cd1104b39b71d77cf4964f14af"
+elements = 29
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pg.n2i1.min_num_parts"
+sha256 = "0f35ac92c3aac2eca8d1a279bdec3348591532cb4eca541300eab54afc329bfb"
+elements = 29
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pgtp.n8i2.metis"
+sha256 = "f0f0e313a088f637da26564d09ddc26c6cd6741ddd620602bcfa35c12c0d2e6f"
+elements = 29
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "eagle_gather_update"
+name = "pg.n8i2.metis"
+sha256 = "84c7f2ce496bca921af4073ecaf017b664066c59d821d2a9a9dcc4fe0718837a"
+elements = 29
+
+[[artefact]]
+case = "earth_location"
+name = "lg"
+sha256 = "207fb481df70def0994196c96c28e145572751d880f935df17ac839aaaf50424"
+elements = 4
+
+[[artefact]]
+case = "earth_location"
+name = "pgt"
+sha256 = "1e4ed4db25a2b6f984ebef47720e5f0e704945af88b16bc85dd96a91064833c1"
+elements = 4
+
+[[artefact]]
+case = "earth_location"
+name = "pgtp.n2i1.metis"
+sha256 = "61c5da3ecac8e199cc36ab2913e8ce9bc1f61188888e4103a96b4535d3addb13"
+elements = 4
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "earth_location"
+name = "pg.n2i1.metis"
+sha256 = "29dddbe3a90bcd783be53b54a5e0384c02e55df25fd8bf2a6bd590372e345c74"
+elements = 4
+
+[[artefact]]
+case = "earth_location"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "7685f46baf94d510331ef29b49418acbbf5964c032b2b34dd7298127cb3c59df"
+elements = 4
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "earth_location"
+name = "pg.n2i1.mysarkar"
+sha256 = "65be728ad889e76a8ab6365f64ea6602f7c6ece7e669c25592fe301436e46f34"
+elements = 4
+
+[[artefact]]
+case = "earth_location"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "7685f46baf94d510331ef29b49418acbbf5964c032b2b34dd7298127cb3c59df"
+elements = 4
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "earth_location"
+name = "pg.n2i1.min_num_parts"
+sha256 = "65be728ad889e76a8ab6365f64ea6602f7c6ece7e669c25592fe301436e46f34"
+elements = 4
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "lg"
+sha256 = "36a60c6e6bd45ccf98d873267f873a0754e6eef9b8b3bb4f6963fcb26d58fd3e"
+elements = 4
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "pgt"
+sha256 = "ca776ad4c3e2bcb2bf6d4ffd38e2599990695461cc6c339a563cc58835844d81"
+elements = 3
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "pgtp.n2i1.metis"
+sha256 = "b5b1fb24692a42279d4161c4cf0abec302ce9082b7db9c251289e915ba8dd158"
+elements = 3
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "pg.n2i1.metis"
+sha256 = "e87358fa0226e2ba3445a7eba919cf38535f170553837d4db97a2e7a1a646951"
+elements = 3
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "8245acb921e621dff23ac34ca2cba884c726f00408cad91c5e64ca499db19a6f"
+elements = 3
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "pg.n2i1.mysarkar"
+sha256 = "51a581d74b8dcb6f934cb7a13358f2c301131b1af4bc4df2a9e57c7e306b401b"
+elements = 3
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "8245acb921e621dff23ac34ca2cba884c726f00408cad91c5e64ca499db19a6f"
+elements = 3
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "ExampleSubgraphNoInput"
+name = "pg.n2i1.min_num_parts"
+sha256 = "51a581d74b8dcb6f934cb7a13358f2c301131b1af4bc4df2a9e57c7e306b401b"
+elements = 3
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "lg"
+sha256 = "41d0dcb5bdab4ff401f32f275a4b7bb47f020c94a94546787de3675cf5a7b014"
+elements = 3
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "pgt"
+sha256 = "b517929df40ad5724982d51804ddda983d58cd1c3e2dc4e7acb5598ce310b3ed"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "pgtp.n2i1.metis"
+sha256 = "c78ab90b9dc00468a85ffa673ebe5cb284a9fbaab4e4b7497be3aa6e747e6763"
+elements = 2
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "pg.n2i1.metis"
+sha256 = "2650b5fad0dfb1931e3cc5d0b9cd2ebfded7bd243e035a840c2d9d870f89ec4e"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "ced9184feb1f1b00a352d943694f9f656bbeb30d6c8124c4b3534cb6302fba40"
+elements = 2
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "pg.n2i1.mysarkar"
+sha256 = "61cfd0817f5ba3b443027a5d9921946a7ea7e6f1eeedaf0153af7cffe116b0ce"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "ced9184feb1f1b00a352d943694f9f656bbeb30d6c8124c4b3534cb6302fba40"
+elements = 2
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "HelloWorld_Global"
+name = "pg.n2i1.min_num_parts"
+sha256 = "61cfd0817f5ba3b443027a5d9921946a7ea7e6f1eeedaf0153af7cffe116b0ce"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "lg"
+sha256 = "c1f8eb5b7ca9ac8a9fe491ccb8fc5fb62e3bfb47aed62f365c8e530dd1df1bba"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "pgt"
+sha256 = "b381579c1eb6c2bbab2bd25fd6f6c0fa0339e4f0befefc88119fadc941a71804"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "pgtp.n2i1.metis"
+sha256 = "dce3769ce06992cb3ab98d81dd1a362abeecb76e81419202b2c09f2aa0f8c137"
+elements = 2
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "pg.n2i1.metis"
+sha256 = "0e92272f1aa47a8bfc9d8c956384582a8ed15a9dc8eb51b0c887a66a368c34cb"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "7eecb0beef106583a4e9afb76bbe62da3cfca554678bc5a6bcc71968fbe9bbbc"
+elements = 2
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "pg.n2i1.mysarkar"
+sha256 = "273edd2f4e8c4bf3b98149bbbf92fd5c3b4e3b00b4c37f54e0917a7a66188d80"
+elements = 2
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "7eecb0beef106583a4e9afb76bbe62da3cfca554678bc5a6bcc71968fbe9bbbc"
+elements = 2
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "HelloWorld_simple"
+name = "pg.n2i1.min_num_parts"
+sha256 = "273edd2f4e8c4bf3b98149bbbf92fd5c3b4e3b00b4c37f54e0917a7a66188d80"
+elements = 2
+
+[[artefact]]
+case = "Plasma_test"
+name = "lg"
+sha256 = "b732610425889536149bfab4bebb27949d379cac2b105ce76707867dfc4b58a4"
+elements = 6
+
+[[artefact]]
+case = "Plasma_test"
+name = "pgt"
+sha256 = "3bb875dd7e1809d910b482a6ca3eb2a1f4a28b20f4ad7ae33aaefca81bc0c592"
+elements = 6
+
+[[artefact]]
+case = "Plasma_test"
+name = "pgtp.n2i1.metis"
+sha256 = "e9227ccbe97b69bbe9e299a91b21843509dd84edfcdc2cefdaa86a0352be76bf"
+elements = 6
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "Plasma_test"
+name = "pg.n2i1.metis"
+sha256 = "edafa2b78dccaae6b402933848bc34a7dd823dca6629cdfee536154306062f96"
+elements = 6
+
+[[artefact]]
+case = "Plasma_test"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "1d57e64a3dc8787b455a1727fc3044ee2327fbf32196a22c6ad55533d0febb91"
+elements = 6
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "Plasma_test"
+name = "pg.n2i1.mysarkar"
+sha256 = "9522a935b8969f28a34c27eede97b9b5f47f5191ddceb8054f7f0b6cd9452746"
+elements = 6
+
+[[artefact]]
+case = "Plasma_test"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "1d57e64a3dc8787b455a1727fc3044ee2327fbf32196a22c6ad55533d0febb91"
+elements = 6
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "Plasma_test"
+name = "pg.n2i1.min_num_parts"
+sha256 = "9522a935b8969f28a34c27eede97b9b5f47f5191ddceb8054f7f0b6cd9452746"
+elements = 6
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "lg"
+sha256 = "9be3a214e912699cd047bccc1a3e5ee17f6d95d7c2a1e89eb9e055b5af854132"
+elements = 7
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pgt"
+sha256 = "7962d8b79aade29f15530a74100358aca4bb53c5e143f4d650b7bd8665728c79"
+elements = 7
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pgtp.n2i1.metis"
+sha256 = "1545cf483d80306f3dfb77c06c77672a2b1fdf602ed53a5db7ec0fc1e1a42079"
+elements = 7
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pg.n2i1.metis"
+sha256 = "cad3543abe1908716d7cfeaa0f71c14f71257634b6c3ff893b08d8a3c2294846"
+elements = 7
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "cdd8f9a53e226ce586821dac97d588584069b27c338755eaec8a2b77a8f818f0"
+elements = 7
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pg.n2i1.mysarkar"
+sha256 = "57b83274bd9a6f2601ae305f09b1b45f8cab69393ed8092ab0186b55dd042eba"
+elements = 7
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "cdd8f9a53e226ce586821dac97d588584069b27c338755eaec8a2b77a8f818f0"
+elements = 7
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pg.n2i1.min_num_parts"
+sha256 = "57b83274bd9a6f2601ae305f09b1b45f8cab69393ed8092ab0186b55dd042eba"
+elements = 7
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pgtp.n8i2.metis"
+sha256 = "c2a4c7d08fae708a5c9102db4cf838c42104c5fd977d503d974fdcb564169bad"
+elements = 7
+partitions = 7
+islands = 2
+
+[[artefact]]
+case = "pyfunc_glob_shell_test"
+name = "pg.n8i2.metis"
+sha256 = "8f97e508eddeee9b5e4b82194d36500ae2fdaf56433cca9e96fa467c0e991c68"
+elements = 7
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "lg"
+sha256 = "2a5f1c1943e9e31436a27787f2f61879296c0ec4624596d2d801017fa753df74"
+elements = 8
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pgt"
+sha256 = "0763d9acc3989b6a6f3c6ff935af40b7fcac9b6bf871d838b11102dae819b588"
+elements = 8
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pgtp.n2i1.metis"
+sha256 = "6410abc23af58c028380df5c2111bc330cd04a977d95e45553bc09c470be8913"
+elements = 8
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pg.n2i1.metis"
+sha256 = "0703455694cc47e5f4e9a15136a03c80291b9f31c396ebff85834b6bc04028b4"
+elements = 8
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "d628ea023268714bc6564bd112b5ec12a6526e15a1200e7529b2e3d35d62132e"
+elements = 8
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pg.n2i1.mysarkar"
+sha256 = "e882eb26439a98552661738df2d9b1cd1f41fdea604749500c4416b6bab1c244"
+elements = 8
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "d628ea023268714bc6564bd112b5ec12a6526e15a1200e7529b2e3d35d62132e"
+elements = 8
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pg.n2i1.min_num_parts"
+sha256 = "e882eb26439a98552661738df2d9b1cd1f41fdea604749500c4416b6bab1c244"
+elements = 8
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pgtp.n8i2.metis"
+sha256 = "7023e5187585353a3e006ffa2810d3b53f62037487a8d1eee55d83679ac4f7f2"
+elements = 8
+partitions = 7
+islands = 2
+
+[[artefact]]
+case = "SharedMemoryTest_update"
+name = "pg.n8i2.metis"
+sha256 = "7447fc6482e229a76d38999c6043e6ab4af9d7463636a98d67adcb00c5111fd8"
+elements = 8
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "lg"
+sha256 = "b0cb50fbaa5e2b5931ddded406b0fece7b12bf53df829a794e690638011dcde5"
+elements = 3
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "pgt"
+sha256 = "9df070c84e26b7db6160a593175d038bc692d6da8432d3694880117ba2577f5b"
+elements = 6
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "pgtp.n2i1.metis"
+sha256 = "7cf3ec8cd2e7c5f5e721cff2f42b9121aaa123aeaed61ea223cc9a2359c5ebbe"
+elements = 6
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "pg.n2i1.metis"
+sha256 = "f13162a8ef70b5cff2c2549f63ffa565377fe0f35c2ce3ff99961e66267f324a"
+elements = 6
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "25792ba4037aa850be58f5da17e58b7f04c8569354fb32592b95e167ab4b4323"
+elements = 6
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "pg.n2i1.mysarkar"
+sha256 = "181108ca3baaee14c42be9f96c774a1b0866d6d699965065095044659ecab8d6"
+elements = 6
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "25792ba4037aa850be58f5da17e58b7f04c8569354fb32592b95e167ab4b4323"
+elements = 6
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "SuperBasicScatterGather"
+name = "pg.n2i1.min_num_parts"
+sha256 = "181108ca3baaee14c42be9f96c774a1b0866d6d699965065095044659ecab8d6"
+elements = 6
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "lg"
+sha256 = "5ee42a71892102eb03047fd5d1751430dede5fb2331da7977bf7e4607b3e15ad"
+elements = 2
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "pgt"
+sha256 = "8e0cad697e2a0a59d87129ca56ea54a16a437e26052b61d9e452ef77c4b8efdb"
+elements = 2
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "pgtp.n2i1.metis"
+sha256 = "8ef850ef1c4ea5730048ca60533895545d76fe6a1ee93a018341911a4f0b0ec4"
+elements = 2
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "pg.n2i1.metis"
+sha256 = "6a71dd51bd6ae7356eae53dca3b6b9713ea4f2b22b4897b4130d1d134fd69f6d"
+elements = 2
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "c751142f4e55f1f958ba1ca051cb8bf4b14a0fb2243c254e22c740f502ab404b"
+elements = 2
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "pg.n2i1.mysarkar"
+sha256 = "aff4764f81cdd02b3468067fe00057b6ad476b3e362d22f542b9ada218ba5aca"
+elements = 2
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "c751142f4e55f1f958ba1ca051cb8bf4b14a0fb2243c254e22c740f502ab404b"
+elements = 2
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "test-20190830-110556"
+name = "pg.n2i1.min_num_parts"
+sha256 = "aff4764f81cdd02b3468067fe00057b6ad476b3e362d22f542b9ada218ba5aca"
+elements = 2
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "lg"
+sha256 = "7980c8cb99a16f1880b36819aef448bb1d26c96a0c9318b45354cbebe010e852"
+elements = 21
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pgt"
+sha256 = "754157c93c8643c330ffca74605a615a3e6e5790d0ca42ec3134832aa4c100e5"
+elements = 15
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pgtp.n2i1.metis"
+sha256 = "bbd69b3c2e224becba3fe7dd9fc1b6105c62246b4a895df308418a3758579cde"
+elements = 15
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pg.n2i1.metis"
+sha256 = "59d47d135862332545ca7c38ff72a54f507cc25e1af356e1cffe0312a1213370"
+elements = 15
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "b457daccf223ea5e2dc968b3eab95ad8e36752df62ebe8daf4e2a34d63fb3b36"
+elements = 15
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pg.n2i1.mysarkar"
+sha256 = "59d9008177aa0822915bc19280fcef1493eb72319f8501a06a3cc1225db59e2f"
+elements = 15
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "b457daccf223ea5e2dc968b3eab95ad8e36752df62ebe8daf4e2a34d63fb3b36"
+elements = 15
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pg.n2i1.min_num_parts"
+sha256 = "59d9008177aa0822915bc19280fcef1493eb72319f8501a06a3cc1225db59e2f"
+elements = 15
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pgtp.n8i2.metis"
+sha256 = "ef7ca2339e8939ca21b6e444440800cbe825199950c6fd434c32d72d04d4f5d8"
+elements = 15
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "test_grpby_gather"
+name = "pg.n8i2.metis"
+sha256 = "8aef40259efc765bf00ef090720a1804d0d1e3e18c3c94db89b11ef57181d6d9"
+elements = 15
+
+[[artefact]]
+case = "testLoop"
+name = "lg"
+sha256 = "afbb37dc63e58e8b9abc240c2f13830313ea22eea80921b87f3ab073274b8c93"
+elements = 4
+
+[[artefact]]
+case = "testLoop"
+name = "pgt"
+sha256 = "f348783e0765e6131cc6dd248c10d58534789ea7bf9d0543cb8a82aa49683258"
+elements = 11
+
+[[artefact]]
+case = "testLoop"
+name = "pgtp.n2i1.metis"
+sha256 = "865b49bb7beef22443d6ad864fc7b0405430a37005f309436021f345402d9244"
+elements = 11
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "testLoop"
+name = "pg.n2i1.metis"
+sha256 = "bc568f3ed09ff7074218fe98317e5f60657b6c620900c353e400f78de24d3eff"
+elements = 11
+
+[[artefact]]
+case = "testLoop"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "2fb157fe8166b7cd0cd722edeae4915692b54d1c5a16900bef10b05f7c9855c1"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop"
+name = "pg.n2i1.mysarkar"
+sha256 = "db57e396fc0cce777d86401a271710197ae0d91b03e2b05f689274f160f35083"
+elements = 11
+
+[[artefact]]
+case = "testLoop"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "2fb157fe8166b7cd0cd722edeae4915692b54d1c5a16900bef10b05f7c9855c1"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop"
+name = "pg.n2i1.min_num_parts"
+sha256 = "db57e396fc0cce777d86401a271710197ae0d91b03e2b05f689274f160f35083"
+elements = 11
+
+[[artefact]]
+case = "testLoop"
+name = "pgtp.n8i2.metis"
+sha256 = "1eaec12bcf1669d2ec7dabd190c0273550fc97a5d83053c303da867044005b85"
+elements = 11
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "testLoop"
+name = "pg.n8i2.metis"
+sha256 = "148df249a871a64e74cdf7bdde77c12e05aa74dcb18f59c6ae731a5fafa7f5bc"
+elements = 11
+
+[[artefact]]
+case = "test_ports"
+name = "lg"
+sha256 = "b11cddee522964a5984621dda7f596344a05ab99f0a6fc90b81352e5a06dd716"
+elements = 6
+
+[[artefact]]
+case = "test_ports"
+name = "pgt"
+sha256 = "86e52200e601f60582c353f75e60e09ad5d4520774e8f29174598bc787735696"
+elements = 6
+
+[[artefact]]
+case = "test_ports"
+name = "pgtp.n2i1.metis"
+sha256 = "6f0e78f090a8c85d0515601496788e5525a1c6694f4afe3a3df8d2fc8a59a424"
+elements = 6
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "test_ports"
+name = "pg.n2i1.metis"
+sha256 = "3b6dc5dd452fef4d42b165d8424330f4b388431d33501096581e685664f9f2a0"
+elements = 6
+
+[[artefact]]
+case = "test_ports"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "a46417646fea40101d511a3415af9b3b40f0d49356b319c4fb167f2edf888896"
+elements = 6
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "test_ports"
+name = "pg.n2i1.mysarkar"
+sha256 = "0f8eb117d6f025a75656317b3617b2a552863d71e20265fe63f824dd0a774080"
+elements = 6
+
+[[artefact]]
+case = "test_ports"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "a46417646fea40101d511a3415af9b3b40f0d49356b319c4fb167f2edf888896"
+elements = 6
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "test_ports"
+name = "pg.n2i1.min_num_parts"
+sha256 = "0f8eb117d6f025a75656317b3617b2a552863d71e20265fe63f824dd0a774080"
+elements = 6
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "lg"
+sha256 = "72abc3f47061ff75576820bf850248dc75df129e560458195fa230d277d3c993"
+elements = 8
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pgt"
+sha256 = "42b5b0b65c63f98fb030f0bfe109395eb197d6af5e10e489d66c47951727dd67"
+elements = 19
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pgtp.n2i1.metis"
+sha256 = "422ac44fb1e461655b7f4ff5bca0d6f84c5d90256013cf305cca4431dd3fd7e1"
+elements = 19
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pg.n2i1.metis"
+sha256 = "8f3f137a8c651462dfbb8acc4a0b4a21bec024486a3142504f36cccb56b5955d"
+elements = 19
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "4d09465c077d5189ebe4e487c63061e1924328d4e34ba2562a56229f4fa1e357"
+elements = 19
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pg.n2i1.mysarkar"
+sha256 = "4694d69cb9ff2872a322f4162c79426e8464bbcfeedf7c82d8bde1d19ca2ba91"
+elements = 19
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "4d09465c077d5189ebe4e487c63061e1924328d4e34ba2562a56229f4fa1e357"
+elements = 19
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pg.n2i1.min_num_parts"
+sha256 = "4694d69cb9ff2872a322f4162c79426e8464bbcfeedf7c82d8bde1d19ca2ba91"
+elements = 19
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pgtp.n8i2.metis"
+sha256 = "da66de355bdd093152d4c4ae055443a24ef17bf7d60d3b7930d09c5e2a7d0628"
+elements = 19
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "ArrayLoopLoop"
+name = "pg.n8i2.metis"
+sha256 = "97be4f0213f04d1ed4eeead5bb2bcc05c640173a5d5e1ae0ad8b0afda176d5a8"
+elements = 19
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "lg"
+sha256 = "7cd79bcea89768fe5cfe87553051d6a781b9aa0d07193f24d2c770f671caa4ba"
+elements = 8
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "pgt"
+sha256 = "f5b022dd38f1afc3f454ea2864721c72a724da2adfce5a6474a566de734f873b"
+elements = 7
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "pgtp.n2i1.metis"
+sha256 = "3da66c4e20bd7aad0a21644435271c3b5a572c6398e33fee5b3499d33f0bac58"
+elements = 7
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "pg.n2i1.metis"
+sha256 = "88ada4832f6dfdea548b5f2696c154962468db0eec3ec3b97bbee45099310bae"
+elements = 7
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "b1498c6ee30c93dce7db04c5a0cd8a969fa229c16c38d6aa8d0340de78faa0eb"
+elements = 7
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "pg.n2i1.mysarkar"
+sha256 = "ae371be82ceb29277646eff381224a0be7a60f7e3c811038ca4f9f04e212ab16"
+elements = 7
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "b1498c6ee30c93dce7db04c5a0cd8a969fa229c16c38d6aa8d0340de78faa0eb"
+elements = 7
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopNoActiveID"
+name = "pg.n2i1.min_num_parts"
+sha256 = "ae371be82ceb29277646eff381224a0be7a60f7e3c811038ca4f9f04e212ab16"
+elements = 7
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "lg"
+sha256 = "e8075a3a13aa70457790f1b375cf1041e13baabf280f37d73a0d85e00c71f3e8"
+elements = 8
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pgt"
+sha256 = "4a9fff2d49f5523c0a80bb9dbb0b0e40c64ec165a48398b84e3c52fa741fa82b"
+elements = 23
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pgtp.n2i1.metis"
+sha256 = "69bac3b99693fd33e1dbab0949537da50ffae2bfec4d9018d07dd9c75340b401"
+elements = 23
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pg.n2i1.metis"
+sha256 = "4904fd29d16923f52d19776d0acc714893d200736c3d13e4e2cd6c4c2e446788"
+elements = 23
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "7d86d20f0e4e2350f144e5ed7855ea4c7107a6abc7bc05057702b2b51595d101"
+elements = 23
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pg.n2i1.mysarkar"
+sha256 = "a86f70133506e91da85843e6e511d526c4d4a216b80f66d27db5707ffa2a8ec7"
+elements = 23
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "7d86d20f0e4e2350f144e5ed7855ea4c7107a6abc7bc05057702b2b51595d101"
+elements = 23
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pg.n2i1.min_num_parts"
+sha256 = "a86f70133506e91da85843e6e511d526c4d4a216b80f66d27db5707ffa2a8ec7"
+elements = 23
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pgtp.n8i2.metis"
+sha256 = "5315e28c0c29d6a8fb0bc096f1263e23b05d32d41965920ec779bac3ebebc9a3"
+elements = 23
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "ArrayLoopScatter"
+name = "pg.n8i2.metis"
+sha256 = "b907a975723873ddbae7658dfa1ad9e0edc9ac447c9d4d8b64ac7b3e79b72c1d"
+elements = 23
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "lg"
+sha256 = "ac1930e8be560b43272217de67317943ac8b93a1d5c3c0b0425709be7697caa1"
+elements = 8
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pgt"
+sha256 = "1ffb00b7ae224861e9d96d987cbef7a2ab7f8af861ad2694f37a4a7e0939aaf7"
+elements = 83
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pgtp.n2i1.metis"
+sha256 = "28d079251f052724bf57a5c7375ed9039630b8d9b1a246c9aec8c964b289c4b1"
+elements = 83
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pg.n2i1.metis"
+sha256 = "8bafef760645b5a028cd1a664d4ae3a2c79013f36cfded254a6785d6bcc353f3"
+elements = 83
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "b034c2532596ce25654fa8fb319b805283bd167a082382e08b78d8b1a4738fee"
+elements = 83
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pg.n2i1.mysarkar"
+sha256 = "9f233e2753f99509337c1b25eb95c7e7da46b676dff8e5b102b38f3d5205cacf"
+elements = 83
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "b034c2532596ce25654fa8fb319b805283bd167a082382e08b78d8b1a4738fee"
+elements = 83
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pg.n2i1.min_num_parts"
+sha256 = "9f233e2753f99509337c1b25eb95c7e7da46b676dff8e5b102b38f3d5205cacf"
+elements = 83
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pgtp.n8i2.metis"
+sha256 = "20e1ed1ec5f12d547d3d66acdb13609eec90cdb2d0c04c09a639a7c6b131345f"
+elements = 83
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfig"
+name = "pg.n8i2.metis"
+sha256 = "190199ec24d56e76d716db6cee89dfc9c29f99fc0cd11ab28c03df51fb692d56"
+elements = 83
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "lg"
+sha256 = "9256cede18138f8ffa211dc57ab88a005cd6b1e37fa100575fa58b649318fa7c"
+elements = 8
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pgt"
+sha256 = "fdbc7e649bb4064a62cd59eb03f5fcea7c65306d20988ab31bee7aeba213127c"
+elements = 79
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pgtp.n2i1.metis"
+sha256 = "d89e844d0a5d34f57f3764e530b298cce243d23d12ad1b6f58a75c471448c461"
+elements = 79
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pg.n2i1.metis"
+sha256 = "46133af154737661df47c7a9295840401b72a11ddc3373b5555673c6d4f6c040"
+elements = 79
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "1c38c2359a2edb06d51e7c6ea4a79bf4363bad5e0f8700a9067ce30c980e9f34"
+elements = 79
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pg.n2i1.mysarkar"
+sha256 = "70a925db87217dcf32da83708ae72fce1b0862aa28e2553c70922449277db6fe"
+elements = 79
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "1c38c2359a2edb06d51e7c6ea4a79bf4363bad5e0f8700a9067ce30c980e9f34"
+elements = 79
+partitions = 3
+islands = 1
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pg.n2i1.min_num_parts"
+sha256 = "70a925db87217dcf32da83708ae72fce1b0862aa28e2553c70922449277db6fe"
+elements = 79
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pgtp.n8i2.metis"
+sha256 = "82d2cd294dea2c91328d49ba0a39aa3662768fdcad4982205e813426b88441fd"
+elements = 79
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "ArrayLoopScatter-LoopConfigNonEagle"
+name = "pg.n8i2.metis"
+sha256 = "56e590806016e9a1160586a8943848169ac676b679947f9aa5d075e8fc7bffce"
+elements = 79
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "lg"
+sha256 = "afbb37dc63e58e8b9abc240c2f13830313ea22eea80921b87f3ab073274b8c93"
+elements = 4
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pgt"
+sha256 = "fc5d961c7db364f202e9e7fbbbbf078813961dc534c139a6c87a38d1a4cd9421"
+elements = 11
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pgtp.n2i1.metis"
+sha256 = "bafa2052bf799d5db41c3409a2188ffecd057153b7dc17a730ca6f5d7c370fa4"
+elements = 11
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pg.n2i1.metis"
+sha256 = "ae59619b915a89839639eb3381d241d9f6f3f61147c61e01a466a12b5eafe37c"
+elements = 11
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "7014c9c35009b963cbdf98d8ff32fd532bfefb56acf7a9637490cb6857ccc582"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pg.n2i1.mysarkar"
+sha256 = "265350d18ae612a967e97d8b97d3b93155f82c08e07029be5a8f03813d7175cb"
+elements = 11
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "7014c9c35009b963cbdf98d8ff32fd532bfefb56acf7a9637490cb6857ccc582"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pg.n2i1.min_num_parts"
+sha256 = "265350d18ae612a967e97d8b97d3b93155f82c08e07029be5a8f03813d7175cb"
+elements = 11
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pgtp.n8i2.metis"
+sha256 = "e5c7a614f9bddbc24ed9d6408fb55d0c893c5c32477e518e75aa1ba61e2f976c"
+elements = 11
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "testLoop-zerorun"
+name = "pg.n8i2.metis"
+sha256 = "8c0015712afe7912e7815aa3301baaf509ab1f930c8d01914abb80e75fd62006"
+elements = 11
+
+[[artefact]]
+case = "testLoop-app1"
+name = "lg"
+sha256 = "afbb37dc63e58e8b9abc240c2f13830313ea22eea80921b87f3ab073274b8c93"
+elements = 4
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pgt"
+sha256 = "5537c8bf33bc25fd596c87801928c6968d93805b23141a87e06a9900b6636a07"
+elements = 11
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pgtp.n2i1.metis"
+sha256 = "d0beab8012d0a069fe37d1abc8a7fc6174b0fa2439958eea39ecd98a9c9e6787"
+elements = 11
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pg.n2i1.metis"
+sha256 = "7e3fa2145eda957552eaa22edba53ef96ee7a1674adbba1381dd50f7044ce625"
+elements = 11
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "ce955ab3e03bf9aac9f15ec959b271c8db528a946521770090f7aa78f4efc1d7"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pg.n2i1.mysarkar"
+sha256 = "58b0d8c7c6bdaee79f8bafea31e8bc98868c72b7d3afc0b6a08d32625ddb3029"
+elements = 11
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "ce955ab3e03bf9aac9f15ec959b271c8db528a946521770090f7aa78f4efc1d7"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pg.n2i1.min_num_parts"
+sha256 = "58b0d8c7c6bdaee79f8bafea31e8bc98868c72b7d3afc0b6a08d32625ddb3029"
+elements = 11
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pgtp.n8i2.metis"
+sha256 = "c13cc85f6ee87bc4421bbce54e1d7a3f5ae4726b208dd6064e92661e7f2df488"
+elements = 11
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "testLoop-app1"
+name = "pg.n8i2.metis"
+sha256 = "a393c6a4e413c71818658572a30416a06afe0434d967e2bf24585e21ca17f96c"
+elements = 11
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "lg"
+sha256 = "050e55777234e5e31cd9250785b921ce754ba33b8e52132c173f6d91c8a37ee7"
+elements = 4
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pgt"
+sha256 = "adfba7bc2af7b90c02cb4d41f7499b1cee8157d8a603aaaef2b984fc02759346"
+elements = 11
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pgtp.n2i1.metis"
+sha256 = "b583e4cbd69dbcd99016059cf8d76e90d46bb0365aa447ebd089909083736e57"
+elements = 11
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pg.n2i1.metis"
+sha256 = "3466cbd093ec78ccdb5a67c7ece6591429fa3ee38c8cbc2fadda53b6a2494dff"
+elements = 11
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "ddee4f6040ae08d11b8174bee9b2d508bdb4fb4e377337857b7e9a39bfa54330"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pg.n2i1.mysarkar"
+sha256 = "f8bed1f2137bc9fcff6edfccecc22cd380fbd930faca22d8111dd1778e716f11"
+elements = 11
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "ddee4f6040ae08d11b8174bee9b2d508bdb4fb4e377337857b7e9a39bfa54330"
+elements = 11
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pg.n2i1.min_num_parts"
+sha256 = "f8bed1f2137bc9fcff6edfccecc22cd380fbd930faca22d8111dd1778e716f11"
+elements = 11
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pgtp.n8i2.metis"
+sha256 = "f6a273f4ec2e0029f038168038591fc9e45b51183a0b759ae15acc1c7b3d99f9"
+elements = 11
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "testLoop-rmode1"
+name = "pg.n8i2.metis"
+sha256 = "fec94d155084f18c2c9a782d92ab80987700de7a123363800aa3d1f486686077"
+elements = 11
+
+[[artefact]]
+case = "mpi_simple"
+name = "lg"
+sha256 = "5ad860425d8449e9a8a69120f6a2de1c93d48ec7899c8d7ae2e17a4e58d98ae7"
+elements = 2
+
+[[artefact]]
+case = "mpi_simple"
+name = "pgt"
+sha256 = "dfa24473aa56743dae9f60ce2b02cc325392a37f1ffe3fc1ffd1dccd07c5ff59"
+elements = 4
+
+[[artefact]]
+case = "mpi_simple"
+name = "pgtp.n2i1.metis"
+sha256 = "c8c86fe2e885532e18ffedc347ff38df1ae6e2b99e5a6cb755b5c19da96fc481"
+elements = 4
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "mpi_simple"
+name = "pg.n2i1.metis"
+sha256 = "8fd82062fc91fbb4460deeb01296e85ad45c2c133bc3db9e35a715083ba7f028"
+elements = 4
+
+[[artefact]]
+case = "mpi_simple"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "c8c86fe2e885532e18ffedc347ff38df1ae6e2b99e5a6cb755b5c19da96fc481"
+elements = 4
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "mpi_simple"
+name = "pg.n2i1.mysarkar"
+sha256 = "8fd82062fc91fbb4460deeb01296e85ad45c2c133bc3db9e35a715083ba7f028"
+elements = 4
+
+[[artefact]]
+case = "mpi_simple"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "c8c86fe2e885532e18ffedc347ff38df1ae6e2b99e5a6cb755b5c19da96fc481"
+elements = 4
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "mpi_simple"
+name = "pg.n2i1.min_num_parts"
+sha256 = "8fd82062fc91fbb4460deeb01296e85ad45c2c133bc3db9e35a715083ba7f028"
+elements = 4
+
+[[artefact]]
+case = "service_simple"
+name = "lg"
+sha256 = "f19de58e668ae19000443002e56fa01286dacb84caec971774dede9edf5a1b45"
+elements = 3
+
+[[artefact]]
+case = "service_simple"
+name = "pgt"
+sha256 = "c515d72a3f4903b2934e817554697c1310435889ccb4bad118703f543a82f44d"
+elements = 7
+
+[[artefact]]
+case = "service_simple"
+name = "pgtp.n2i1.metis"
+sha256 = "d290046164322ed4414bf630252e400dc7431a276d7ffbde9e19e6a72f7d3e98"
+elements = 7
+partitions = 2
+islands = 1
+
+[[artefact]]
+case = "service_simple"
+name = "pg.n2i1.metis"
+sha256 = "d423d55ebab99e7d9e481b38a6881e2b8a440f6e0fbfba16d74f87225a9c75a6"
+elements = 7
+
+[[artefact]]
+case = "service_simple"
+name = "pgtp.n2i1.mysarkar"
+sha256 = "38d08b7464a5aaa408fed81c853b62418e5b6c4bde7e1fc43c95ef10b6513191"
+elements = 7
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "service_simple"
+name = "pg.n2i1.mysarkar"
+sha256 = "201948823decf5299b25c390bc8889281b881dc08ae4c3f5a48e5b13b6ab3aba"
+elements = 7
+
+[[artefact]]
+case = "service_simple"
+name = "pgtp.n2i1.min_num_parts"
+sha256 = "38d08b7464a5aaa408fed81c853b62418e5b6c4bde7e1fc43c95ef10b6513191"
+elements = 7
+partitions = 1
+islands = 1
+
+[[artefact]]
+case = "service_simple"
+name = "pg.n2i1.min_num_parts"
+sha256 = "201948823decf5299b25c390bc8889281b881dc08ae4c3f5a48e5b13b6ab3aba"
+elements = 7
+
+[[artefact]]
+case = "service_simple"
+name = "pgtp.n8i2.metis"
+sha256 = "764c6b281ecb87f2ff24db6d57251c4a4e01cf90919f516b81ef4d90d183a9d4"
+elements = 7
+partitions = 8
+islands = 2
+
+[[artefact]]
+case = "service_simple"
+name = "pg.n8i2.metis"
+sha256 = "30323a3801d6650c984b4be7c259e9a9f5ba37ba5b08aec87c5de29eb1983116"
+elements = 7

@@ -134,8 +134,8 @@ The two that do not pass fail for their own reasons, neither of them dependency-
 
 A graph on its own is not runnable: `cont_img_mvp` needs four fill parameters, the
 `graph_config/` graphs have two different config mechanisms, and one graph is expected to
-fail. `CASES.toml` records all of that, one entry per (graph, preparation) pair — 28 cases,
-27 of them usable. Golden generation reads it via `tools/cases.py`; nothing downstream should
+fail. `CASES.toml` records all of that, one entry per (graph, preparation) pair — 32 cases,
+30 of them usable. Golden generation reads it via `tools/cases.py`; nothing downstream should
 walk `graphs/` directly.
 
 ```bash
@@ -263,16 +263,16 @@ knowing that before trusting a green `verify`:
 
 | | Partitions produced |
 |---|---|
-| `metis` @ `n2i1` | 2 in all 28 cases |
-| `mysarkar` @ `n2i1` | 1 in 21 cases, 2 in 2, 3 in 5 |
-| `min_num_parts` @ `n2i1` | identical to `mysarkar`, in all 28 cases, byte for byte |
-| `metis` @ `n8i2` | 8 in 16 cases, 7 in 2 (10 cases NoNeedMerge) |
+| `metis` @ `n2i1` | 2 in 29 cases, 1 in 1 (`mpi_simple`, whose 3 MPI ranks share one partition) |
+| `mysarkar` @ `n2i1` | 1 in 23 cases, 2 in 2, 3 in 5 |
+| `min_num_parts` @ `n2i1` | identical to `mysarkar`, in all 30 cases, byte for byte |
+| `metis` @ `n8i2` | 8 in 17 cases, 7 in 2 (11 cases NoNeedMerge) |
 
 Two consequences. **`mysarkar` and `min_num_parts` are the same golden**: `min_num_parts`
 subclasses the mysarkar scheduler and they do not diverge anywhere in this corpus. They are
 both kept — if a later phase makes them differ, that is a signal worth catching — but they
 are one algorithm's worth of coverage, not two. And **both collapse to a single partition on
-three quarters of the corpus**: they are bottom-up merging schedulers that treat `-N` as a
+roughly three quarters of the corpus**: they are bottom-up merging schedulers that treat `-N` as a
 ceiling rather than a target, so raising it changes nothing on most graphs (`ArrayLoop` goes
 3 → 5 → 6 partitions as `-N` goes 2 → 4 → 8; `testLoop` and `chiles_simple` stay at 1 no
 matter what). Real partitioning coverage rests on `metis`.
