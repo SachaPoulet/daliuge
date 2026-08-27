@@ -323,7 +323,7 @@ this proposal exists to delete. What is actually threaded today:
 | Stage | Options | Source |
 |-------|---------|--------|
 | `PrepareStage` | `ssid`, `apply_config: bool`, the `graph_config` overlay, the textual `fill` params | [lg.py:67](dlg/dropmake/lg.py#L67), [pg_generator.py:57](dlg/dropmake/pg_generator.py#L57) |
-| `UnrollStage` | `oid_prefix` (→ `ssid`), `zerorun: bool`, `app: str` — plus `lenient`, if §5 row 5c keeps it | [pg_generator.py:77](dlg/dropmake/pg_generator.py#L77) |
+| `UnrollStage` | `oid_prefix` (→ `ssid`), `zerorun: bool`, `app: str` | [pg_generator.py:77](dlg/dropmake/pg_generator.py#L77) |
 | `PartitionStage` | `algo`, `num_partitions`, `num_islands`, `partition_label` | [pg_generator.py:127-133](dlg/dropmake/pg_generator.py#L127-L133) |
 | `MapStage` | `nodes`, `num_islands`, `co_host_dim` | [pg_generator.py:243](dlg/dropmake/pg_generator.py#L243) |
 
@@ -547,11 +547,13 @@ class InstanceId:
 | 4 | reprodata handled by hand at ~12 translator sites (+4 in the engine) | one adapter; every *translator* site collapses, web included. The engine's four stay, so the facade keeps returning bare lists and keeps not applying the `init_*` hooks (§8 Q8) | ~8 call-site edits |
 | 5 | Scatter DoP silently defaults to 4 [lg_node.py:629](dlg/dropmake/lg_node.py#L629) | **the count becomes a required field** — `ScatterHandler.degree_of_parallelism` raises `GInvalidNode` naming the node and the three accepted spellings. No `--lenient` escape: client-mandated removal (§8 Q4) | endpoints surface a new error for graphs that omit it |
 | 5b | **Loop DoP has no fallback at all**: if none of `num_of_iter` / `Number of Iterations` / `Number of loops` is present, `_dop` stays `None` and `dop` returns `None`, so `range(lgn.dop)` raises `TypeError` [lg_node.py:644-651](dlg/dropmake/lg_node.py#L644-L651) | `LoopHandler.degree_of_parallelism` raises `GInvalidNode` naming the node and the missing field | new, found during the §8 scan |
-| 5c | Gather input `categoryType` silently defaults to `"Data"`; `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | raise `GInvalidNode` by default; opt-in `--lenient` restores old behaviour with a warning. This is now the *whole* remaining scope of `--lenient` — see "Still open" | endpoints may surface a new error |
+| 5c | Gather input `categoryType` silently defaults to `"Data"`, and `validate_link` writes it into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) — **unreachable**. The `LGNode.jd` setter fills the key in from `category` [lg_node.py:135-139](dlg/dropmake/lg_node.py#L135-L139) and `__init__` subscripts it bare two lines later [lg_node.py:60](dlg/dropmake/lg_node.py#L60), both before the first `validate_link` call. Instrumented, the branch fires **0 times** over every LG-shaped graph in the bundled corpus (60 of the 82 files; the rest are not logical graphs) — and 0 times with `categoryType` deliberately stripped from every Gather input (§8 Q11) | **delete the two lines** with the row 6 / row 10 dead-code batch. No error to add: a non-Data Gather input already raises `GInvalidLink`, and a node that reaches `validate_link` without a `categoryType` cannot exist. The mutation in row 9 goes with it | none |
+| 5d | A node whose `category` is in neither `APP_TYPES` nor `DATA_TYPES` and which omits `categoryType` dies with a bare `KeyError: 'categoryType'` at [lg_node.py:60](dlg/dropmake/lg_node.py#L60) — no node id, no field name, no `GInvalidNode`. Every construct category (`Scatter`, `Gather`, `GroupBy`, `Loop`, `SubGraph`, `MKN`) is outside both lists, as is any EAGLE app category newer than `APP_TYPES` [definition_classes.py:89-101](dlg/dropmake/definition_classes.py#L89-L101) | `GInvalidNode` naming the node and the missing field, same shape as rows 5/5b. It belongs where the node dict is first normalised — `prepare/` after Phase 2, `lg_node.py` before it — **not** in `validate_link`, which runs too late to see it | endpoints surface a named error where they surfaced a `KeyError` |
+| 5e | `Categories.DATA` (`"Data"`) is in **both** `DATA_TYPES` and `APP_TYPES` [definition_classes.py:80](dlg/dropmake/definition_classes.py#L80) / [:91](dlg/dropmake/definition_classes.py#L91), and the setter tests `APP_TYPES` first — so a `category: "Data"` node omitting `categoryType` is inferred **`Application`**. Feeding a Gather it raises `GInvalidLink` today: the one input shape row 5c's default existed to rescue is the one the inference rejects | decide which list owns `"Data"` and drop it from the other; the inference itself moves into `prepare/` with row 5d | corpus drift only if a graph leans on the mis-inference — Phase 0 must enumerate, as for row 5 |
 | 6 | `convert_mkn` / `convert_mkn_all_share_m` [dm_utils.py:170](dlg/dropmake/dm_utils.py#L170) are unreachable | **delete** — confirmed dead *and* already broken (§8 Q2) | none |
 | 7 | Vestigial `self._metis_path = "gpmetis"` alongside the Python binding | `algorithms/metis.py` picks one mechanism | none |
 | 8 | `LG.unroll_to_tpl` documented as not thread-safe; `translator_rest` compensates with module-level semaphores | stages hold no mutable instance state across `run()`, so the core is no longer the reason for the semaphores | **none — semaphores stay.** Removing them is a web-side concurrency decision, out of scope |
-| 9 | Three passes mutate the logical model: `lgn_to_pgn` appends to `self._lg_links` *while* §5.2 iterates it, `unroll_to_tpl` rewrites a Service target's `categoryType`/`category` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755), `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | `synthesise_links` runs as a pre-pass before `instantiate.py`, so the link set is frozen before pass 2 reads it; the Service rewrite moves into `ServiceHandler.instantiate`; the `categoryType` default becomes the `--lenient` path of row 5c | none |
+| 9 | Three passes mutate the logical model: `lgn_to_pgn` appends to `self._lg_links` *while* §5.2 iterates it, `unroll_to_tpl` rewrites a Service target's `categoryType`/`category` [lg.py:750-755](dlg/dropmake/lg.py#L750-L755), `validate_link` writes a default `categoryType` into `src.jd` [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) | `synthesise_links` runs as a pre-pass before `instantiate.py`, so the link set is frozen before pass 2 reads it; the Service rewrite moves into `ServiceHandler.instantiate`; the `categoryType` write is deleted outright, since row 5c shows it cannot fire | none |
 | 10 | `lgn_to_pgn(recursive=False)` [lg.py:352-359](dlg/dropmake/lg.py#L352-L359) — deep-copies children onto `_start_list` — is unreachable; both call sites take the default, and `pgtp.py:267`'s `recursive` is METIS's bisection flag | **delete**, with the MKN batch (row 6) | none |
 
 **Explicitly not addressed:** splitting the `Original` / `Updated` REST generations, and
@@ -889,11 +891,11 @@ branches; Scatter's silent `4` is the outlier.
    `num_of_copies` / `num_of_splits` / `Number of copies` is present
    [lg_node.py:619-629](dlg/dropmake/lg_node.py#L619-L629), naming the node and the three
    accepted spellings. §5 row 5 split accordingly — 5 is now Scatter-only and strict.
-2. **`--lenient` narrows to the `categoryType` defaults.** It survives only for the Gather
-   input default and the `validate_link` write at
-   [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) — see new row 5c. Whether those two want the
-   same strict treatment was not part of the client's answer; asked under "Still open", and
-   the answer only shrinks the flag further.
+2. **`--lenient` narrows to the `categoryType` defaults — and then to nothing.** Q4 left the
+   flag covering only the Gather input default and the `validate_link` write at
+   [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) (row 5c). **Q11 since established that both
+   lines are unreachable**, so there is no lenient behaviour to preserve and no question to
+   put to the client. The flag is not built; row 5c became a deletion.
 3. **The corpus expectation changes, and it is the one sanctioned output change.** Any
    `eagle-test-graphs` graph that omits the Scatter count changes from *silently unrolling at
    DoP 4* to *hard error*. Phase 0 must record which graphs those are so the diff is expected
@@ -1158,18 +1160,75 @@ described in Q7 — green tests until `metis` is selected or an endpoint is call
 the literal grep in "Notes for coding agents" is a standing rule rather than a Phase 2/2b
 checklist item.
 
+### Q11 — Is a non-Data Gather input plausible, and does the default that allows it ever fire? ✅ No, and no — the default is dead code
+
+**Answer: a Gather input that is not Data (or a GroupBy standing in for one) is invalid by
+design, and the default at [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) that would wave one
+through can never execute. Row 5c collapses from "add an error plus a `--lenient` escape" to
+"delete two lines", and `--lenient` loses its last justification.**
+
+**Part 1 — non-Data is not plausible.** Three independent confirmations:
+
+- **Documented as a validity rule**, at the same tier as "no cycles":
+  [graphs.rst:121](../docs/architecture/graphs.rst#L121) — *"Gather can be placed only after a
+  Group By or a Data component"*, listed under DropMake's validity-checking step.
+- **Structurally required by unroll.** The Gather's output is already validated to be a
+  group-start Application [lg.py:171-178](dlg/dropmake/lg.py#L171-L178). Its inputs are stashed
+  in `_gather_cache` and later wired straight into that inner app —
+  `data_drop.addConsumer(output_drop)` / `output_drop.addInput(data_drop)`
+  [lg.py:783-784](dlg/dropmake/lg.py#L783-L784). `AppDROP.addInput` takes a `DataDROP`
+  ([app_base.py:149](../daliuge-engine/dlg/apps/app_base.py#L149)); drops strictly alternate
+  data/app. An Application input would emit a PG spec the engine cannot load, and the
+  translator would not catch it — `dropdict` is an untyped `dict` with no validation
+  ([common/__init__.py:55](../daliuge-common/dlg/common/__init__.py#L55)).
+- **The GroupBy exemption is not a counterexample.** `_link_drops` substitutes
+  `src_drop["grp-data_drop"]` [lg.py:449](dlg/dropmake/lg.py#L449) — GroupBy contributes a
+  *synthetic data drop*. Its `categoryType` is `"Construct"`, which is why it needs the
+  `is_groupby` escape, but it still resolves to data.
+
+Corpus agrees: of the 11 links into a Gather across the 82 bundled test graphs, ten come from
+`categoryType: "Data"` (`Memory`/`File`) and one from a `GroupBy`. So `"Data"` is the *correct*
+value to default to — the value was never the defect.
+
+**Part 2 — the default cannot fire.** The `LGNode.jd` setter infers `categoryType` from
+`category` [lg_node.py:135-139](dlg/dropmake/lg_node.py#L135-L139), and two lines later
+`__init__` reads it with a bare subscript [lg_node.py:60](dlg/dropmake/lg_node.py#L60). Every
+node is constructed at [lg.py:112](dlg/dropmake/lg.py#L112) before the first `validate_link` at
+[lg.py:139](dlg/dropmake/lg.py#L139). So by the time `validate_link` sees `src`, either the key
+is present or the node already died.
+
+Verified by execution, not by reading:
+
+| Probe | Result |
+|---|---|
+| `LGNode`, no `categoryType`, `category` = `Memory` / `PythonApp` | inferred, constructs fine |
+| `LGNode`, no `categoryType`, `category` = `GroupBy` / `Gather` / `Scatter` / unknown | `KeyError: 'categoryType'` — **row 5d** |
+| Every LG-shaped graph in the bundled corpus (60 of 82 files), branch instrumented | fired **0** times |
+| `eagle_gather_simple_update.graph` with `categoryType` stripped from all three Gather inputs | fired **0** times; graph still translates |
+| Same graph, Gather input forced to `categoryType: "Application"` | `GInvalidLink` — already strict |
+| Same graph, Gather input set to `category: "Data"` with no `categoryType` | `GInvalidLink` — the mis-inference of **row 5e** |
+
+The blame trail fits. The default entered as `if "type" not in src.jd` in `68905b0f`; the strict
+subscript arrived later in `648655267` (2023-04-17) and orphaned it silently.
+
+**Three effects on the proposal.**
+
+1. **Row 5c becomes a deletion**, batched with rows 6 and 10. No new error, no corpus drift.
+2. **`--lenient` is not built.** Q4 had already reduced it to row 5c; row 5c is now empty. The
+   "Still open" decision closes without needing to be asked — recorded there.
+3. **Two real defects surfaced in its place** — rows 5d and 5e — neither of which
+   `validate_link` is positioned to fix, because both fire during node construction.
+
 ### Still open
 
 The client's answers of 2026-08-18 closed Q4, Q10's schema half, Q8's idempotency
-sub-question and the deprecation-window item; each is recorded in place above. What is left:
+sub-question and the deprecation-window item; each is recorded in place above. **Q11 closed the
+last one — the scope of `--lenient` — without needing to ask**: row 5c, the flag's whole
+remaining scope, turned out to be unreachable code, so there is no lenient behaviour left to
+preserve and the flag is not built. §5 rows 5 / 5b collapse into "all silent defaults become
+errors" and 5c into "delete the dead one".
 
-- **The scope of `--lenient`** — the only decision still ours. Q4 makes the Scatter count
-  strict and unconditional, which leaves the flag covering just the two `categoryType`
-  defaults (§5 row 5c). If those want the same treatment, `--lenient` disappears entirely and
-  §5 rows 5/5b/5c collapse into "all silent defaults become errors". Worth asking with the
-  Q4 work, since the answer only shrinks the flag.
-
-**Answered, but still to be *verified* — these are gates, not questions:**
+**No open decisions remain. What is left are gates — answered, but still to be *verified*:**
 
 - **Q3 (client requirement)** — PG output byte-identical for `min_num_parts` and `pso` after
   the linearisation move, `pso` under a fixed seed. Gates Phase 6.
@@ -1177,6 +1236,10 @@ sub-question and the deprecation-window item; each is recorded in place above. W
   Phase 1, so the no-hash-in-the-stamp property cannot silently regress.
 - **Q4 (expected corpus drift)** — Phase 0 must record which corpus graphs omit a Scatter
   count, so their new hard failure reads as the sanctioned change and not as breakage.
+- **Q11 row 5e (possible corpus drift)** — the same Phase 0 pass must record any graph with a
+  `category: "Data"` node that omits `categoryType`, since fixing the `APP_TYPES`/`DATA_TYPES`
+  overlap flips how it is classified. Zero such nodes exist in the 82 bundled graphs; the
+  wider `eagle-test-graphs` corpus is unchecked.
 
 **Deprecation window** — how long the `dlg.dropmake.*` shims live is handled by the client's
 team as `daliuge-engine` release coordination. Not a translator question, not tracked here.
@@ -1213,6 +1276,7 @@ Conventions:
 | 2026-08-18 | Claude (Opus 5) | — | **§4.2 `Stage` signature corrected.** The sketch's single `opts: StageOptions` bag was under-specified: the four transitions share no option, so `Stage` becomes `Protocol[TIn, TOut, TOpts]` with a frozen per-stage options dataclass declared in each `stage.py` (fields enumerated from source in the new §4.2 table). **`opts` is never `None`** — default-construct instead, because (a) `MapOptions.nodes` has no default (`resource_map` raises on an empty node list), so a `None` default cannot be a uniform rule, (b) it would put an `if opts is None:` fallback in every stage — the same re-implemented-convention shape as the reprodata pop/append, and (c) `_get_algo_param` already exists solely to undo `None`-punning. Two carve-outs recorded: `show_gojs` is a return-type switch rather than an option and must not enter `PartitionOptions`, and the nine `algo_params` keys move to per-algorithm plugin options validated by `algorithms/registry.py` — spellings unchanged, they are Tier 3. §3 layout annotations updated | n/a | partly superseded |
 | 2026-08-18 | Claude (Opus 5) | — | **§4.2 gains the `Pipeline` sketch, and the `Stage` signature is corrected again — back to two type parameters.** Per-stage options bind at **construction** (`UnrollStage(UnrollOptions(...))`), not per `run()` call: the previous row's `Protocol[TIn, TOut, TOpts]` would have forced `Pipeline` to know which options object belongs to which stage, over a list that cannot be type-checked. `run` is now a pure `Artefact → Artefact` function, matching §2 principle 2. New second protocol method `stamp(wire)`: **the stage owns which reprodata hook, the Pipeline owns whether** — the five `init_*_repro_data` functions are one per boundary and two are irregular (`init_lgt_repro_data` takes `rmode`, and prepare applies two hooks chained, per `tool_commands.py:229`), so a uniform `Callable` on the Pipeline cannot express them. `rmode` is consequently a `PrepareOptions` field. Pipeline wraps each `stamp()` in `to_wire()`/`from_wire()`, keeping the trailing-element convention inside `artefacts.py`; `then()` returns a re-typed `Pipeline[TIn, TNext]` so stage chaining is statically checked; facade example added showing `repro=False` with bare lists in and out. Also recorded: with no mutable state across `run()`, the core stops being the reason for the web semaphores — §5 row 8 unchanged, they stay | n/a | — |
 | 2026-08-18 | Claude (Opus 5) | — | **Phase 1 sequencing corrected.** (a) **Three stages, not four**: `pg_generator.unroll` constructs the LG itself (`pg_generator.py:78`), so LGT → LG is not separable until Phase 2 splits `LG.__init__` — Phase 1's `UnrollStage` spans prepare *and* unroll, its boundaries are function boundaries rather than §1.2's transition boundaries, and the two LGT/LG-level hooks at `tool_commands.py:229`/`:279` survive the phase (consistent with §1.1's table, which never listed them). A real `PrepareStage` arrives in Phase 2. (b) **`UnrollStage` moves into the `pipeline.py` issue (P1-3)** rather than the CLI-rewrite issue, so the `Stage` protocol ships with one working implementation plus an equivalence test against `pg_generator.unroll`, instead of being dead code first exercised by the PR that also rewrites five CLI commands. Issue plan updated: P1-3 gains the stage and the test, P1-4 becomes `PartitionStage` + `MapStage` + the command rewrite | n/a | — |
+| 2026-08-27 | Claude (Opus 5) | — | **Seventh correction (new §8 Q11): §5 row 5c was written against dead code.** Asked whether a Gather input can plausibly be anything but Data, the answer is no on three counts — [graphs.rst:121](../docs/architecture/graphs.rst#L121) states it as a validity rule; unroll wires Gather inputs into the construct's inner *Application* via `addConsumer`/`addInput` ([lg.py:783-784](dlg/dropmake/lg.py#L783-L784)), which requires DataDROPs; and the one non-`"Data"` case, GroupBy, contributes a synthetic data drop ([lg.py:449](dlg/dropmake/lg.py#L449)). All 11 Gather inputs in the 82 bundled graphs are `Data` or `GroupBy`. But the default at [lg.py:201-202](dlg/dropmake/lg.py#L201-L202) **cannot execute**: the `LGNode.jd` setter fills `categoryType` in ([lg_node.py:135-139](dlg/dropmake/lg_node.py#L135-L139)) and `__init__` subscripts it bare ([lg_node.py:60](dlg/dropmake/lg_node.py#L60)), both before the first `validate_link`; instrumented, it fires 0 times over all 60 LG-shaped graphs in the bundled corpus and 0 times with `categoryType` stripped from every Gather input. **Row 5c collapses from "new error + `--lenient`" to "delete two lines"** with the row 6/10 batch, and row 9's mutation goes with it. **`--lenient` therefore has zero scope and is not built** — the last "Still open" decision closes without being asked, and `UnrollOptions` loses its conditional field (§4.2, issue plan P1-3). Two real defects surfaced underneath: **new row 5d** — a construct node missing `categoryType` dies with a bare `KeyError` at [lg_node.py:60](dlg/dropmake/lg_node.py#L60), no node name, and `validate_link` runs too late to fix it; **new row 5e** — `Categories.DATA` sits in both `DATA_TYPES` and `APP_TYPES` with `APP_TYPES` tested first, so a `category: "Data"` node omitting `categoryType` is inferred `Application` and is rejected at a Gather today, which is precisely the input row 5c's default was meant to admit. Both become Phase 1a issues (P1a-3, P1a-4); 5e adds a Phase 0 corpus-enumeration gate | n/a | — |
 
 ### Notes for coding agents
 

@@ -16,13 +16,15 @@ Labels to create: `Phase 1`, `Phase 1a`, `Phase 2`, `Phase 2b`, `Phase 3`, `Phas
 
 ```mermaid
 flowchart TD
-    I6["#6 complete test script"] --> P1_1 & P1_4 & P1a_1 & P1a_2
+    I6["#6 complete test script"] --> P1_1 & P1_4 & P1a_1 & P1a_2 & P1a_4
     P1_1["P1-1 artefacts.py"] --> P1_3
     P1_2["P1-2 idempotency test"] --> P1_3
     P1_3["P1-3 pipeline.py + UnrollStage"] --> P1_4["P1-4 remaining stages + CLI"]
     P1_4 --> P2_1["P2-1 move Tier 1 into stages/"]
     P1a_1["P1a-1 Scatter DoP required"] --> P3_2
     P1a_2["P1a-2 Loop DoP error"] --> P3_2
+    P1a_3["P1a-3 delete dead Gather default"] --> P3_3
+    P1a_4["P1a-4 missing categoryType error"] --> P2_1
     P2_1 --> P2_2["P2-2 dlg.dropmake shims"] & P2_3["P2-3 libmetis"] & P2_4["P2-4 lg.graph.schema"]
     P2_2 & P2_3 & P2_4 --> P2_5["P2-5 Phase 2 exit check"]
     P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + registry"]
@@ -104,7 +106,7 @@ be type-checked. `run` stays a pure `Artefact → Artefact` function.
 disjoint (§4.2), so a shared type would put `MapOptions.nodes` in scope inside `UnrollStage`:
 
 - `PrepareOptions` — `ssid`, `apply_config`, config overlay, `fill` params
-- `UnrollOptions` — `oid_prefix`, `zerorun`, `app` (+ `lenient` if §5 row 5c keeps it)
+- `UnrollOptions` — `oid_prefix`, `zerorun`, `app` (no `lenient`: §8 Q11 killed the flag)
 - `PartitionOptions` — `algo`, `num_partitions`, `num_islands`, `partition_label`
 - `MapOptions` — `nodes`, `num_islands`, `co_host_dim`
 
@@ -282,6 +284,62 @@ the missing field, same shape as P1a-1.
 
 Not a behaviour change in the corpus sense: what used to crash still crashes, with a better
 message.
+
+## P1a-3 — Delete the unreachable Gather `categoryType` default
+
+- **Label:** `Phase 1a`
+- **Blocked by:** #6
+- **Blocking:** P3-3P1a-4 (the GInvalidNode + list-overlap fix, flagged as a possible behaviour change gated on #6); mermaid, UnrollOptions, and the P3-3 note updated.
+
+Delete these two lines from `validate_link` ([lg.py:201-202](dlg/dropmake/lg.py#L201-L202)):
+
+```python
+if "categoryType" not in src.jd:
+    src.jd["categoryType"] = "Data"
+```
+
+They cannot execute. The `LGNode.jd` setter fills `categoryType` in from `category`
+([lg_node.py:135-139](dlg/dropmake/lg_node.py#L135-L139)) and `__init__` subscripts it bare two
+lines later ([lg_node.py:60](dlg/dropmake/lg_node.py#L60)) — both before the first
+`validate_link` call. Instrumented, the branch fires 0 times across the 82 bundled graphs, and
+0 times with `categoryType` stripped from every Gather input (§8 Q11).
+
+**Not a behaviour change**, and no new error to add: a non-Data Gather input already raises
+`GInvalidLink`, and a node reaching `validate_link` without a `categoryType` cannot exist.
+This also removes one of the three logical-model mutations in §5 row 9.
+
+Ship with a regression test that a `Memory` node feeding a Gather with no `categoryType` key
+still translates, so the setter's inference stays the thing carrying it.
+
+## P1a-4 — Missing `categoryType` fails with a real error, and `"Data"` picks one list
+
+- **Label:** `Phase 1a`
+- **Blocked by:** #6
+- **Blocking:** P2-1
+
+Two defects surfaced by §8 Q11, both in node construction rather than validation. §5 rows 5d
+and 5e.
+
+**5d — the bare `KeyError`.** A node whose `category` is in neither `APP_TYPES` nor
+`DATA_TYPES` and which omits `categoryType` dies at
+[lg_node.py:60](dlg/dropmake/lg_node.py#L60) with `KeyError: 'categoryType'` — no node id, no
+field name. Every construct category is outside both lists, as is any EAGLE app category newer
+than `APP_TYPES`. Raise `GInvalidNode` naming the node and the missing field, same shape as
+P1a-1/P1a-2. Put the check in the `jd` setter, immediately after the inference — it is the
+last point that knows the node dict is unnormalised. It rides into `prepare/` with the Phase 2
+move; do not put it in `validate_link`, which runs after every `LGNode` is already built.
+
+**5e — `"Data"` is in both lists.** `Categories.DATA` appears in `DATA_TYPES`
+([definition_classes.py:80](dlg/dropmake/definition_classes.py#L80)) *and* `APP_TYPES`
+([:91](dlg/dropmake/definition_classes.py#L91)), and the setter tests `APP_TYPES` first, so a
+`category: "Data"` node omitting `categoryType` is inferred `Application`. Decide which list
+owns it and remove it from the other.
+
+⚠ 5e is a **possible behaviour change** — the only one in this issue. Zero of the 389 nodes in
+the 82 bundled graphs omit `categoryType`, so nothing there moves, but #6 must enumerate any
+`category: "Data"` node without a `categoryType` in the wider `eagle-test-graphs` corpus before
+this lands. If the list is empty, say so in the PR; if it is not, the reclassification is the
+diff to expect.
 
 ---
 
@@ -465,8 +523,9 @@ Move each clause of `validate_link` ([lg.py:156-250](dlg/dropmake/lg.py#L156)) t
 and delete the chain.
 
 Note: `validate_link` currently **mutates** — it writes a default `categoryType` into `src.jd`
-([lg.py:201-202](dlg/dropmake/lg.py#L201-L202)). Validation should not mutate; that default is
-the `--lenient` path of §5 row 5c and needs a decision before it moves (see "Still open").
+([lg.py:201-202](dlg/dropmake/lg.py#L201-L202)). Validation should not mutate, and this one
+cannot even fire (§8 Q11): P1a-3 deletes it outright, so by the time this issue starts there is
+nothing to move. If P1a-3 has not landed, delete the two lines here rather than porting them.
 
 ---
 

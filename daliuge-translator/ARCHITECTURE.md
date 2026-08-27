@@ -240,7 +240,11 @@ own input* ([lg.py:171-181](dlg/dropmake/lg.py#L171-L181)) — and the loop rule
 endpoints' group chains upward in lockstep comparing `dop`
 ([lg.py:217-239](dlg/dropmake/lg.py#L217-L239)). And the validator **mutates**: a Gather input
 with no `categoryType` gets `"Data"` written into `src.jd`
-([lg.py:201-202](dlg/dropmake/lg.py#L201-L202)) before the check that reads it.
+([lg.py:201-202](dlg/dropmake/lg.py#L201-L202)) before the check that reads it — though that
+branch is **unreachable in practice**, because `LGNode.jd`'s setter fills the key in
+([lg_node.py:135-139](dlg/dropmake/lg_node.py#L135-L139)) and `__init__` subscripts it bare
+([lg_node.py:60](dlg/dropmake/lg_node.py#L60)) before any link is validated. It is a
+mutation-shaped fossil, not a live default.
 
 ---
 
@@ -455,14 +459,21 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
    documented but not physically separated, and the legacy half mixes HTML rendering with
    translation logic.
 
-9. **Silent defaults, and one missing default.** Scatter DoP falls back to 4 when no count
-   field is found ([lg_node.py:629](dlg/dropmake/lg_node.py#L629), marked "dummy impl");
-   missing `categoryType` on a Gather input is defaulted to `"Data"` mid-validation. Both turn
-   authoring errors into wrong-but-plausible graphs. Loop has the opposite problem: if none of
-   `num_of_iter` / `Number of Iterations` / `Number of loops` is present, `_dop` is never
-   assigned ([lg_node.py:644-651](dlg/dropmake/lg_node.py#L644-L651)), `dop` returns `None`,
-   and `range(lgn.dop)` in `lgn_to_pgn` raises a bare `TypeError` naming no node. Three
-   branches of the same `if/elif`, three different failure policies.
+9. **Silent defaults, one missing default, and one dead default.** Scatter DoP falls back to 4
+   when no count field is found ([lg_node.py:629](dlg/dropmake/lg_node.py#L629), marked "dummy
+   impl") — an authoring error turned into a wrong-but-plausible graph. Loop has the opposite
+   problem: if none of `num_of_iter` / `Number of Iterations` / `Number of loops` is present,
+   `_dop` is never assigned ([lg_node.py:644-651](dlg/dropmake/lg_node.py#L644-L651)), `dop`
+   returns `None`, and `range(lgn.dop)` in `lgn_to_pgn` raises a bare `TypeError` naming no
+   node. Three branches of the same `if/elif`, three different failure policies. The Gather
+   input `categoryType` default ([lg.py:201-202](dlg/dropmake/lg.py#L201-L202)) reads as a
+   fourth policy but is dead code (§5.4). What is live in its place: a node whose `category` is
+   outside both `APP_TYPES` and `DATA_TYPES` and which omits `categoryType` dies with a bare
+   `KeyError: 'categoryType'` at [lg_node.py:60](dlg/dropmake/lg_node.py#L60), naming no node —
+   and `Categories.DATA` sits in *both* lists with `APP_TYPES` tested first
+   ([definition_classes.py:80](dlg/dropmake/definition_classes.py#L80),
+   [:91](dlg/dropmake/definition_classes.py#L91)), so a bare `category: "Data"` node is
+   inferred `Application`.
 
 10. **METIS is a mixed dependency.** `MetisPGTP` sets `self._metis_path = "gpmetis"`
     ([pgtp.py:63](dlg/dropmake/pgtp.py#L63) — an external binary on `$PATH`) while
@@ -493,7 +504,8 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
     LGNodes and appends to `self._lg_links` while instantiating (§5.1); `unroll_to_tpl`
     rewrites a Service target's `categoryType`/`category` while wiring (§5.2); `validate_link`
     writes a default `categoryType` into `src.jd` while validating (§5.4). A clean
-    parse → validate → instantiate → wire split has to find a home for each of the three.
+    parse → validate → instantiate → wire split has to find a home for the first two — the
+    third is unreachable and needs deleting, not rehoming.
 
 14. **`lgn_to_pgn`'s `recursive=False` branch is dead.** Both call sites use the default
     ([lg.py:349](dlg/dropmake/lg.py#L349), [:555](dlg/dropmake/lg.py#L555)); nothing in either

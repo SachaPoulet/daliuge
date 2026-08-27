@@ -301,6 +301,23 @@ proposal §5 row 5b.
 — `resource_map` accepts `[name, drops]` as well as a bare drop list, with a `TODO: we may
 want to retain that`. `artefacts.py` must decide whether to keep this form.
 
+**B6 — missing `categoryType` dies as a bare `KeyError`.**
+[lg_node.py:60](dlg/dropmake/lg_node.py#L60) subscripts `self.jd["categoryType"]` directly, two
+lines after the `jd` setter's inference ([lg_node.py:135-139](dlg/dropmake/lg_node.py#L135))
+has had its only chance to supply it. The inference covers `APP_TYPES`/`DATA_TYPES` categories
+only, so every construct category — and any EAGLE app category newer than `APP_TYPES` — raises
+`KeyError: 'categoryType'` naming no node. Recorded as proposal §5 row 5d. **Note for whoever
+writes `model.py`:** this subscript is why the Gather default at
+[lg.py:201-202](dlg/dropmake/lg.py#L201-L202) is dead (proposal §8 Q11). If `model.py` softens
+it to `.get()`, that default comes back to life — soften it to a `GInvalidNode` instead.
+
+**B7 — `Categories.DATA` is in both type lists.**
+[definition_classes.py:80](dlg/dropmake/definition_classes.py#L80) and
+[:91](dlg/dropmake/definition_classes.py#L91) both contain `"Data"`, and the `jd` setter tests
+`APP_TYPES` first, so a `category: "Data"` node omitting `categoryType` is classified
+`Application`. Recorded as proposal §5 row 5e; fixing it is a possible corpus change, so it
+does not ride along with a move.
+
 ---
 
 ## 8. Changes log
@@ -310,3 +327,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-08-09 | Claude (Opus 5) | Initial map. Line-level read of `dlg/dropmake/**` and `dlg/translator/**`; every target file in proposal §3 has a stated source or is listed as NEW. Found ~600 LOC of confirmed-dead code (§6) and five latent bugs (§7) |
+| 2026-08-27 | Claude (Opus 5) | Two latent bugs added from proposal §8 Q11 — **B6** (missing `categoryType` raises a bare `KeyError` at [lg_node.py:60](dlg/dropmake/lg_node.py#L60), naming no node) and **B7** (`Categories.DATA` is in both `DATA_TYPES` and `APP_TYPES`, `APP_TYPES` tested first). B6 carries a constraint on `model.py`: the bare subscript is what makes the Gather `categoryType` default dead code, so relaxing it to `.get()` would revive a default the proposal deletes |
