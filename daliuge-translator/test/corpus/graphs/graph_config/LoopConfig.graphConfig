@@ -1,0 +1,48 @@
+{
+    "modelData": {
+        "name": "LoopConfig",
+        "shortDescription": "",
+        "detailedDescription": "",
+        "type": "GraphConfig",
+        "schemaVersion": "Unknown",
+        "readonly": true,
+        "location": {
+            "repositoryService": "Unknown",
+            "repositoryBranch": "",
+            "repositoryName": "",
+            "repositoryPath": "",
+            "repositoryFileName": "",
+            "commitHash": "",
+            "downloadUrl": ""
+        },
+        "generatorVersion": "",
+        "generatorCommitHash": "",
+        "generatorName": "",
+        "repositoryUrl": "",
+        "graphLocation": {
+            "repositoryService": "GitHub",
+            "repositoryBranch": "master",
+            "repositoryName": "ICRAR/EAGLE_test_repo",
+            "repositoryPath": "eagle_test_graphs/daliuge_tests/translator/graph_config",
+            "repositoryFileName": "ArrayLoopScatter.graph",
+            "commitHash": "2a6571123253fb942b9ee66734f19573da9b32c5",
+            "downloadUrl": "https://raw.githubusercontent.com/ICRAR/EAGLE_test_repo/2a6571123253fb942b9ee66734f19573da9b32c5/eagle_test_graphs/daliuge_tests/translator/graph_config/ArrayLoopScatter.graph"
+        },
+        "signature": "",
+        "lastModifiedName": "",
+        "lastModifiedEmail": "",
+        "lastModifiedDatetime": 0,
+        "numLGNodes": 0
+    },
+    "id": "bc177707-3e9c-428c-92ce-7c50704b0c31",
+    "nodes": {
+        "732df21b-f714-4d25-9773-b4169db270a0": {
+            "fields": {
+                "3d25fcc9-50bb-4bbc-9b19-2eceabc238f2": {
+                    "value": 5,
+                    "comment": ""
+                }
+            }
+        }
+    }
+}

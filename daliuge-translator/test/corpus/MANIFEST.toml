@@ -1,0 +1,143 @@
+# Phase 0 corpus manifest — GENERATED, do not hand-edit.
+# Regenerate with: python3 tools/manifest.py generate
+# Verify with:     python3 tools/manifest.py verify
+
+[pins]
+eagle_test_repo_url = "https://github.com/ICRAR/EAGLE_test_repo"
+eagle_test_repo_commit = "2f1db6c99898c43a25d9a7d3a07acf8cfb7becff"
+eagle_test_repo_release = "v0.2.4"
+eagle_test_repo_tarball_sha256 = "f27c424f7ed8a331197c1dd1bad6c02fc5178b4664a4691fe00cbffab6136558"
+eagle_test_graphs_pypi_version = "0.2.4"
+daliuge_baseline_commit = "c96d83fb56d523bfcf43e061a822e960dc48a2f6"
+
+upstream_prefix = "eagle_test_graphs/daliuge_tests/translator"
+
+[[files]]
+path = "graph_config/ArrayLoopLoop.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/graph_config/ArrayLoopLoop.graph"
+sha256 = "1519865f782f1c095205a134ae9037ae2a388c2d862ac4d62980c3bf110ba234"
+
+[[files]]
+path = "graph_config/ArrayLoopNoActiveID.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/graph_config/ArrayLoopNoActiveID.graph"
+sha256 = "da029291981aa9439b66e801a003ffda80cbb6c7434301ad7c9a990461c71544"
+
+[[files]]
+path = "graph_config/ArrayLoopScatter.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/graph_config/ArrayLoopScatter.graph"
+sha256 = "49bfd50dec02281f6ab9f633902be60e97b4cc09d5de22818ad19a8b705120af"
+
+[[files]]
+path = "graph_config/LoopConfig.graphConfig"
+upstream = "eagle_test_graphs/daliuge_tests/translator/graph_config/LoopConfig.graphConfig"
+sha256 = "1d40101e05c90eaf24bc02eb46f3e0b5708fa85ea0e58d4d11f53476ab6e4af2"
+
+[[files]]
+path = "graph_config/LoopConfigNonEagle.graphConfig"
+upstream = "eagle_test_graphs/daliuge_tests/translator/graph_config/LoopConfigNonEagle.graphConfig"
+sha256 = "3320b83ecc6197e1e7e4b2828dbcb509fdbb363d4ded5ae016f479dee8eaecb3"
+
+[[files]]
+path = "logical_graphs/ArrayLoop.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/ArrayLoop.graph"
+sha256 = "b1f65f1819d7e8f25c99be7aca2e4efde49780769b0bd1f04fb0aa85c48490cf"
+
+[[files]]
+path = "logical_graphs/ArrayLoop_Global.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/ArrayLoop_Global.graph"
+sha256 = "bc68b350c40ea69841dd473dc7badf27d7adb4e7b822454d0e41def4c63677dc"
+
+[[files]]
+path = "logical_graphs/ExampleSubgraphNoInput.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/ExampleSubgraphNoInput.graph"
+sha256 = "76b3f35b39a1e1d0d47c1c144c0a3f8573011de7dcea91513341ee40cb8126be"
+
+[[files]]
+path = "logical_graphs/ExampleSubgraphSimple.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/ExampleSubgraphSimple.graph"
+sha256 = "e56d8ff081394cd1f3036fb7a33c51d373424e0baca4aa3dc1b176b56fee384b"
+
+[[files]]
+path = "logical_graphs/HelloWorld_Global.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/HelloWorld_Global.graph"
+sha256 = "ee83aef4c1f58886337dfb88f80517c625efb87e873be60aba0129e1961bddad"
+
+[[files]]
+path = "logical_graphs/HelloWorld_simple.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/HelloWorld_simple.graph"
+sha256 = "f803df7ef3304a19b47edd57621f1d07b3c3cf75c3fa3d74df9822500683476a"
+
+[[files]]
+path = "logical_graphs/Plasma_test.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/Plasma_test.graph"
+sha256 = "5e1bcdb3c8b242dab311001e1ad3721c8e047f869d3b13f0a7bd8b4c1c5372c7"
+
+[[files]]
+path = "logical_graphs/SharedMemoryTest_update.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/SharedMemoryTest_update.graph"
+sha256 = "676a713eb863aa7a5cf689bfe96165e9d6cce3bc111f5b90eb09a85565dbe946"
+
+[[files]]
+path = "logical_graphs/SuperBasicScatterGather.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/SuperBasicScatterGather.graph"
+sha256 = "c3fab8e8cab4a353ad56a0c66d0e80a47922ab4fda421e15abcec9cf7d6a6322"
+
+[[files]]
+path = "logical_graphs/branchTest.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/branchTest.graph"
+sha256 = "3c5dd906639c351a5cc09e905ed290f93f3f2e4b7f2f20ccccfd824d4fd04f57"
+
+[[files]]
+path = "logical_graphs/chiles_simple.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/chiles_simple.graph"
+sha256 = "0687567eb213cb222ff983fab02c562f6cccbb65543c48acb8a556f5b0df155d"
+
+[[files]]
+path = "logical_graphs/cont_img_mvp.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/cont_img_mvp.graph"
+sha256 = "7b0f22ada6f762be980b180a858c41276abca0380ba27178835a18975a01ada5"
+
+[[files]]
+path = "logical_graphs/eagle_gather_empty_update.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/eagle_gather_empty_update.graph"
+sha256 = "d3adc1558f54ea63e49aa3de0a690c20e35cdd9bbd28736a3fb65a517f041e84"
+
+[[files]]
+path = "logical_graphs/eagle_gather_simple_update.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/eagle_gather_simple_update.graph"
+sha256 = "c1a4a4f3c37026158c77143247f52a06e30b60692f37ef350cc67fd1c1b7bdea"
+
+[[files]]
+path = "logical_graphs/eagle_gather_update.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/eagle_gather_update.graph"
+sha256 = "3e7862683cfd45c14771dc789d954a7dd26ecbeacbbe36918b57379febbdd34c"
+
+[[files]]
+path = "logical_graphs/earth_location.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/earth_location.graph"
+sha256 = "8e140ea549536a22f43ee4ed0a14a6eadc4b1140f92bea4d1e2cf2d76d0e7f52"
+
+[[files]]
+path = "logical_graphs/pyfunc_glob_shell_test.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/pyfunc_glob_shell_test.graph"
+sha256 = "166097c0716184ec7ecedb4426861d9382c67d03164f8f096c193a96613bd855"
+
+[[files]]
+path = "logical_graphs/test-20190830-110556.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/test-20190830-110556.graph"
+sha256 = "67851ee6dd2b7e18e0cb7aa24f9a6be06f6d9338ce66fec8567359ff3eef1c70"
+
+[[files]]
+path = "logical_graphs/testLoop.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/testLoop.graph"
+sha256 = "2fd3e5e5d7a63bda83b8c7a8d671fe2736a1c0eee76784ebda34dd2826c4f452"
+
+[[files]]
+path = "logical_graphs/test_grpby_gather.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/test_grpby_gather.graph"
+sha256 = "8fbf2e0b1275e1bbc7420b58f031523889ab4cfee1d43a0cc44c51d01c48eeaa"
+
+[[files]]
+path = "logical_graphs/test_ports.graph"
+upstream = "eagle_test_graphs/daliuge_tests/translator/logical_graphs/test_ports.graph"
+sha256 = "aca73044014f72207b887ecb71e2de0a238e1d69b24bd60c4c81e3a06d8d7bd6"
