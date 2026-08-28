@@ -451,19 +451,25 @@ def dlg_partition(parser, args):
     pgt = PhysicalGraphTemplate.from_wire(wire)
 
     try:
-        pgtp_wire = Pipeline([PartitionStage(_partition_options(opts))]).run(pgt).to_wire()
+        pgtp = Pipeline([PartitionStage(_partition_options(opts))]).run(pgt)
     except StageException as e:
         if not isinstance(e.__cause__, GPGTNoNeedMergeException):
             raise
-        else:
-            print("\nThe combination of -N nodes and -i Islands does not work for "
-                  "the graph provided. "
-                  "\nThis is either a result of the parallelism of the graph being too low,"
-                  " or i >= N."
-                  "\nConsider reducing the number of islands.\n")
-        pgtp_wire = pgt.to_wire()
+        print("\nThe combination of -N nodes and -i Islands does not work for "
+              "the graph provided. "
+              "\nThis is either a result of the parallelism of the graph being too low,"
+              " or i >= N."
+              "\nConsider reducing the number of islands.\n")
 
-    dump(pgtp_wire)
+        # Still stamp PGT (as PGTP) for dump, previous codebase behavior
+        pgtp = PartitionStage(_partition_options(opts)).stamp(
+            PhysicalGraphTemplatePartitioned(
+                drops=pgt.drops, reprodata=pgt.reprodata
+            )
+        )
+
+    dump(pgtp.to_wire())
+
 
 def dlg_unroll_and_partition(parser, args):
     tool.add_logging_options(parser)
