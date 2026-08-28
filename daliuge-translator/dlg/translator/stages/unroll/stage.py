@@ -42,7 +42,7 @@ class UnrollStage:
         Delegate to `pg_generator.unroll` and wrap the drop list.
         """
         return PhysicalGraphTemplate.from_wire(
-            unroll(lg=lgt.source,
+            unroll(lg=lgt.to_wire(),
                    oid_prefix=self._opts.oid_prefix,
                    zerorun=self._opts.zerorun,
                    app=self._opts.app)
