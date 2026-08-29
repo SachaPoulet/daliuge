@@ -12,8 +12,10 @@ name: Verify Phase 0 corpus
 
 on:
   push:
+    branches:
+      - master  # The full sweep is ~15 minutes; on branches, the PR trigger covers it.
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 # The full run is ~15 minutes, so don't leave superseded runs queued behind a new push.
 concurrency:
@@ -48,6 +50,19 @@ jobs:
 
       # Cheapest checks first, so the common failures surface in seconds rather than after
       # the ten-minute golden sweep.
+
+      # The corpus is a measuring instrument, so its own machinery is tested before it is
+      # trusted to report on anything else. This also runs the positive controls behind
+      # EXPECTED_DRIFT.md — a rule that can no longer fire would otherwise look like a
+      # clean corpus.
+      - name: The corpus tooling's own unit tests
+        run: |
+          pip install pytest
+          python -m pytest daliuge-translator/test/corpus/test_corpus_tools.py -q || {
+            echo "::error::The corpus tooling is broken, so nothing it reports below is"
+            echo "::error::trustworthy. Fix this before reading any other failure."
+            exit 1
+          }
 
       - name: Corpus inputs are unmodified
         working-directory: daliuge-translator/test/corpus

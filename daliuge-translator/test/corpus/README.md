@@ -171,6 +171,11 @@ python3 tools/cases.py check     # re-run every case against its recorded expect
 starts failing is a break, a `known-broken` case that starts passing is *also* reported, so a
 phase that accidentally fixes `ExampleSubgraphSimple` cannot do it silently.
 
+**It stops at the PGT.** `check` drives `fill` then `unroll` and compares DROP counts; it
+never partitions or maps. Everything past `unroll` is `golden.py`'s job, and `golden.py` only
+covers `goldenable` cases — so a case carrying `golden = false` (`service_simple`, §9c) has
+DROP-count coverage and nothing else.
+
 Three things the manifest pins down that are easy to get wrong:
 
 - **`fill` is not optional.** The CLI marks it deprecated, and a raw `.graph` fed straight to
@@ -203,6 +208,24 @@ Re-pinning to a newer upstream commit means editing `PINS` in `tools/manifest.py
 the files under `graphs/`, running `generate`, and regenerating every golden output. It is a
 deliberate act, not a refresh.
 
+`verify` also holds the `[pins]` block in `MANIFEST.toml` to `PINS`. The pins are the whole
+provenance claim — which upstream commit the graphs came from, which DALiuGE produced the
+goldens — so they live in code, where they are reviewed, and the copy in the generated file
+is checked against them rather than trusted.
+
+### Which `dlg` gets driven, and on which Python
+
+Every tool resolves the CLI through `cases.dlg_executable()`: `$DLG_CLI` if set, otherwise
+the `dlg` sitting beside the interpreter running the tooling, and only then `$PATH`. `$PATH`
+is last on purpose — with a DALiuGE venv active it answers the same way no matter which
+Python invoked the corpus, so a run could quietly measure a different install than the one
+under test. Each command prints the CLI it chose.
+
+The tooling itself needs **Python 3.11+** (`tomllib`), while the project supports 3.10; the
+unit tests in `test_corpus_tools.py` skip themselves below 3.11. The goldens were generated
+on 3.12 and CI pins 3.12 to reproduce them. They have been checked to be byte-identical on
+3.10 through 3.13, but that is a measurement, not a guarantee — regenerate on 3.12.
+
 ## Licence
 
 The vendored graphs are the work of ICRAR, from `ICRAR/EAGLE_test_repo`, which is licensed
@@ -224,6 +247,25 @@ python3 tools/golden.py show <case> <name>  # print one artefact as JSON
 Per case: `lg` (post-`fill`), `pgt` (post-`unroll`), then `pgtp` and `pg` for each
 partition setting × algorithm. `INDEX.toml` records a sha256 and the shape
 (elements, partitions, islands) of each, so drift is identified without decompressing.
+
+`verify` compares three things, not one: the freshly produced artefact against `INDEX.toml`,
+the **stored blob** against `INDEX.toml`, and the set of stages that produced nothing against
+the `[[skipped]]` entries. The first alone is not enough — the index is only a *description*
+of the blobs, and a corrupt or half-regenerated blob would stay invisible here while
+`drift.py`, which reads blobs, quietly scanned it.
+
+Skips are recorded rather than commented for the same reason. A NoNeedMerge is part of the
+corpus; a stage that fell over is a regression. Both used to be free text, so `verify` could
+tell neither from the other and reported neither.
+
+When an artefact does drift, `verify` writes the produced bytes beside the golden as
+`<name>.actual.json` (gitignored) and names the first differing JSON path, e.g.
+`$[0].dropclass: "…HelloWorldApp" -> "…WrongApp"`. A sha256 says something moved; it never
+says what, and the produced bytes used to vanish with the temporary directory.
+
+`generate <case>` rewrites `INDEX.toml` for that case too. Writing only the blobs leaves the
+index describing the previous output and the blobs describing the new one, which nothing
+downstream would report.
 
 ### No checkout dance was needed
 
