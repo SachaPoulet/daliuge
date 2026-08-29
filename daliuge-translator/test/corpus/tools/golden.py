@@ -12,6 +12,11 @@ output is *intended*.
 
 Both walking commands take an optional case id to work on a single case.
 
+`generate` refuses to run unless the CLI it would drive is the pinned baseline — see
+`provenance.py`. `--legacy-repo PATH` additionally requires that CLI to come from that
+checkout. `verify` has no such requirement: measuring the *current* build against the
+goldens is the entire point of it.
+
 Two things about the CLI that this module exists to encapsulate:
 
 * **Never read a stage's output from stdout.** `mysarkar` and `min_num_parts` print
@@ -37,9 +42,12 @@ from typing import Any, Iterator, NamedTuple
 
 try:                                    # `python3 -m tools.golden`, and type checkers
     from .cases import Case, dlg_executable, load_cases
+    from .provenance import ProvenanceError, assert_baseline, describe
 except ImportError:                      # `python3 tools/golden.py`
     from cases import (  # type: ignore[import-not-found,no-redef]
         Case, dlg_executable, load_cases)
+    from provenance import (  # type: ignore[import-not-found,no-redef]
+        ProvenanceError, assert_baseline, describe)
 
 CORPUS = Path(__file__).resolve().parent.parent
 GOLDEN = CORPUS / "golden"
@@ -360,7 +368,16 @@ def _usable(only: str | None) -> list[Case]:
     return cases
 
 
-def generate(only: str | None = None) -> int:
+def generate(only: str | None = None, legacy_repo: Path | None = None) -> int:
+    # Refused rather than warned about: a golden written by the current build is
+    # indistinguishable from a real one afterwards, and `verify` would pass on it forever.
+    try:
+        repository = assert_baseline(legacy_repo=legacy_repo)
+    except ProvenanceError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(describe(dlg_executable(), repository) + "\n")
+
     settings = load_settings()
     if only is None and GOLDEN.exists():
         shutil.rmtree(GOLDEN)
@@ -378,7 +395,6 @@ def generate(only: str | None = None) -> int:
                    for key, reason in load_expected_skips().items()
                    if key.split("/")[0] != only]
 
-    print(f"driving {dlg_executable()}\n")
     failures = 0
     for case in _usable(only):
         (GOLDEN / case.id).mkdir(exist_ok=True)
@@ -506,11 +522,22 @@ def show(case_id: str, name: str) -> int:
     return 0
 
 
+def _take_legacy_repo(argv: list[str]) -> tuple[list[str], Path | None]:
+    """Pull `--legacy-repo PATH` out of the argument list, if it is there."""
+    if "--legacy-repo" not in argv:
+        return argv, None
+    at = argv.index("--legacy-repo")
+    if at + 1 >= len(argv):
+        raise SystemExit("--legacy-repo needs a path")
+    return argv[:at] + argv[at + 2:], Path(argv[at + 1])
+
+
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else "verify"
     rest = sys.argv[2:]
     if command == "generate":
-        raise SystemExit(generate(*rest))
+        rest, repo = _take_legacy_repo(rest)
+        raise SystemExit(generate(*rest, legacy_repo=repo))
     if command == "verify":
         raise SystemExit(verify(*rest))
     if command == "show" and len(rest) == 2:

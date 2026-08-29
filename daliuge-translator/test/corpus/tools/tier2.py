@@ -38,12 +38,16 @@ from typing import Any, Iterator
 
 try:                                    # `python3 -m tools.tier2`, and type checkers
     from .cases import Case, dlg_executable, load_cases
-    from .golden import Artefact, _digest, _store, read_golden
+    from .golden import (
+        Artefact, _digest, _store, _take_legacy_repo, read_golden)
+    from .provenance import ProvenanceError, assert_baseline, describe
 except ImportError:                     # `python3 tools/tier2.py`
     from cases import (  # type: ignore[import-not-found,no-redef]
         Case, dlg_executable, load_cases)
     from golden import (  # type: ignore[import-not-found,no-redef,attr-defined]
-        Artefact, _digest, _store, read_golden)
+        Artefact, _digest, _store, _take_legacy_repo, read_golden)
+    from provenance import (  # type: ignore[import-not-found,no-redef]
+        ProvenanceError, assert_baseline, describe)
 
 CORPUS = Path(__file__).resolve().parent.parent
 TIER2 = CORPUS / "tier2"
@@ -320,7 +324,16 @@ def _path(case_id: str, name: str) -> Path:
     return TIER2 / case_id / f"{name}.json.gz"
 
 
-def generate() -> int:
+def generate(legacy_repo: Path | None = None) -> int:
+    # Tier 2 stores goldens like Tier 1 does, so it carries the same requirement:
+    # the server about to answer these requests must be the pinned baseline.
+    try:
+        repository = assert_baseline(legacy_repo=legacy_repo)
+    except ProvenanceError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(describe(dlg_executable(), repository) + "\n")
+
     import shutil
     if TIER2.exists():
         shutil.rmtree(TIER2)
@@ -394,7 +407,10 @@ def show(case_id: str, name: str) -> int:
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else "verify"
     if command == "generate":
-        raise SystemExit(generate())
+        argv, repo = _take_legacy_repo(sys.argv[2:])
+        if argv:
+            raise SystemExit(f"unexpected arguments: {argv}")
+        raise SystemExit(generate(legacy_repo=repo))
     if command == "verify":
         raise SystemExit(verify())
     if command == "show" and len(sys.argv) == 4:

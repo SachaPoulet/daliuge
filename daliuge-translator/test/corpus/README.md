@@ -267,6 +267,35 @@ says what, and the produced bytes used to vanish with the temporary directory.
 index describing the previous output and the blobs describing the new one, which nothing
 downstream would report.
 
+### Generating requires the baseline CLI
+
+`generate` refuses to run unless the DALiuGE the CLI would drive is byte-identical to
+`daliuge_baseline_commit` over `daliuge-*/dlg`. A golden written by the current build is
+indistinguishable from a real one afterwards, and `verify` — which compares the current
+build against the goldens — would pass on it forever. The claim has to be established when
+the file is written or not at all.
+
+The check works backwards from the CLI rather than trusting a directory: it asks the CLI's
+own interpreter where its `dlg` package lives, finds the repository containing it, and holds
+*that* repository to the pin. Two setups pass, and they are the same test — a separate
+checkout at the baseline installed editable into its own venv, or this worktree while it
+still carries no translator change. Refusals name what is wrong:
+
+```text
+/…/daliuge carries translator changes from the baseline c96d83fb56d5:
+  daliuge-translator/dlg/dropmake/lg_node.py
+  daliuge-translator/dlg/translator/tool_commands.py
+```
+
+A non-editable install is refused too — it has no history, so its provenance is unknowable.
+`--legacy-repo PATH` additionally requires the CLI to come from that checkout, for when you
+want the invocation to state which one it meant. `tools/tier2.py generate` carries the same
+requirement; `verify` carries none, since measuring the *current* build is its whole job.
+
+There is deliberately no override. Re-pinning the baseline is done by editing `PINS` in
+`tools/manifest.py`, which is reviewed as code, and generation is then held to the new
+commit.
+
 ### No checkout dance was needed
 
 Goldens must come from `c96d83fb`, the recorded baseline. They do: this branch carries no
