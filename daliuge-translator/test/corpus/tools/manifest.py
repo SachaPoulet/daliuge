@@ -82,6 +82,23 @@ def verify() -> int:
     on_disk = {p.relative_to(GRAPHS).as_posix(): digest(p) for p in corpus_files()}
 
     problems = []
+
+    # The pins are the corpus's whole provenance claim — which upstream commit the graphs
+    # came from, and which DALiuGE produced the goldens. They live in PINS above so they
+    # are reviewed as code; checking them here is what stops the copy in MANIFEST.toml
+    # being edited to agree with whatever was actually run.
+    # `generate` emits upstream_prefix after the PINS block with no new table header, so
+    # TOML reads it as one more key of [pins]. Expected here rather than at top level.
+    expected_pins = {**PINS, "upstream_prefix": UPSTREAM_PREFIX}
+    pins = manifest.get("pins", {})
+    for key, value in expected_pins.items():
+        if key not in pins:
+            problems.append(f"pin missing:  {key}")
+        elif pins[key] != value:
+            problems.append(f"pin altered:  {key} = {pins[key]!r}, expected {value!r}")
+    for key in sorted(set(pins) - set(expected_pins)):
+        problems.append(f"pin unlisted: {key}")
+
     for rel, sha in sorted(recorded.items()):
         if rel not in on_disk:
             problems.append(f"missing:  {rel}")

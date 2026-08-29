@@ -36,9 +36,10 @@ from pathlib import Path
 from typing import Any, Iterator, NamedTuple
 
 try:                                    # `python3 -m tools.golden`, and type checkers
-    from .cases import Case, load_cases
+    from .cases import Case, dlg_executable, load_cases
 except ImportError:                      # `python3 tools/golden.py`
-    from cases import Case, load_cases  # type: ignore[import-not-found,no-redef]
+    from cases import (  # type: ignore[import-not-found,no-redef]
+        Case, dlg_executable, load_cases)
 
 CORPUS = Path(__file__).resolve().parent.parent
 GOLDEN = CORPUS / "golden"
@@ -65,17 +66,40 @@ def load_settings() -> list[Setting]:
 
 # --------------------------------------------------------------------- running dlg
 
-def _dlg(argv: list[str], out: Path) -> tuple[int, str]:
-    """Run one dlg stage, writing its JSON to `out`. Returns (returncode, stdout)."""
-    done = subprocess.run(["dlg", *argv, "-o", str(out)],
+class Run(NamedTuple):
+    """The outcome of one `dlg` invocation."""
+
+    code: int
+    stdout: str
+    stderr: str
+
+    def failure(self, what: str) -> str:
+        """A failure line that carries the reason, not just the fact."""
+        tail = " | ".join(line for line in self.stderr.strip().splitlines()[-3:])
+        return f"{what} failed (exit {self.code}){': ' + tail if tail else ''}"
+
+
+def _dlg(argv: list[str], out: Path) -> Run:
+    """Run one dlg stage, writing its JSON to `out`."""
+    done = subprocess.run([dlg_executable(), *argv, "-o", str(out)],
                           capture_output=True, check=False)
-    return done.returncode, done.stdout.decode(errors="replace")
+    return Run(done.returncode,
+               done.stdout.decode(errors="replace"),
+               done.stderr.decode(errors="replace"))
 
 
 def _drops(path: Path) -> list[dict[str, Any]]:
-    """The DROP list of a PGT-shaped artefact, minus the trailing reprodata element."""
+    """The DROP list of a PGT-shaped artefact, minus the trailing reprodata element.
+
+    The trailing element is identified the way the translator itself identifies it — a
+    dict with no truthy `oid` — rather than by position. `parsed[:-1]` would silently
+    discard a real DROP from any artefact that carries no reprodata, and be off by one
+    ever after.
+    """
     parsed: list[dict[str, Any]] = json.loads(path.read_text())
-    return parsed[:-1]
+    if parsed and isinstance(parsed[-1], dict) and not parsed[-1].get("oid"):
+        return parsed[:-1]
+    return parsed
 
 
 def _lg_nodes(path: Path) -> int:
@@ -91,25 +115,36 @@ class Artefact(NamedTuple):
     islands: int | None = None
 
 
-def produce(case: Case, settings: list[Setting]) -> Iterator[Artefact | str]:
-    """Drive one case through the full pipeline, yielding each artefact.
+class Skipped(NamedTuple):
+    """A stage that produced no artefact.
 
-    Yields a `str` instead of an `Artefact` to report a stage that did not produce one
-    — a NoNeedMerge, or an unexpected failure.
+    `expected` separates the two reasons, which must not share a type. A NoNeedMerge is a
+    property of the graph and the setting and is part of the recorded corpus; a stage that
+    fell over is a regression. Collapsing both into a bare string — as this module first
+    did — means `verify` cannot tell "this case has always skipped here" from "the
+    translator just broke", and silently reports neither.
     """
+
+    key: str           # "branchTest/n8i2.metis" — case, or case/tag
+    reason: str
+    expected: bool
+
+
+def produce(case: Case, settings: list[Setting]) -> Iterator[Artefact | Skipped]:
+    """Drive one case through the full pipeline, yielding each artefact."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         lg, pgt = tmp / "lg.json", tmp / "pgt.json"
 
-        code, _ = _dlg(case.prepare_argv(), lg)
-        if code != 0:
-            yield f"{case.id}: {case.prepare} failed"
+        run = _dlg(case.prepare_argv(), lg)
+        if run.code != 0:
+            yield Skipped(case.id, run.failure(case.prepare), expected=False)
             return
         yield Artefact("lg", lg.read_bytes(), _lg_nodes(lg))
 
-        code, _ = _dlg(case.unroll_argv(lg), pgt)
-        if code != 0:
-            yield f"{case.id}: unroll failed"
+        run = _dlg(case.unroll_argv(lg), pgt)
+        if run.code != 0:
+            yield Skipped(case.id, run.failure("unroll"), expected=False)
             return
         yield Artefact("pgt", pgt.read_bytes(), len(_drops(pgt)))
 
@@ -118,32 +153,58 @@ def produce(case: Case, settings: list[Setting]) -> Iterator[Artefact | str]:
                 yield from _partition_and_map(case, setting, algo, pgt, tmp)
 
 
+def _is_partitioned(drops: list[dict[str, Any]]) -> bool:
+    """Whether `partition` actually partitioned, judged on the DROPs it emitted.
+
+    `dlg_partition` catches GPGTNoNeedMergeException, prints prose, and emits the
+    *unpartitioned* graph with exit code 0 — so neither the exit code nor the absence of a
+    traceback distinguishes the two. The DROPs do: a partitioned graph carries `node` and
+    `island` labels and an unpartitioned one does not.
+    """
+    return bool(drops) and all("node" in d and "island" in d for d in drops)
+
+
 def _partition_and_map(case: Case, setting: Setting, algo: str,
-                       pgt: Path, tmp: Path) -> Iterator[Artefact | str]:
+                       pgt: Path, tmp: Path) -> Iterator[Artefact | Skipped]:
     tag = f"{setting.id}.{algo}"
+    key = f"{case.id}/{tag}"
     pgtp, pg = tmp / f"pgtp.{tag}.json", tmp / f"pg.{tag}.json"
 
-    code, stdout = _dlg(["partition", "-P", str(pgt), "-a", algo,
-                         "-N", str(setting.partitions),
-                         "-i", str(setting.islands)], pgtp)
-    if code != 0:
-        yield f"{case.id}/{tag}: partition failed"
-        return
-    if NO_NEED_MERGE in stdout:
-        yield f"{case.id}/{tag}: no-need-merge (too few DROPs for this setting)"
+    run = _dlg(["partition", "-P", str(pgt), "-a", algo,
+                "-N", str(setting.partitions),
+                "-i", str(setting.islands)], pgtp)
+    if run.code != 0:
+        yield Skipped(key, run.failure("partition"), expected=False)
         return
 
     drops = _drops(pgtp)
+    partitioned = _is_partitioned(drops)
+    prose = NO_NEED_MERGE in run.stdout
+    if partitioned != (not prose):
+        # The prose and the DROPs disagree: one of the two detectors has gone stale, and
+        # which one is not guessable from here. Refuse rather than file whichever the
+        # coin lands on — an unpartitioned graph stored as a partitioned golden is
+        # exactly the corruption this check exists to prevent.
+        yield Skipped(key,
+                      f"cannot classify partition result: DROPs "
+                      f"{'are' if partitioned else 'are not'} labelled but the "
+                      f"no-need-merge notice {'was' if prose else 'was not'} printed",
+                      expected=False)
+        return
+    if not partitioned:
+        yield Skipped(key, "no-need-merge (too few DROPs for this setting)", expected=True)
+        return
+
     parts, isles = _extent(drops, "node"), _extent(drops, "island")
     yield Artefact(f"pgtp.{tag}", pgtp.read_bytes(), len(drops), parts, isles)
 
     # `map -i` and the host list are both dictated by the PGT-P, not by the setting: they
     # have to cover the highest index the partitioner actually emitted.
-    code, _ = _dlg(["map", "-P", str(pgtp),
-                    "-N", ",".join(_map_hosts(isles, parts)),
-                    "-i", str(isles)], pg)
-    if code != 0:
-        yield f"{case.id}/{tag}: map failed"
+    run = _dlg(["map", "-P", str(pgtp),
+                "-N", ",".join(_map_hosts(isles, parts)),
+                "-i", str(isles)], pg)
+    if run.code != 0:
+        yield Skipped(key, run.failure("map"), expected=False)
         return
     yield Artefact(f"pg.{tag}", pg.read_bytes(), len(_drops(pg)))
 
@@ -183,34 +244,109 @@ def read_golden(case_id: str, name: str) -> bytes:
     return gzip.decompress(path_of(case_id, name).read_bytes())
 
 
+def _stored_digest(case_id: str, name: str) -> str:
+    """The sha256 of the stored blob, or a description of why it could not be read."""
+    try:
+        return _digest(read_golden(case_id, name))
+    except FileNotFoundError:
+        return "missing"
+    except (OSError, gzip.BadGzipFile, EOFError) as error:
+        return f"unreadable: {type(error).__name__}"
+
+
 def _digest(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _write_index(rows: list[dict[str, Any]], skipped: list[str]) -> None:
+def _toml_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _write_index(rows: list[dict[str, Any]], skipped: list[Skipped]) -> None:
     lines = ["# Phase 0 goldens — GENERATED, do not hand-edit.",
              "# Regenerate with: python3 tools/golden.py generate",
              "# Verify with:     python3 tools/golden.py verify",
              ""]
-    for note in skipped:
-        lines.append(f"# skipped: {note}")
-    lines.append("")
     for row in rows:
         lines += ["[[artefact]]",
                   f'case = "{row["case"]}"',
                   f'name = "{row["name"]}"',
                   f'sha256 = "{row["sha256"]}"',
                   f'elements = {row["elements"]}']
-        if row["partitions"] is not None:
+        # `.get`, not `[...]`: rows round-tripped through INDEX.toml carry these keys only
+        # when they were written, so a row read back is not shaped like a fresh one.
+        if row.get("partitions") is not None:
             lines.append(f'partitions = {row["partitions"]}')
             lines.append(f'islands = {row["islands"]}')
         lines.append("")
+
+    # Recorded, not commented: `verify` holds the skip set to this list in both
+    # directions, so a stage that starts or stops skipping is reported like any drift.
+    for skip in sorted(skipped):
+        lines += ["[[skipped]]",
+                  f'key = "{_toml_escape(skip.key)}"',
+                  f'reason = "{_toml_escape(skip.reason)}"',
+                  ""]
     INDEX.write_text("\n".join(lines))
 
 
 def load_index() -> dict[tuple[str, str], dict[str, Any]]:
     document = tomllib.loads(INDEX.read_text())
     return {(row["case"], row["name"]): row for row in document.get("artefact", [])}
+
+
+def load_expected_skips() -> dict[str, str]:
+    """The skips the corpus records, keyed by `case` or `case/tag`."""
+    document = tomllib.loads(INDEX.read_text())
+    return {row["key"]: row["reason"] for row in document.get("skipped", [])}
+
+
+# --------------------------------------------------------------- explaining a drift
+
+def _child(path: str, key: str) -> str:
+    return f"{path}.{key}" if key.isidentifier() else f"{path}[{json.dumps(key)}]"
+
+
+def first_difference(expected: Any, actual: Any, path: str = "$") -> str | None:
+    """The first structural difference between two decoded artefacts, as a JSON path.
+
+    A sha256 mismatch says an artefact moved; it never says *what* moved, and the
+    produced bytes used to live in a TemporaryDirectory that was gone by the time anyone
+    read the report. This turns "DRIFT chiles_simple/pgt" into a line a reviewer can act
+    on without decompressing anything.
+    """
+    if type(expected) is not type(actual):
+        return (f"{path}: type differs "
+                f"({type(expected).__name__} != {type(actual).__name__})")
+
+    if isinstance(expected, dict):
+        for key in sorted(set(expected) - set(actual)):
+            return f"{_child(path, key)}: missing (golden has {_render(expected[key])})"
+        for key in sorted(set(actual) - set(expected)):
+            return f"{_child(path, key)}: unexpected (now {_render(actual[key])})"
+        for key in expected:                       # document order, not sorted
+            found = first_difference(expected[key], actual[key], _child(path, key))
+            if found:
+                return found
+        return None
+
+    if isinstance(expected, list):
+        if len(expected) != len(actual):
+            return f"{path}: length {len(expected)} -> {len(actual)}"
+        for index, item in enumerate(expected):
+            found = first_difference(item, actual[index], f"{path}[{index}]")
+            if found:
+                return found
+        return None
+
+    if expected != actual:
+        return f"{path}: {_render(expected)} -> {_render(actual)}"
+    return None
+
+
+def _render(value: Any, limit: int = 120) -> str:
+    rendered = json.dumps(value, sort_keys=True)
+    return rendered if len(rendered) <= limit else rendered[:limit] + "..."
 
 
 # --------------------------------------------------------------------- commands
@@ -230,15 +366,31 @@ def generate(only: str | None = None) -> int:
         shutil.rmtree(GOLDEN)
     GOLDEN.mkdir(exist_ok=True)
 
+    # A single-case run must still leave INDEX.toml describing what is on disk. Writing
+    # only the blobs — as this used to — leaves the index describing the previous output
+    # while `drift.py`, which reads the blobs, sees the new one, and nothing reports the
+    # disagreement.
     rows: list[dict[str, Any]] = []
-    skipped: list[str] = []
+    skipped: list[Skipped] = []
+    if only is not None:
+        rows = [row for row in load_index().values() if row["case"] != only]
+        skipped = [Skipped(key, reason, expected=True)
+                   for key, reason in load_expected_skips().items()
+                   if key.split("/")[0] != only]
+
+    print(f"driving {dlg_executable()}\n")
+    failures = 0
     for case in _usable(only):
         (GOLDEN / case.id).mkdir(exist_ok=True)
         produced = 0
         for item in produce(case, settings):
-            if isinstance(item, str):
-                skipped.append(item)
-                print(f"  --    {item}")
+            if isinstance(item, Skipped):
+                if item.expected:
+                    skipped.append(item)
+                    print(f"  --    {item.key}: {item.reason}")
+                else:
+                    failures += 1
+                    print(f"  FAIL  {item.key}: {item.reason}", file=sys.stderr)
                 continue
             path_of(case.id, item.name).write_bytes(_store(item.payload))
             rows.append({"case": case.id, "name": item.name,
@@ -247,37 +399,97 @@ def generate(only: str | None = None) -> int:
             produced += 1
         print(f"  ok    {case.id}  ({produced} artefacts)")
 
-    if only is None:
-        _write_index(rows, skipped)
-        print(f"\n{len(rows)} artefacts, {len(skipped)} stages skipped")
+    rows.sort(key=lambda row: (row["case"], row["name"]))
+    _write_index(rows, skipped)
+    print(f"\n{len(rows)} artefacts, {len(skipped)} stages skipped")
+    if failures:
+        print(f"{failures} stage(s) failed; the corpus written is incomplete",
+              file=sys.stderr)
+        return 1
     return 0
+
+
+def _explain(case_id: str, name: str, payload: bytes) -> str:
+    """Say what moved, and leave the produced artefact on disk to diff against."""
+    actual = path_of(case_id, name).with_suffix("").with_suffix(".actual.json")
+    actual.write_bytes(payload)
+    try:
+        difference = first_difference(json.loads(read_golden(case_id, name)),
+                                      json.loads(payload))
+    except (OSError, gzip.BadGzipFile, json.JSONDecodeError) as error:
+        return f"could not diff against the stored golden ({error}); wrote {actual}"
+    return f"{difference or 'byte-level difference only'}; wrote {actual}"
 
 
 def verify(only: str | None = None) -> int:
     settings = load_settings()
     index = load_index()
+    expected_skips = load_expected_skips()
     problems: list[str] = []
     seen: set[tuple[str, str]] = set()
+    skipped: set[str] = set()
+    broken: set[str] = set()
 
+    print(f"driving {dlg_executable()}\n")
     for case in _usable(only):
         for item in produce(case, settings):
-            if isinstance(item, str):
+            if isinstance(item, Skipped):
+                # A stage that produced nothing is a result, not an absence of one.
+                skipped.add(item.key)
+                if not item.expected:
+                    broken.add(case.id)
+                    problems.append(f"{item.key}: {item.reason}")
+                    print(f"  FAIL  {item.key}: {item.reason}")
+                elif item.key not in expected_skips:
+                    problems.append(f"{item.key}: skipped, but INDEX.toml does not "
+                                    f"record a skip here ({item.reason})")
+                    print(f"  SKIP? {item.key}")
+                else:
+                    print(f"  --    {item.key}")
                 continue
+
             key = (case.id, item.name)
             seen.add(key)
             recorded = index.get(key)
             if recorded is None:
                 problems.append(f"{case.id}/{item.name}: new artefact, not in INDEX.toml")
                 print(f"  NEW   {case.id}/{item.name}")
-            elif recorded["sha256"] != _digest(item.payload):
-                problems.append(f"{case.id}/{item.name}: content differs from golden")
+                continue
+            if recorded["sha256"] != _digest(item.payload):
+                problems.append(f"{case.id}/{item.name}: content differs from golden — "
+                                + _explain(case.id, item.name, item.payload))
                 print(f"  DRIFT {case.id}/{item.name}")
-            else:
-                print(f"  ok    {case.id}/{item.name}")
+                continue
+            # The stored blob is the artefact this corpus claims to hold; INDEX.toml is
+            # only its description. Checking the description alone leaves a corrupt or
+            # half-regenerated blob invisible here while `drift.py`, which reads blobs,
+            # quietly scans it.
+            stored = _stored_digest(case.id, item.name)
+            if stored != recorded["sha256"]:
+                problems.append(f"{case.id}/{item.name}: stored golden disagrees with "
+                                f"INDEX.toml ({stored})")
+                print(f"  BLOB  {case.id}/{item.name}")
+                continue
+            print(f"  ok    {case.id}/{item.name}")
 
-    for key in sorted(set(index) - seen) if only is None else []:
-        problems.append(f"{key[0]}/{key[1]}: golden exists but was not reproduced")
-        print(f"  GONE  {key[0]}/{key[1]}")
+    # Restricted to the selected case rather than switched off: with the check disabled,
+    # a single-case run in which every stage failed produced nothing, compared nothing,
+    # and reported success.
+    for key in sorted(k for k in index if only is None or k[0] == only):
+        if key not in seen:
+            problems.append(f"{key[0]}/{key[1]}: golden exists but was not reproduced")
+            print(f"  GONE  {key[0]}/{key[1]}")
+
+    # A recorded skip that no longer fires is news — unless the case fell over before
+    # reaching it, in which case the earlier failure is the finding and "the stage now
+    # runs" would be the opposite of what happened.
+    for key in sorted(expected_skips):
+        case_id = key.split("/")[0]
+        if only is not None and case_id != only:
+            continue
+        if key not in skipped and case_id not in broken:
+            problems.append(f"{key}: recorded as skipped, but the stage now runs")
+            print(f"  FIXED {key}")
 
     print()
     for problem in problems:

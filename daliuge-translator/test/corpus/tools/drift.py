@@ -108,6 +108,81 @@ def collect() -> list[Findings]:
     return [scan(case) for case in load_cases() if case.goldenable]
 
 
+# ------------------------------------------------------------------- positive controls
+
+def _strip_fields(node: dict[str, Any], names: tuple[str, ...]) -> None:
+    node["fields"] = [f for f in node.get("fields", []) if f.get("name") not in names]
+
+
+def _node_where(graph: dict[str, Any], predicate) -> dict[str, Any]:
+    return next(n for n in graph["nodeDataArray"] if predicate(n))
+
+
+def _control_row5(graph):
+    _strip_fields(_node_where(graph, lambda n: n.get("category") == "Scatter"),
+                  SCATTER_KEYS)
+
+
+def _control_row5b(graph):
+    _strip_fields(_node_where(graph, lambda n: n.get("category") == "Loop"), LOOP_KEYS)
+
+
+def _control_row5d(graph):
+    _node_where(graph, lambda n: n.get("category") == "Scatter").pop("categoryType", None)
+
+
+def _control_row5e(graph):
+    node = _node_where(graph, lambda n: n.get("category") == "File")
+    node["category"] = "Data"
+    node.pop("categoryType", None)
+
+
+CONTROLS = [
+    ("row5", "SuperBasicScatterGather", "`num_of_copies` stripped from the Scatter",
+     _control_row5),
+    ("row5b", "testLoop", "`num_of_iter` stripped from the Loop", _control_row5b),
+    ("row5d", "SuperBasicScatterGather", "`categoryType` stripped from a Scatter node",
+     _control_row5d),
+    ("row5e", "HelloWorld_simple", "a File node forced to `category: Data` with no "
+     "`categoryType`", _control_row5e),
+]
+
+
+def run_controls() -> list[tuple[str, str, bool]]:
+    """Prove each rule can still fire, by feeding it a graph that should trip it.
+
+    A scanner that reports nothing is indistinguishable from a broken one, and this
+    corpus reports nothing for all four rows. The claim that the zero is real therefore
+    rests entirely on these controls — so they are measured on every run and rendered
+    from the measurement, rather than asserted in prose the generator prints regardless.
+
+    Returns `(row, description, detected)` per control.
+    """
+    results = []
+    for row, case_id, description, mutate in CONTROLS:
+        try:
+            graph = json.loads(read_golden(case_id, "lg"))
+            mutate(graph)
+            found = scan_raw(f"control:{row}", json.dumps(graph).encode())
+        # pylint: disable=broad-exception-caught  # noqa: BLE001 - reported, not raised
+        except Exception as failure:
+            results.append((row, f"{description} — control itself failed: {failure}",
+                            False))
+            continue
+
+        if getattr(found, row):
+            results.append((row, description, True))
+        elif found.error:
+            # Once Phase 1a lands, a graph that trips row 5 or 5b stops building at all,
+            # so the rule fires as an exception rather than as a row. That still counts —
+            # but it is a different observation, and saying so keeps the two from
+            # quietly becoming interchangeable.
+            results.append((row, f"{description} (fired as `{found.error}`)", True))
+        else:
+            results.append((row, description, False))
+    return results
+
+
 ROWS = [
     ("row5", "Scatter with no DoP field",
      "silently 4 (lg_node.py:629)", "`GInvalidNode` naming the node", "#14"),
@@ -120,8 +195,10 @@ ROWS = [
 ]
 
 
-def render(findings: list[Findings]) -> str:
+def render(findings: list[Findings],
+           controls: list[tuple[str, str, bool]] | None = None) -> str:
     hits = [f for f in findings if not f.clean]
+    controls = run_controls() if controls is None else controls
     lines = [
         "# Expected drift",
         "",
@@ -160,19 +237,26 @@ def render(findings: list[Findings]) -> str:
             "### Why believe a zero",
             "",
             "A rule scanner that reports nothing is indistinguishable from a broken one, so",
-            "each row was positively controlled: a corpus graph was deliberately malformed",
-            "and re-scanned, and every row fired.",
+            "each row is positively controlled: a corpus graph is deliberately malformed and",
+            "re-scanned. The table below is the result of running those controls during this",
+            "report, not a claim recorded when they were last run by hand.",
             "",
             "| Row | Control | Detected |",
             "|---|---|---|",
-            "| row5 | `num_of_copies` stripped from `SuperBasicScatterGather`'s Scatter | yes |",
-            "| row5b | `num_of_iter` stripped from `testLoop`'s Loop | yes |",
-            "| row5d | `categoryType` stripped from a Scatter node | yes |",
-            "| row5e | a File node forced to `category: Data` with no `categoryType` | yes |",
+        ]
+        lines += [f"| {row} | {description} | {'yes' if detected else '**NO**'} |"
+                  for row, description, detected in controls]
+        lines += [
             "",
             "`scan_raw()` is split out from `scan()` precisely so those controls can be run",
             "against synthetic graphs.",
         ]
+        if not all(detected for _, _, detected in controls):
+            lines += [
+                "",
+                "> ⚠ **A control did not fire.** The zero above is unproven for that row —",
+                "> the scanner may be reporting nothing because it cannot report anything.",
+            ]
     else:
         lines += ["## Affected graphs", ""]
         for finding in hits:

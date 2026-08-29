@@ -33,13 +33,14 @@ purpose-built malformed graphs; the corpus will not do it for them.
 ### Why believe a zero
 
 A rule scanner that reports nothing is indistinguishable from a broken one, so
-each row was positively controlled: a corpus graph was deliberately malformed
-and re-scanned, and every row fired.
+each row is positively controlled: a corpus graph is deliberately malformed and
+re-scanned. The table below is the result of running those controls during this
+report, not a claim recorded when they were last run by hand.
 
 | Row | Control | Detected |
 |---|---|---|
-| row5 | `num_of_copies` stripped from `SuperBasicScatterGather`'s Scatter | yes |
-| row5b | `num_of_iter` stripped from `testLoop`'s Loop | yes |
+| row5 | `num_of_copies` stripped from the Scatter | yes |
+| row5b | `num_of_iter` stripped from the Loop | yes |
 | row5d | `categoryType` stripped from a Scatter node | yes |
 | row5e | a File node forced to `category: Data` with no `categoryType` | yes |
 

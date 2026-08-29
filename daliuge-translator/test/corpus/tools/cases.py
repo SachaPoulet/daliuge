@@ -8,11 +8,14 @@ import :func:`load_cases` rather than walking ``graphs/`` itself.
     python3 tools/cases.py list     # the manifest as a table
     python3 tools/cases.py check    # re-run every case, exit 1 on any disagreement
 
-``check`` needs a DALiuGE install on PATH and takes a couple of minutes; ``cont_img_mvp``
-alone unrolls to 144 DROPs.
+``check`` drives a DALiuGE install (see :func:`dlg_executable`) and takes a couple of
+minutes; ``cont_img_mvp`` alone unrolls to 144 DROPs.
 """
 
+import functools
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -23,6 +26,37 @@ from typing import Any
 CORPUS = Path(__file__).resolve().parent.parent
 CASES = CORPUS / "CASES.toml"
 GRAPHS = CORPUS / "graphs"
+
+
+@functools.lru_cache(maxsize=1)
+def dlg_executable() -> str:
+    """The ``dlg`` CLI every corpus tool drives.
+
+    Resolution order is deliberate. ``$PATH`` is consulted *last* because it is the one
+    source that has nothing to do with the interpreter running the corpus: with a DALiuGE
+    venv active, ``shutil.which("dlg")`` answers the same way no matter which Python
+    invoked the tooling, so a run can silently measure a different install than the one
+    under test. The interpreter's own sibling script is the build the caller actually
+    chose.
+
+    ``DLG_CLI`` overrides both, for the case where the CLI genuinely lives elsewhere.
+    """
+    configured = os.environ.get("DLG_CLI")
+    if configured:
+        return configured
+
+    sibling = Path(sys.executable).with_name("dlg")
+    if sibling.is_file():
+        return str(sibling)
+
+    found = shutil.which("dlg")
+    if found:
+        return found
+
+    raise SystemExit(
+        "Cannot locate the dlg CLI. Activate the DALiuGE environment, or set DLG_CLI "
+        "to the console-script path."
+    )
 
 
 @dataclass(frozen=True)
@@ -133,7 +167,8 @@ def load_cases() -> list[Case]:
 
 
 def _run(argv: list[str], stdin: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(["dlg", *argv], input=stdin, capture_output=True, check=False)
+    return subprocess.run([dlg_executable(), *argv], input=stdin,
+                          capture_output=True, check=False)
 
 
 def unroll(case: Case) -> tuple[list[dict[str, Any]] | None, str, str]:
@@ -162,6 +197,7 @@ def _last_exception_line(stderr: str) -> str:
 
 def check() -> int:
     problems = []
+    print(f"driving {dlg_executable()}\n")
     for case in load_cases():
         drops, failed_stage, stderr = unroll(case)
 

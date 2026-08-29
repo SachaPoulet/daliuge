@@ -37,10 +37,11 @@ from pathlib import Path
 from typing import Any, Iterator
 
 try:                                    # `python3 -m tools.tier2`, and type checkers
-    from .cases import Case, load_cases
+    from .cases import Case, dlg_executable, load_cases
     from .golden import Artefact, _digest, _store, read_golden
 except ImportError:                     # `python3 tools/tier2.py`
-    from cases import Case, load_cases  # type: ignore[import-not-found,no-redef]
+    from cases import (  # type: ignore[import-not-found,no-redef]
+        Case, dlg_executable, load_cases)
     from golden import (  # type: ignore[import-not-found,no-redef,attr-defined]
         Artefact, _digest, _store, read_golden)
 
@@ -112,7 +113,7 @@ class Translator:
         (root / "lg").mkdir()
         (root / "pgt").mkdir()
         self._proc = subprocess.Popen(
-            ["dlg", "tm", "-H", "127.0.0.1", "-p", str(self.port),
+            [dlg_executable(), "tm", "-H", "127.0.0.1", "-p", str(self.port),
              "-d", str(root / "lg"), "-t", str(root / "pgt")],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

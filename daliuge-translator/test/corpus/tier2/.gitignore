@@ -1,0 +1,3 @@
+# Produced by `tools/golden.py verify` when an artefact drifts, so the new output can be
+# diffed against the stored golden. Diagnostic scratch, never part of the corpus.
+*.actual.json
