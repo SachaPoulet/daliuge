@@ -650,9 +650,14 @@ class LGNode:
                         "Number of Iterations",
                         "Number of loops",
                     ]:
-                        if key in self.jd:
-                            self._dop = int(self.jd.get(key, 1))
+                        if key in self.jd and self.jd[key]:
+                            self._dop = int(self.jd[key])
                             break
+                    if self._dop is None:
+                        raise GInvalidNode(
+                            f"Loop '{self.name}' ({self.id}) has no iteration count. "
+                            "One of 'num_of_iter', 'Number of Iterations', 'Number of loops' is required."
+                        )
                 elif self.is_service:
                     self._dop = 1  # TODO: number of compute nodes
                 elif self.is_subgraph:
