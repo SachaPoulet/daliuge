@@ -29,7 +29,7 @@ from collections import defaultdict
 
 import networkx as nx
 import numpy as np
-from pyswarm import pso
+from pyswarm import pso  # type: ignore[import-untyped]
 
 from dlg.translator.stages.partition.utils.antichains import get_max_weighted_antichain
 from dlg.common import dropdict, get_roots, CategoryType
@@ -50,7 +50,7 @@ class Schedule(object):
 
     def __init__(self, dag, max_dop):
         self._dag = dag
-        self._max_dop = max_dop if type(max_dop) == int else max_dop.get("num_cpus", 1)
+        self._max_dop = max_dop if isinstance(max_dop, int) else max_dop.get("num_cpus", 1)
         DAGUtil.label_schedule(self._dag)
         self._lpl = DAGUtil.get_longest_path(
             self._dag, default_weight=0, show_path=True
@@ -438,7 +438,7 @@ class KFamilyPartition(Partition):
         self._tc = defaultdict(set)
         self.tmp_max_dop = {}
 
-    def add_node(self, u): #pylint: disable=arguments-differ
+    def add_node(self, u):  # pylint: disable=arguments-differ
         """
         Add a single node u to the partition
         """
@@ -452,7 +452,7 @@ class KFamilyPartition(Partition):
             self.tmp_max_dop[k] = get_max_weighted_antichain(self._dag, w_attr=k)[0]
         self._max_dop = self.tmp_max_dop
 
-    def can_merge(self, that, u, v): #pylint: disable=arguments-differ
+    def can_merge(self, that, u, v):  # pylint: disable=arguments-differ
         """"""
         dag = nx.compose(self._dag, that.dag)
         if u is not None:
@@ -479,7 +479,7 @@ class KFamilyPartition(Partition):
         self.tmp_max_dop = tmp_max_dop  # only change it when returning True
         return True
 
-    def merge(self, that, u, v): #pylint: disable=arguments-differ
+    def merge(self, that, u, v):  # pylint: disable=arguments-differ
         self._dag = nx.compose(self._dag, that.dag)
         if u is not None:
             self._dag.add_edge(u, v)
@@ -543,7 +543,7 @@ class Scheduler(object):
                 # sc = part.schedule
                 pdop = part.max_dop
                 # TODO add memory as one of the LB condition too
-                cc_eval = pdop if type(pdop) == int else pdop.get("num_cpus", 1)
+                cc_eval = pdop if isinstance(pdop, int) else pdop.get("num_cpus", 1)
                 G.add_node(part.partition_id, cc=cc_eval)
 
         for e in self._part_edges:
@@ -651,7 +651,7 @@ class MySarkarScheduler(Scheduler):
 
         if index is None:
             raise SchedulerException("Failed to find r_gid")
-        parts[:] = parts[:index] + parts[index + 1 :]
+        parts[:] = parts[:index] + parts[index + 1:]
 
         return part_new
 
@@ -851,7 +851,7 @@ class PSOScheduler(Scheduler):
         # print "PSO scheduler took {0} seconds".format(edt - stt)
         st_gid = len(self._drop_list) + 1 + num_parts
         for n in self._dag.nodes(data=True):
-            if not "gid" in n[1]:
+            if "gid" not in n[1]:
                 n[1]["gid"] = st_gid
                 part = Partition(st_gid, self._max_dop)
                 part.add_node(n[0], n[1].get("weight", 1))
@@ -1070,7 +1070,7 @@ class DAGUtil(object):
         todo = []
         for antichain in antichains:
             todo.append(antichain)
-        todo.sort(key=lambda x: len(x), reverse=True) # pylint: disable=unnecessary-lambda
+        todo.sort(key=len, reverse=True)  # pylint: disable=unnecessary-lambda
         return todo
 
     @staticmethod
@@ -1122,7 +1122,7 @@ class DAGUtil(object):
                 continue
             try:
                 ma[i, stt:edt] = np.ones((1, leng))
-            except:
+            except Exception:
                 logger.error("i, stt, edt, leng = %d, %d, %d, %d", i, stt, edt, leng)
                 logger.error("N, M = %d, %d", M, N)
                 raise
@@ -1142,7 +1142,7 @@ class DAGUtil(object):
             os.environ["METIS_DLL"] = str(
                 importlib.resources.files("dlg.dropmake") / f"lib/libmetis.{ext}"
             )
-            import metis as mt
+            import metis as mt  # type: ignore[import-untyped]
         if not hasattr(mt, "dlg_patched"):
             mt.tmp_part_graph = mt.part_graph
 

@@ -366,7 +366,7 @@ class PGT(object):
             elif CategoryType.APPLICATION == tt:
                 node["category"] = "Application"
             node["name"] = drop["name"]
-            if not "iid" in drop:
+            if "iid" not in drop:
                 drop["iid"] = 0
             node["iid"] = drop["iid"]
             nodes.append(node)
