@@ -28,6 +28,7 @@ flowchart TD
     P2_1 --> P2_2["P2-2 dlg.dropmake shims"] & P2_3["P2-3 libmetis"] & P2_4["P2-4 lg.graph.schema"]
     P2_2 & P2_3 & P2_4 --> P2_5["P2-5 Phase 2 exit check"]
     P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + registry"]
+    P2b_1 --> P2b_2["P2b-2 relocate test tree"]
     P3_1 --> P3_2["P3-2 dop chain to handlers"] & P3_3["P3-3 validate_link to handlers"]
     P3_2 & P3_3 --> P4_1["P4-1 lift link.py"]
     P4_1 --> P4_2["P4-2 instantiate/wire split"] --> P4_3["P4-3 resolve_edges per construct"] --> P4_4["P4-4 LoopHandler last"]
@@ -440,6 +441,9 @@ Marks the end of Phase 2. Checklist:
 - [ ] A REST validate call succeeds.
 - [ ] `test/dropmake/test_tm.py` green.
 - [ ] `daliuge-engine` imports and runs — smoke-run `create_dlg_job.py`.
+- [ ] The translator's own suite **collects**. A stale import under `test/` is a collection
+      error, not a test failure: pytest aborts the whole run, so "no tests failed" and "no
+      tests ran" look identical in a summary line.
 
 ---
 
@@ -449,7 +453,7 @@ Marks the end of Phase 2. Checklist:
 
 - **Label:** `Phase 2b`
 - **Blocked by:** P2-5
-- **Blocking:** —
+- **Blocking:** P2b-2
 
 `dlg/dropmake/web/` → `dlg/translator/web/`, and
 `dlg/dropmake/pg_manager.py` → `dlg/translator/web/pg_manager.py`.
@@ -467,6 +471,44 @@ Marks the end of Phase 2. Checklist:
 The schema move is **not** part of this phase — it landed in P2-4 with `stages/prepare/`.
 
 HTML and `web/src` stay byte-identical. Endpoint paths, methods and payloads unchanged.
+
+## P2b-2 — Relocate the translator test tree
+
+- **Label:** `Phase 2b`
+- **Blocked by:** P2b-1
+- **Blocking:** —
+
+`test/dropmake/` → `test/translator/`, mirroring the source layout.
+
+Last of the moves, because it is the only one that cannot start earlier: six of the seven
+modules under `test/dropmake/` test code that leaves in Phase 2, but `test_tm.py` tests
+`translator_rest.py`, which does not move until P2b-1. Relocating in Phase 2 means moving
+six files and then moving the seventh separately.
+
+| test module | subject | subject moves in |
+|-------------|---------|------------------|
+| `test_dm_utils.py` | `dm_utils` → `stages/prepare/normalise/**` | P2-1 |
+| `test_graph_config.py` | `graph_config` → `stages/prepare/config.py` | P2-1 |
+| `test_lg.py`, `test_lg_fill.py` | `lg.py`, `pg_generator.fill` | P2-1 |
+| `test_pg_gen.py` | `pg_generator`, `pgt`, `pgtp` | P2-1 |
+| `test_scheduler.py` | `scheduler.py` | P2-1 |
+| `test_tm.py` | `web/translator_rest.py` | P2b-1 |
+
+Two filenames name a module that no longer exists and are renamed in the same PR:
+`test_dm_utils.py` → `test_normalise.py`, and `test_pg_gen.py` → whatever `pg_generator`'s
+four halves settled into (open — decide when P2-1 lands, not now).
+
+⚠ **An import rewrite does not cover this move**, for the same reason it does not cover the
+package (§8 Q7) — and the test tree has its own instance of the failure class. P2-1 hit it:
+`test_graph_config.py` pinned the **logger name** as a literal,
+`"WARNING:dlg.dlg.dropmake.graph_config:"`, feeding six assertions. Repointing the import
+left it stale, and it fails as an assertion, not an error. Grep the test tree for the old
+dotted path, not just for `import`.
+
+⚠ **This issue is scoped to the move.** P2-1 already repointed `test_dm_utils.py` and
+`test_graph_config.py` where they stand, because leaving them broken meant shipping a red
+suite. Every phase repoints the tests it breaks, as it breaks them; this issue only relocates
+files that already pass.
 
 ---
 
