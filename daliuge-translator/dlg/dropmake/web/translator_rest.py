@@ -73,7 +73,7 @@ from dlg import utils
 from dlg.common.deployment_methods import DeploymentMethods
 from dlg.common.version import version as dlg_version
 from dlg.common.k8s_utils import check_k8s_env
-from dlg.dropmake.lg import GraphException
+from dlg.translator.errors import GraphException
 from dlg.dropmake.pg_manager import PGManager
 from dlg.dropmake.scheduler import SchedulerException
 from dlg.dropmake.web.translator_utils import (

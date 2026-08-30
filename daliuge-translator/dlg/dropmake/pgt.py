@@ -30,7 +30,7 @@ import json
 import logging
 import math
 
-from dlg.dropmake.lg import GraphException
+from dlg.translator.errors import GraphException
 from dlg.dropmake.scheduler import DAGUtil
 from dlg.common import CategoryType, dropdict
 

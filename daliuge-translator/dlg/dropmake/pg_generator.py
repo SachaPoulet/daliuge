@@ -25,37 +25,26 @@ the profiling information and turns it into the partitioned physical graph,
 which will then be deployed and monitored by the Physical Graph Manager
 """
 
-import json
 import logging
-import string
 
+from dlg.translator.errors import GraphException
+
+# Frozen facade (proposal 7.1/7.2). These moved out to their stages, but the
+# names must keep resolving here: daliuge-engine imports `unroll` in production
+# (dlg/apps/subgraph.py calls it inside a running workflow) and `fill_config`
+# (dlg/deploy/create_dlg_job.py), and web/ imports `fill` and `unroll`.
+# Re-export only -- do not drop, do not add logic.
+# pylint: disable=unused-import
 from dlg.translator.stages.prepare.config import fill_config
-from dlg.dropmake.lg import LG, GraphException
+from dlg.translator.stages.prepare.params import apply_config, fill
+from dlg.translator.stages.unroll.stage import unroll
+
+# pylint: enable=unused-import
 from dlg.dropmake.pgt import PGT
 from dlg.dropmake.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
 
 
 logger = logging.getLogger(f"dlg.{__name__}")
-
-
-def unroll(lg, oid_prefix=None, zerorun=False, app=None):
-    """Unrolls a logical graph"""
-    lg = LG(lg, ssid=oid_prefix)
-    drop_list = lg.unroll_to_tpl()
-    if zerorun:
-        for dropspec in drop_list:
-            if "sleep_time" in dropspec:
-                dropspec["sleep_time"] = 0
-    if app:
-        logger.info("Replacing apps with %s", app)
-        for dropspec in drop_list:
-            if "dropclass" in dropspec and dropspec["categoryType"] == "Application":
-                dropspec["dropclass"] = app
-                dropspec["sleep_time"] = (
-                    dropspec["execution_time"] if "execution_time" in dropspec else 2
-                )
-    drop_list.append(lg.reprodata)
-    return drop_list
 
 
 ALGO_NONE = 0

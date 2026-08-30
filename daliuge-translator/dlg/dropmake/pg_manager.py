@@ -28,7 +28,7 @@ import threading
 
 import numpy as np
 
-from dlg.dropmake.lg import GraphException
+from dlg.translator.errors import GraphException
 from dlg.dropmake.scheduler import DAGUtil, SchedulerException
 
 MAX_PGT_FN_CNT = 300
