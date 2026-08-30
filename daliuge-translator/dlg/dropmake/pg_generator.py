@@ -20,12 +20,21 @@
 #    MA 02111-1307  USA
 #
 """
-The DALiuGE resource manager uses the requested logical graphs, the available resources and
-the profiling information and turns it into the partitioned physical graph,
-which will then be deployed and monitored by the Physical Graph Manager
+Compatibility shim. Every function that lived here moved into the stage that
+owns its transition when Tier 1 code was relocated into `stages/` (issue #16):
+
+    fill, apply_config, fill_config  -> stages/prepare/
+    unroll                           -> stages/unroll/stage.py
+    partition, known_algorithms      -> stages/partition/stage.py
+    resource_map                     -> stages/map/stage.py
+
+Nothing is implemented here any more. Re-exports only -- do not add logic.
+
+Note the logger name changed with the code: records formerly emitted under
+`dlg.dlg.dropmake.pg_generator` now come from the stage module that owns the
+function.
 """
 
-import logging
 
 # Frozen facade (proposal 7.1/7.2). These moved out to their stages, but the
 # names must keep resolving here. daliuge-engine imports them from production
@@ -39,33 +48,16 @@ from dlg.translator.stages.prepare.config import fill_config
 from dlg.translator.stages.prepare.params import apply_config, fill
 from dlg.translator.stages.unroll.stage import unroll
 from dlg.translator.stages.partition.stage import known_algorithms, partition
+from dlg.translator.stages.map.stage import resource_map
 
 # pylint: enable=unused-import
 
-logger = logging.getLogger(f"dlg.{__name__}")
-
-
-def resource_map(pgt, nodes, num_islands=1, co_host_dim=True):
-    """Maps a Physical Graph Template `pgt` to `nodes`"""
-
-    logger.info(
-        "Resource mapping called with nodes: %s, islands: %s and co_host_dim: %s",
-        nodes, num_islands, co_host_dim
-    )
-    if not nodes:
-        err_info = "Empty node_list, cannot map the PG template"
-        raise ValueError(err_info)
-
-    # if co_host_dim == True the island nodes appear twice
-    dim_list = nodes[0:num_islands]
-    nm_list = nodes[num_islands:]
-    if type(pgt[0]) is str:
-        pgt = pgt[1]  # remove the graph name TODO: we may want to retain that
-    for drop_spec in pgt:
-        if "node" in drop_spec and "island" in drop_spec:
-            nidx = int(drop_spec["node"][1:])  # skip '#'
-            drop_spec["node"] = nm_list[nidx]
-            iidx = int(drop_spec["island"][1:])  # skip '#'
-            drop_spec["island"] = dim_list[iidx]
-
-    return pgt  # now it's a PG
+__all__ = [
+    "apply_config",
+    "fill",
+    "fill_config",
+    "known_algorithms",
+    "partition",
+    "resource_map",
+    "unroll",
+]

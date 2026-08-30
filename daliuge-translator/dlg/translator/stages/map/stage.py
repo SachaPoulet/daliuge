@@ -1,8 +1,11 @@
+import logging
 from dataclasses import dataclass
 from copy import deepcopy
-from dlg.translator.artefacts import PhysicalGraphTemplatePartitioned, PhysicalGraph
-from dlg.dropmake.pg_generator import resource_map
+
 from dlg.common.reproducibility.reproducibility import init_pg_repro_data
+from dlg.translator.artefacts import PhysicalGraphTemplatePartitioned, PhysicalGraph
+
+logger = logging.getLogger(f"dlg.{__name__}")
 
 
 @dataclass(frozen=True)
@@ -29,3 +32,29 @@ class MapStage:
 
     def stamp(self, pg: PhysicalGraph) -> PhysicalGraph:
         return PhysicalGraph.from_wire(init_pg_repro_data(pg.to_wire()))
+
+
+def resource_map(pgt, nodes, num_islands=1, co_host_dim=True):
+    """Maps a Physical Graph Template `pgt` to `nodes`"""
+
+    logger.info(
+        "Resource mapping called with nodes: %s, islands: %s and co_host_dim: %s",
+        nodes, num_islands, co_host_dim
+    )
+    if not nodes:
+        err_info = "Empty node_list, cannot map the PG template"
+        raise ValueError(err_info)
+
+    # if co_host_dim == True the island nodes appear twice
+    dim_list = nodes[0:num_islands]
+    nm_list = nodes[num_islands:]
+    if type(pgt[0]) is str:
+        pgt = pgt[1]  # remove the graph name TODO: we may want to retain that
+    for drop_spec in pgt:
+        if "node" in drop_spec and "island" in drop_spec:
+            nidx = int(drop_spec["node"][1:])  # skip '#'
+            drop_spec["node"] = nm_list[nidx]
+            iidx = int(drop_spec["island"][1:])  # skip '#'
+            drop_spec["island"] = dim_list[iidx]
+
+    return pgt  # now it's a PG
