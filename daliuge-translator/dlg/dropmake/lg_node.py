@@ -137,6 +137,11 @@ class LGNode:
                 node_json["categoryType"] = CategoryType.APPLICATION
             elif node_json["category"] in DATA_TYPES:
                 node_json["categoryType"] = CategoryType.DATA
+            else:
+                raise GInvalidNode(
+                    f"Node '{node_json.get('name')}' ({self.id}) has category "
+                    f"'{node_json['category']}' and no categoryType."
+                )
         self._jd = node_json
 
     @property
