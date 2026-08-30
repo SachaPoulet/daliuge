@@ -45,7 +45,7 @@ from dlg.translator.pipeline import Pipeline
 from dlg.translator.errors import StageException
 
 from dlg.dropmake import pg_generator
-from dlg.dropmake.pgt import GPGTNoNeedMergeException
+from dlg.translator.stages.partition.pgt import GPGTNoNeedMergeException
 
 logger = logging.getLogger(f"dlg.{__name__}")
 

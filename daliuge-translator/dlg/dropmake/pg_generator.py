@@ -40,7 +40,7 @@ from dlg.translator.stages.prepare.params import apply_config, fill
 from dlg.translator.stages.unroll.stage import unroll
 
 # pylint: enable=unused-import
-from dlg.dropmake.pgt import PGT
+from dlg.translator.stages.partition.pgt import PGT
 from dlg.dropmake.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
 
 
