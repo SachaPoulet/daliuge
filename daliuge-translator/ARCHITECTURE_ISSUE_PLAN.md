@@ -29,6 +29,7 @@ flowchart TD
     P2_2 & P2_3 & P2_4 --> P2_5["P2-5 Phase 2 exit check"]
     P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + registry"]
     P2b_1 --> P2b_2["P2b-2 relocate test tree"]
+    P2b_1 --> P2b_3["P2b-3 repoint API docs"]
     P3_1 --> P3_2["P3-2 dop chain to handlers"] & P3_3["P3-3 validate_link to handlers"]
     P3_2 & P3_3 --> P4_1["P4-1 lift link.py"]
     P4_1 --> P4_2["P4-2 instantiate/wire split"] --> P4_3["P4-3 resolve_edges per construct"] --> P4_4["P4-4 LoopHandler last"]
@@ -453,7 +454,7 @@ Marks the end of Phase 2. Checklist:
 
 - **Label:** `Phase 2b`
 - **Blocked by:** P2-5
-- **Blocking:** P2b-2
+- **Blocking:** P2b-2, P2b-3
 
 `dlg/dropmake/web/` → `dlg/translator/web/`, and
 `dlg/dropmake/pg_manager.py` → `dlg/translator/web/pg_manager.py`.
@@ -509,6 +510,43 @@ dotted path, not just for `import`.
 `test_graph_config.py` where they stand, because leaving them broken meant shipping a red
 suite. Every phase repoints the tests it breaks, as it breaks them; this issue only relocates
 files that already pass.
+
+## P2b-3 — Repoint the API documentation
+
+- **Label:** `Phase 2b`
+- **Blocked by:** P2b-1
+- **Blocking:** —
+
+`docs/api/dropmake.rst` documents four modules by name. After Phase 2 two of them are
+shims and a third has moved, so the page describes a package that no longer holds the code.
+
+Rename it to `docs/api/translator.rst` and point each directive at the module that now owns
+the implementation. Three consumer edits ride along, none of them a Python import:
+
+1. `docs/api-index.rst:14` — the `api/dropmake` toctree entry
+2. `docs/architecture/graphs.rst:112` — a `:doc:` cross-reference to `../api/dropmake`
+3. the directives themselves — `pg_generator` → the four stage modules, `scheduler` →
+   `dlg.translator.stages.partition.scheduler`, `pg_manager` → `dlg.translator.web.pg_manager`
+
+Blocked by P2b-1 rather than folded into Phase 2 because `pg_manager` is the one entry still
+documenting real code until `web/` moves; doing this earlier means editing the file twice.
+
+⚠ **A stale `automodule` fails in two different ways, and the second is silent.** If the
+module is gone the build errors, which is how P2-1 found the missing `dlg.dropmake.scheduler`
+shim. But if the module is a **shim**, the build goes green and documents *nothing*:
+`automodule ... :members:` skips imported objects unless `:imported-members:` is given, and
+every name in a re-export shim carries the real module's `__module__`. Measured on P2-1's
+shim: `members whose __module__ == 'dlg.dropmake.scheduler': NONE`.
+
+So `.. automodule:: dlg.dropmake.pg_generator` currently renders an empty section rather than
+the facade's seven functions, and the docs CI (`.github/workflows/build-documentation.yml`)
+passes either way. **Check the rendered output, not the exit code.**
+
+Worth deciding in this issue, though it is not strictly a repoint: **nothing under `docs/`
+references `dlg.translator` at all.** `artefacts.py`, `pipeline.py`, `errors.py`,
+`tool_commands.py` and every `stages/*/stage.py` are undocumented — the abstractions the
+restructure exists to introduce have no API page. Adding them is a bigger job than this
+issue; if it is not taken here, it wants an issue of its own rather than being dropped.
 
 ---
 
