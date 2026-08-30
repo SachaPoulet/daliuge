@@ -104,7 +104,7 @@ class LGNode:
         return self._output_ports
 
     @output_ports.setter
-    def output_ports(self,value):
+    def output_ports(self, value):
         """
         Setting the output_ports property.
         """
@@ -115,12 +115,11 @@ class LGNode:
         return self._input_ports
 
     @input_ports.setter
-    def input_ports(self,value):
+    def input_ports(self, value):
         """
         Setting the output_ports property.
         """
         self._input_ports = value
-
 
     @property
     def jd(self):
@@ -421,11 +420,11 @@ class LGNode:
                 if "group_start" in self.jd
                 else self.jd.get("Group start", False)
             )
-            if type(gs) == type(True):
+            if isinstance(gs, bool):
                 result = gs
-            elif type(gs) in [type(1), type(1.0)]:
+            elif isinstance(gs, (float, int)):
                 result = 1 == gs
-            elif type(gs) == type("s"):
+            elif isinstance(gs, str):
                 result = gs.lower() in ("true", "1")
         return result
 
@@ -443,11 +442,11 @@ class LGNode:
                 if "group_end" in self.jd
                 else self.jd.get("Group end", False)
             )
-            if type(ge) == type(True):
+            if isinstance(ge, bool):
                 result = ge
-            elif type(ge) in [type(1), type(1.0)]:
+            elif isinstance(ge, (float, int)):
                 result = 1 == ge
-            elif type(ge) == type("s"):
+            elif isinstance(ge, str):
                 result = ge.lower() in ("true", "1")
         return result
 
