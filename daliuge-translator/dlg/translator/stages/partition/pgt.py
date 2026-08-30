@@ -31,7 +31,7 @@ import logging
 import math
 
 from dlg.translator.errors import GraphException
-from dlg.dropmake.scheduler import DAGUtil
+from dlg.translator.stages.partition.scheduler import DAGUtil
 from dlg.common import CategoryType, dropdict
 
 logger = logging.getLogger(f"dlg.{__name__}")

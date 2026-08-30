@@ -27,7 +27,7 @@ import pickle
 
 from dlg.translator.stages.unroll.lg import LG
 from dlg.translator.stages.partition.pgt import PGT, GPGTNoNeedMergeException
-from dlg.dropmake.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP
+from dlg.translator.stages.partition.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP
 from dlg.common import path_utils
 
 """

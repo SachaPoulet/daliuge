@@ -31,8 +31,8 @@ import networkx as nx
 import numpy as np
 from pyswarm import pso
 
-from .utils.antichains import get_max_weighted_antichain
-from ..common import dropdict, get_roots, CategoryType
+from dlg.translator.stages.partition.utils.antichains import get_max_weighted_antichain
+from dlg.common import dropdict, get_roots, CategoryType
 
 logger = logging.getLogger(f"dlg.{__name__}")
 

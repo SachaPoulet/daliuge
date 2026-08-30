@@ -21,25 +21,25 @@
 #
 
 """
-Compatibility shim. The implementations moved to
-`dlg.translator.stages.partition.pgtp` when Tier 1 code was relocated into
+Compatibility shim. The implementation moved to
+`dlg.translator.stages.partition.pgt` when Tier 1 code was relocated into
 `stages/` (issue #16).
 
-`daliuge-engine` imports `MetisPGTP` from here
-(`test/dlg_end_to_end_utils.py`), which proposal 7.1 treats as contract, and
-`web/translator_rest.py` constructs all four. Re-exports only -- do not add
-logic here.
+`daliuge-engine` imports this module (`test/dlg_end_to_end_utils.py`), which
+proposal 7.1 treats as contract. Re-exports only -- do not add logic here.
+
+`PGT.to_pg_spec` and `PGT.to_gojs_json` keep their exact signatures and output;
+proposal 7.2 freezes both through Phase 6.
 
 Note the logger name changed with the module: records formerly emitted under
-`dlg.dlg.dropmake.pgtp` now come from
-`dlg.dlg.translator.stages.partition.pgtp`.
+`dlg.dlg.dropmake.pgt` now come from
+`dlg.dlg.translator.stages.partition.pgt`.
 """
 
-from dlg.translator.stages.partition.pgtp import (
-    MetisPGTP,
-    MinNumPartsPGTP,
-    MySarkarPGTP,
-    PSOPGTP,
+from dlg.translator.stages.partition.pgt import (
+    GPGTException,
+    GPGTNoNeedMergeException,
+    PGT,
 )
 
-__all__ = ["MetisPGTP", "MySarkarPGTP", "MinNumPartsPGTP", "PSOPGTP"]
+__all__ = ["PGT", "GPGTException", "GPGTNoNeedMergeException"]
