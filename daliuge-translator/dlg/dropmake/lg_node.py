@@ -33,12 +33,12 @@ import re
 
 from dlg.common import CategoryType
 from dlg.common import dropdict
-from dlg.dropmake.dm_utils import (
+from dlg.translator.errors import (
     GraphException,
     GInvalidLink,
     GInvalidNode,
 )
-from .definition_classes import Categories, DATA_TYPES, APP_TYPES
+from dlg.translator.vocabulary import Categories, DATA_TYPES, APP_TYPES
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -936,8 +936,6 @@ class LGNode:
 
         kwargs["dropclass"] = app_class
         kwargs["num_cpus"] = int(self.jd.get("num_cpus", 1))
-        if "mkn" in self.jd:
-            kwargs["mkn"] = self.jd["mkn"]
         drop_spec.update(kwargs)
 
         return drop_spec
@@ -1025,14 +1023,3 @@ class LGNode:
     def str_to_bool(value, default_value=False):
         res = True if value in ["1", "true", "True", "yes"] else default_value
         return res
-
-    @staticmethod
-    def _mkn_substitution(mkn, value):
-        if "%m" in value:
-            value = value.replace("%m", str(mkn[0]))
-        if "%k" in value:
-            value = value.replace("%k", str(mkn[1]))
-        if "%n" in value:
-            value = value.replace("%n", str(mkn[2]))
-
-        return value

@@ -29,7 +29,7 @@ import json
 import logging
 import string
 
-from dlg.dropmake.graph_config import fill_config
+from dlg.translator.stages.prepare.config import fill_config
 from dlg.dropmake.lg import LG, GraphException
 from dlg.dropmake.pgt import PGT
 from dlg.dropmake.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP

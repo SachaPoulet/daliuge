@@ -35,23 +35,25 @@ import numpy as np
 
 from dlg.common import CategoryType, dropdict
 
-from dlg.dropmake.dm_utils import (
-    LG_APPREF,
-    get_lg_ver_type,
-    convert_construct,
-    convert_fields,
-    convert_subgraphs,
-    LG_VER_EAGLE,
-    LG_VER_EAGLE_CONVERTED,
+from dlg.translator.errors import (
     GraphException,
     GInvalidLink,
     GInvalidNode,
-    load_lg,
-    extract_globals
 )
-from dlg.dropmake.definition_classes import Categories
+from dlg.translator.stages.prepare.versions import (
+    LG_APPREF,
+    get_lg_ver_type,
+    LG_VER_EAGLE,
+    LG_VER_EAGLE_CONVERTED,
+)
+from dlg.translator.stages.prepare.loader import load_lg
+from dlg.translator.stages.prepare.config import apply_active_configuration
+from dlg.translator.stages.prepare.normalise.constructs import convert_construct
+from dlg.translator.stages.prepare.normalise.fields import convert_fields
+from dlg.translator.stages.prepare.normalise.subgraphs import convert_subgraphs
+from dlg.translator.stages.prepare.normalise.globals import extract_globals
+from dlg.translator.vocabulary import Categories
 from dlg.dropmake.lg_node import LGNode
-from dlg.dropmake.graph_config import apply_active_configuration
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
