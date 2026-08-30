@@ -38,44 +38,6 @@ from dlg.dropmake.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
 logger = logging.getLogger(f"dlg.{__name__}")
 
 
-class _LGTemplate(string.Template):
-    delimiter = "~"
-    idpattern = r"[_a-z][_a-z0-9\.]*"
-
-
-def _flatten_dict(d):
-    flat = dict(d)
-    for key, value in d.items():
-        if isinstance(value, dict):
-            flattened = _flatten_dict(value)
-            flat.update({"%s.%s" % (key, k): v for k, v in flattened.items()})
-        else:
-            flat[key] = value
-    return flat
-
-
-def fill(lg, params):
-    """Logical Graph + params -> Filled Logical Graph"""
-    logger.info("Filling Logical Graph with parameters: %r", params)
-    flat_params = _flatten_dict(params)
-    if hasattr(lg, "read"):
-        lg = lg.read()
-    elif not isinstance(lg, str):
-        lg = json.dumps(lg)
-    lg = _LGTemplate(lg).substitute(flat_params)
-    return json.loads(lg)
-
-def apply_config(lg: str, config: dict):
-    """
-    Give a logical graph, fill the
-    :param lg:
-    :param config:
-    :return:
-    """
-    logger.info("Applying configuration to Logical Graph...")
-    return fill_config(lg, config)
-
-
 def unroll(lg, oid_prefix=None, zerorun=False, app=None):
     """Unrolls a logical graph"""
     lg = LG(lg, ssid=oid_prefix)
