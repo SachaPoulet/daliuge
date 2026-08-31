@@ -330,8 +330,9 @@ if system == 'Darwin':
 So the branch is always False there, `ext` is `"so"`, and a Darwin developer is handed the
 Linux `libmetis.so`. The correct predicate is `platform.system()`, which does return
 `"Darwin"`. Pre-existing — P2-3 moved the binaries without touching the selector, so the
-`.dylib` has been unreachable the whole time and CI (Linux-only) cannot see it. Filed as
-**P2-6**; verified against the stdlib source on Python 3.12.13, 2026-08-31.
+`.dylib` has been unreachable the whole time and CI (Linux-only) cannot see it. **Out of scope
+for the rewrite and deliberately has no issue in the plan** — recorded as proposal §5 row 15.
+Verified against the stdlib source on Python 3.12.13, 2026-08-31.
 
 **B5 — a second, undocumented PGT wire form.**
 [pg_generator.py:262](dlg/dropmake/pg_generator.py#L262): `if type(pgt[0]) is str: pgt = pgt[1]`

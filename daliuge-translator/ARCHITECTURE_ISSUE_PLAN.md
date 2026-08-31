@@ -26,7 +26,6 @@ flowchart TD
     P1a_3["P1a-3 delete dead Gather default"] --> P3_3
     P1a_4["P1a-4 missing categoryType error"] --> P2_1
     P2_1 --> P2_2["P2-2 dlg.dropmake shims"] & P2_3["P2-3 libmetis"] & P2_4["P2-4 lg.graph.schema"]
-    P2_3 --> P2_6["P2-6 import_metis dylib bug"]
     P2_2 & P2_3 & P2_4 --> P2_5["P2-5 Phase 2 exit check"]
     P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + registry"] & P6_3["P6-3 PartitionAlgorithm + registry"]
     P2b_1 --> P2b_2["P2b-2 relocate test tree"]
@@ -390,7 +389,7 @@ How long the shims live is the client team's release-coordination call, not ours
 
 - **Label:** `Phase 2`
 - **Blocked by:** P2-1
-- **Blocking:** P2-5, P2-6
+- **Blocking:** P2-5
 
 **Status: landed 2026-08-31** on `issue-18-Move_libmetis_and_repoint_its_loader`.
 
@@ -470,8 +469,7 @@ nothing else catches this. Miss edit 1 and LG validation breaks on *every* REST 
 ## P2-5 — Phase 2 exit check
 
 - **Label:** `Phase 2`
-- **Blocked by:** P2-2, P2-3, P2-4 (**not** P2-6 — that is a pre-existing macOS bug, not a
-  migration gate)
+- **Blocked by:** P2-2, P2-3, P2-4
 - **Blocking:** P2b-1, P3-1, P6-3
 
 Marks the end of Phase 2. Checklist:
@@ -487,31 +485,6 @@ Marks the end of Phase 2. Checklist:
 - [ ] The translator's own suite **collects**. A stale import under `test/` is a collection
       error, not a test failure: pytest aborts the whole run, so "no tests failed" and "no
       tests ran" look identical in a summary line.
-
-## P2-6 — `import_metis` never selects the macOS binary
-
-- **Label:** `Phase 2`
-- **Blocked by:** P2-3
-- **Blocking:** — (not a P2-5 gate)
-
-Surfaced by P2-3, deliberately not fixed there. [scheduler.py:1136-1139](dlg/dropmake/scheduler.py#L1136)
-picks the library extension with:
-
-```python
-pl = platform.platform()
-if pl.startswith("Darwin"):   # a clumsy way
-    ext = "dylib"
-else:
-    ext = "so"
-```
-
-`platform.platform()` rewrites `Darwin` → `macOS` whenever `mac_ver()[0]` is non-empty, which
-it is on any real macOS. So the branch never fires, `ext` is `"so"`, and a Darwin developer
-gets the Linux binary. The fix is `platform.system()`, which does return `"Darwin"`.
-
-Pre-existing and independent of the move — the `.dylib` has been unreachable the whole time.
-**CI is Linux-only and cannot see this**, so the check has to be manual or a mocked
-`platform.system()` unit test. Recorded as migration map §7 **B6**.
 
 ---
 
