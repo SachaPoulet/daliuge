@@ -73,9 +73,9 @@ from dlg import utils
 from dlg.common.deployment_methods import DeploymentMethods
 from dlg.common.version import version as dlg_version
 from dlg.common.k8s_utils import check_k8s_env
-from dlg.dropmake.lg import GraphException
+from dlg.translator.errors import GraphException
 from dlg.dropmake.pg_manager import PGManager
-from dlg.dropmake.scheduler import SchedulerException
+from dlg.translator.stages.partition.scheduler import SchedulerException
 from dlg.dropmake.web.translator_utils import (
     file_as_string,
     lg_repo_contents,
@@ -142,7 +142,7 @@ gen_pgt_sem = threading.Semaphore(1)
 global lg_dir
 global pgt_dir
 global pg_mgr
-LG_SCHEMA = json.loads(file_as_string("lg.graph.schema", module="dlg.dropmake"))
+LG_SCHEMA = json.loads(file_as_string("lg.graph.schema", module="dlg.translator.stages.prepare"))
 
 
 @app.post("/jsonbody", tags=["Original"])
