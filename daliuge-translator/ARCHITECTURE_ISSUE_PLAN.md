@@ -472,19 +472,43 @@ nothing else catches this. Miss edit 1 and LG validation breaks on *every* REST 
 - **Blocked by:** P2-2, P2-3, P2-4
 - **Blocking:** P2b-1, P3-1, P6-3
 
-Marks the end of Phase 2. Checklist:
+Marks the end of Phase 2. Checklist, measured 2026-08-31 on branch `phase2-corpus-check`
+(`28c93479` = `p2-1-corpus-check` + `issue-16` + `issue-18` + `issue-19`):
 
-- [ ] `grep -rn 'dlg[./]dropmake' .` from the **monorepo root, unfiltered** — no `--include`
+- [x] `grep -rn 'dlg[./]dropmake' .` from the **monorepo root, unfiltered** — no `--include`
       filter — comes back empty except the deliberate shims. Three of the nine non-import
       references live in `build_translator.sh` / `run_translator.sh` and one in
       `tools/checkGraph.py`; a `--include='*.py'` grep misses all four.
-- [ ] Corpus (#6) passes, including a real `metis` run.
-- [ ] A REST validate call succeeds.
-- [ ] `test/dropmake/test_tm.py` green.
-- [ ] `daliuge-engine` imports and runs — smoke-run `create_dlg_job.py`.
-- [ ] The translator's own suite **collects**. A stale import under `test/` is a collection
+      **`checkGraph.py` was cleared by P2-4.** What remains is seven `daliuge-engine`
+      production imports — Tier 3 consumers, which is what the shims are *for* — and
+      `tool_commands.py`'s `"dlg.dropmake.web.translator_rest:run"` launch string, which is
+      `web/` and belongs to P2b-1. **No Tier 1 module reaches through a shim any more**: the
+      five that did were repointed at the real `stages/` modules (`unroll`, `fill`,
+      `apply_config`, `partition`, `known_algorithms`).
+- [x] Corpus (#6) passes, including a real `metis` run. `manifest.py verify` 29 files;
+      `cases.py check` all cases; `golden.py verify` every artefact; `tier2.py verify` all 48;
+      `drift.py` zero drift with all four controls firing and `EXPECTED_DRIFT.md` unrewritten.
+      `metis` is covered twice — at both partition settings across the corpus, and by a direct
+      `MetisPGTP` run over four graphs with `METIS_DLL` resolving under `algorithms/lib/`.
+- [ ] ⚠ **A REST validate call succeeds — unmeetable as written; see §5 row 16.** The
+      `ValidationError` at [translator_rest.py:494](dlg/dropmake/web/translator_rest.py#L494)
+      is caught, logged and swallowed, so `/gen_pgt` returns 200 whether validation passed or
+      failed; and every bundled graph fails the schema with `'keyAttribute' is a required
+      property` — identically before P2-4, verified against the pre-move blob's identical
+      `sha256`. **What this phase actually needs is proven**: the app boots, so the
+      module-scope `LG_SCHEMA` load at `:145` resolves from `stages/prepare/`, and all 48
+      Tier 2 REST artefacts match. **Reword to** *"the REST app starts and `POST /gen_pgt`
+      returns 200 with a `pgt_id`"*, which `tier2.py verify` already gates, and track the
+      schema defect separately.
+- [x] `test/dropmake/test_tm.py` green — 21 passed, 4 skipped.
+- [x] `daliuge-engine` imports and runs — all five shim consumers import
+      (`create_dlg_job`, `start_dlg_cluster`, `helm_client`, `start_helm_cluster`,
+      `apps.subgraph`); `create_dlg_job.py --help` exits 0.
+- [x] The translator's own suite **collects**. A stale import under `test/` is a collection
       error, not a test failure: pytest aborts the whole run, so "no tests failed" and "no
       tests ran" look identical in a summary line.
+      Measured 267 passed / 27 skipped / 23 subtests, plus `test_corpus_tools.py` 40 passed —
+      identical to the pre-Phase-2 baseline, so the counts confirm collection, not just exit 0.
 
 ---
 
