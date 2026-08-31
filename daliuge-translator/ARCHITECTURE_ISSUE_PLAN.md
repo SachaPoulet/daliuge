@@ -26,14 +26,16 @@ flowchart TD
     P1a_3["P1a-3 delete dead Gather default"] --> P3_3
     P1a_4["P1a-4 missing categoryType error"] --> P2_1
     P2_1 --> P2_2["P2-2 dlg.dropmake shims"] & P2_3["P2-3 libmetis"] & P2_4["P2-4 lg.graph.schema"]
+    P2_3 --> P2_6["P2-6 import_metis dylib bug"]
     P2_2 & P2_3 & P2_4 --> P2_5["P2-5 Phase 2 exit check"]
-    P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + registry"]
+    P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + registry"] & P6_3["P6-3 PartitionAlgorithm + registry"]
     P2b_1 --> P2b_2["P2b-2 relocate test tree"]
     P2b_1 --> P2b_3["P2b-3 repoint API docs"]
     P3_1 --> P3_2["P3-2 dop chain to handlers"] & P3_3["P3-3 validate_link to handlers"]
     P3_2 & P3_3 --> P4_1["P4-1 lift link.py"]
     P4_1 --> P4_2["P4-2 instantiate/wire split"] --> P4_3["P4-3 resolve_edges per construct"] --> P4_4["P4-4 LoopHandler last"]
     P4_4 --> P5_1["P5-1 InstanceId"] --> P6_1["P6-1 linearise + gojs"] & P6_2["P6-2 to_pg_spec split"]
+    P6_3 --> P6_1
     P6_1 & P6_2 --> P7_1["P7-1 Updated glue"] --> P7_2["P7-2 Original sites"]
 ```
 
@@ -388,7 +390,9 @@ How long the shims live is the client team's release-coordination call, not ours
 
 - **Label:** `Phase 2`
 - **Blocked by:** P2-1
-- **Blocking:** P2-5
+- **Blocking:** P2-5, P2-6
+
+**Status: landed 2026-08-31** on `issue-18-Move_libmetis_and_repoint_its_loader`.
 
 `scheduler.py` moves in this phase, so `lib/libmetis.{so,dylib}` moves with it — to
 `stages/partition/algorithms/lib/`, beside the loader that reads it (§8 Q10).
@@ -398,9 +402,46 @@ Two edits, neither of which is an import, so **no shim covers either**:
   `importlib.resources.files("dlg.dropmake")` → `dlg.translator.stages.partition.algorithms`
 - the `MANIFEST.in` glob for `lib/`
 
-⚠ **Run an actual `metis` partition before merging.** This breaks all METIS partitioning, not
-just the web app, and it is silent: it is a filesystem lookup, so nothing fails at import and
-the test suite stays green until `metis` is selected.
+### What actually landed
+
+`algorithms/` did not exist — §3 lists it, but no issue in Phases 1-7 creates it (see
+**P6-3**, filed to close that gap). P2-3 therefore created the package itself, holding only
+`__init__.py` and `lib/`, and **`partition/utils/` moved to `partition/algorithms/utils/`**
+in the same PR so partition takes one shape change rather than two.
+
+**The subdirectory is `utils/`, not §3's `support/`** — client's call; §3 and the migration
+map are updated to match. All four modules moved intact, including the three with no
+importers (see migration map §6, "Retained by client decision").
+
+Cost of moving `utils/`: one line, [scheduler.py:34](dlg/dropmake/scheduler.py#L34), the only
+importer of that package in the monorepo.
+
+### ⚠ Correction — the "silent break" warning was wrong
+
+This issue previously said the breakage is *"silent: it is a filesystem lookup, so nothing
+fails at import and the test suite stays green until `metis` is selected."* **Neither half
+holds.**
+
+- **The suite does catch it.** `test/dropmake/test_pg_gen.py::test_metis_pgtp_gen_pg` drives
+  `MetisPGTP(drop_list, 3, merge_parts=True)` over four graphs and fails if the DLL cannot be
+  found. The corpus covers it harder — `metis` runs at both partition settings across 29
+  cases.
+- **A wrong anchor fails loudly, not silently.** The anchor is a *module* name, not a path, so
+  `importlib.resources.files()` raises `ModuleNotFoundError` on a bad one. This was confirmed
+  the hard way: a `/` typed for the final `.` during implementation raised
+  `ModuleNotFoundError: No module named 'dlg.translator.stages.partition/algorithms'`
+  immediately.
+
+The warning was written before that coverage existed. **Do not carry it into P2-5.**
+
+Still true and still worth the gate: **run an actual `metis` partition before merging** — a
+green suite alone does not prove the resolved `METIS_DLL` points where you think. Verified for
+this PR across all four graphs, with `METIS_DLL` resolving under
+`partition/algorithms/lib/libmetis.so` and matching the expected `total_data_movement` values.
+
+Note `import metis` at top level raises `RuntimeError: Could not locate METIS dll` on its own —
+the env var is set lazily inside `import_metis()`, and that `except RuntimeError` block is the
+*only* path that evaluates the literal. A bare import proves nothing either way.
 
 ## P2-4 — Move `lg.graph.schema` into `stages/prepare/`
 
@@ -429,8 +470,9 @@ nothing else catches this. Miss edit 1 and LG validation breaks on *every* REST 
 ## P2-5 — Phase 2 exit check
 
 - **Label:** `Phase 2`
-- **Blocked by:** P2-2, P2-3, P2-4
-- **Blocking:** P2b-1, P3-1
+- **Blocked by:** P2-2, P2-3, P2-4 (**not** P2-6 — that is a pre-existing macOS bug, not a
+  migration gate)
+- **Blocking:** P2b-1, P3-1, P6-3
 
 Marks the end of Phase 2. Checklist:
 
@@ -445,6 +487,31 @@ Marks the end of Phase 2. Checklist:
 - [ ] The translator's own suite **collects**. A stale import under `test/` is a collection
       error, not a test failure: pytest aborts the whole run, so "no tests failed" and "no
       tests ran" look identical in a summary line.
+
+## P2-6 — `import_metis` never selects the macOS binary
+
+- **Label:** `Phase 2`
+- **Blocked by:** P2-3
+- **Blocking:** — (not a P2-5 gate)
+
+Surfaced by P2-3, deliberately not fixed there. [scheduler.py:1136-1139](dlg/dropmake/scheduler.py#L1136)
+picks the library extension with:
+
+```python
+pl = platform.platform()
+if pl.startswith("Darwin"):   # a clumsy way
+    ext = "dylib"
+else:
+    ext = "so"
+```
+
+`platform.platform()` rewrites `Darwin` → `macOS` whenever `mac_ver()[0]` is non-empty, which
+it is on any real macOS. So the branch never fires, `ext` is `"so"`, and a Darwin developer
+gets the Linux binary. The fix is `platform.system()`, which does return `"Darwin"`.
+
+Pre-existing and independent of the move — the `.dylib` has been unreachable the whole time.
+**CI is Linux-only and cannot see this**, so the check has to be manual or a mocked
+`platform.system()` unit test. Recorded as migration map §7 **B6**.
 
 ---
 
@@ -723,10 +790,39 @@ viewer's `humanReadableKey` interpolates `drop['iid']`. Internals change, output
 
 # Phase 6 — partition / map / projection separation
 
+## P6-3 — `PartitionAlgorithm` protocol + registry
+
+- **Label:** `Phase 6`
+- **Blocked by:** P2-5
+- **Blocking:** P6-1
+
+**Filed 2026-08-31 to close a gap in this plan.** §3 puts `registry.py`, `base.py`, `none.py`,
+`metis.py`, `mysarkar.py`, `min_num_parts.py` and `pso.py` under `partition/algorithms/`, and
+three other issues *reference* that package — P1-3's `algo_params` aside, P2-3's destination,
+and P6-1's "owned by the algorithms that need it" — but **no issue created it**. The
+construct-side twin, P3-1, was planned; this one was not. P2-3 created the directory to hold
+`lib/`, so it exists but is otherwise empty.
+
+The partition analogue of P3-1: `algorithms/base.py` (the `PartitionAlgorithm` protocol +
+per-algorithm options) and `algorithms/registry.py` (name → algorithm), plus the per-algorithm
+modules. Sources are mapped line-by-line in migration map §4.2.
+
+Two things to get right:
+
+- **The algorithm names are a Tier 3 contract** (§7.1). `_known_algos` is bidirectional
+  name↔int and the wire spellings do not change — only where they are declared.
+- **The nine `algo_params` keys** split across plugins: `topk`/`swarm_size` are PSO's,
+  `ptype`/`max_load_imb` are METIS's. `registry.py` validates the incoming dict against the
+  selected algorithm and rejects unknown keys, replacing the eight `_get_algo_param` defaults.
+
+Ordering note: **this should land before P6-1** within the phase — P6-1 moves linearisation to
+the algorithms that need it, which presumes they exist as modules. It only needs P2-5, so it
+can be pulled earlier than Phase 6 if convenient.
+
 ## P6-1 — Linearisation moves out of the serialiser
 
 - **Label:** `Phase 6`
-- **Blocked by:** P5-1
+- **Blocked by:** P5-1, P6-3
 - **Blocking:** P7-1
 
 `to_gojs_json` synthesises intermediate `BarrierAppDROP`/`InMemoryDROP` nodes under

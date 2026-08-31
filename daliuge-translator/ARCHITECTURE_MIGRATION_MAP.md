@@ -36,7 +36,7 @@ Every current source file, and where it ends up. 8258 LOC total.
 | `pgt.py` | 495 | SPLIT across `partition/**`, `projections/`, `map/`, `artefacts.py` |
 | `pgtp.py` | 665 | SPLIT into `partition/algorithms/*` + `partition/islands.py` |
 | `scheduler.py` | 1261 | MOVE → `partition/{dag.py, algorithms/**}` |
-| `utils/**` | ~700 | MOVE → `partition/algorithms/support/` (except `bash_parameter.py`) |
+| `utils/**` | ~843 | MOVE → `partition/algorithms/utils/` — **all four modules, `bash_parameter.py` included**. Landed 2026-08-31 (P2-3); see §6 for why the three unused ones are retained |
 | `tool_commands.py` | 638 | SPLIT: CLI arg plumbing MOVE, pipeline bodies REWRITE |
 | `web/translator_utils.py` | 185 | Tier 2 — mostly MOVE; one function REWRITE (proposal §6 Phase 7) |
 | `web/translator_rest.py` | 1247 | Tier 2 — call-site edits only |
@@ -170,11 +170,12 @@ run between each (proposal §6 Phase 4).
 | Target | Verb | Source |
 |--------|------|--------|
 | `base.py` | MOVE | `Scheduler` [scheduler.py:494-582](dlg/dropmake/scheduler.py#L494); `PGT.{to_partition_input, get_opt_num_parts, get_partition_info}` [pgt.py:118-138](dlg/dropmake/pgt.py#L118) |
-| `support/schedule.py` | MOVE | `Schedule` [scheduler.py:46-155](dlg/dropmake/scheduler.py#L46) |
-| `support/partition.py` | MOVE | `Partition` [scheduler.py:156-411](dlg/dropmake/scheduler.py#L156), `KFamilyPartition` [:412-493](dlg/dropmake/scheduler.py#L412) |
-| `support/antichains.py` | MOVE | `utils/antichains.py` — but see §6 for its four unused graph-builders |
-| `support/anneal.py` | MOVE | `utils/anneal.py` in full |
-| `support/heft.py` | MOVE | `utils/heft/base.py` in full |
+| `utils/schedule.py` | MOVE | `Schedule` [scheduler.py:46-155](dlg/dropmake/scheduler.py#L46) |
+| `utils/partition.py` | MOVE | `Partition` [scheduler.py:156-411](dlg/dropmake/scheduler.py#L156), `KFamilyPartition` [:412-493](dlg/dropmake/scheduler.py#L412) |
+| `utils/antichains.py` | **DONE** | moved verbatim 2026-08-31 (P2-3) — the only live module; see §6 for its four unused graph-builders |
+| `utils/anneal.py` | **DONE** | moved verbatim 2026-08-31 (P2-3), zero importers — retained, see §6 |
+| `utils/heft/base.py` | **DONE** | moved verbatim 2026-08-31 (P2-3), zero importers — retained, see §6 |
+| `utils/bash_parameter.py` | **DONE** | moved verbatim 2026-08-31 (P2-3), zero importers — retained, see §6 |
 | `none.py` | MOVE | base `PGT` construction path, `pg_generator.partition` `ALGO_NONE` branch [:181-182](dlg/dropmake/pg_generator.py#L181) |
 | `metis.py` | SPLIT | `MetisPGTP` [pgtp.py:41-391](dlg/dropmake/pgtp.py#L41): `__init__` [:48-87](dlg/dropmake/pgtp.py#L48), `to_partition_input` [:88-166](dlg/dropmake/pgtp.py#L88), `_parse_metis_output` [:180-234](dlg/dropmake/pgtp.py#L180) MOVE; `to_gojs_json` [:235-291](dlg/dropmake/pgtp.py#L235) SPLIT — the METIS invocation stays, the `super().to_gojs_json` call goes to `projections/`; `merge_partitions` [:292-391](dlg/dropmake/pgtp.py#L292) → `islands.py` |
 | `mysarkar.py` | SPLIT | `MySarkarScheduler` [scheduler.py:583-757](dlg/dropmake/scheduler.py#L583) MOVE; `MySarkarPGTP` [pgtp.py:392-595](dlg/dropmake/pgtp.py#L392) — `merge_partitions` [:444-513](dlg/dropmake/pgtp.py#L444) → `islands.py`, `to_gojs_json` [:514-595](dlg/dropmake/pgtp.py#L514) SPLIT partitioning-vs-serialisation |
@@ -264,6 +265,23 @@ Confirmed dead by whole-repo grep across `daliuge-translator` and `daliuge-engin
 Rough total: **~600 LOC deleted outright**, over 7% of the translator, before any
 restructuring.
 
+### Not deleted — retained by client decision (2026-08-31)
+
+Three modules under `partition/algorithms/utils/` have **zero importers repo-wide** and read
+as dead weight, but are **kept deliberately**: the client wants them available in case those
+algorithms are implemented later. Do not file a deletion issue for them, and do not "tidy"
+them during a later phase.
+
+| Module | LOC | Importers |
+|--------|-----|-----------|
+| `anneal.py` | 321 | 0 |
+| `heft/base.py` | 232 | 0 |
+| `bash_parameter.py` | 93 | 0 |
+| *(`antichains.py`)* | *197* | *1 — `scheduler.py:34`, live* |
+
+This supersedes the earlier reading of `utils/**` as "~600 LOC of dead weight" and the §1
+row's "except `bash_parameter.py`". All four moved intact in P2-3.
+
 ---
 
 ## 7. Latent bugs found while mapping
@@ -295,6 +313,25 @@ expected, not as a regression, and confirm the new value is the correct one.
 of the three iteration-count keys is present, `_dop` is never assigned, so `dop` returns
 `None` and `range(lgn.dop)` raises a bare `TypeError` with no node name. Already recorded as
 proposal §5 row 5b.
+
+**B6 — `import_metis` never selects the macOS binary.** The extension picker at
+[scheduler.py:1136-1139](dlg/dropmake/scheduler.py#L1136) tests
+`platform.platform().startswith("Darwin")`. `platform.platform()` rewrites the system name
+`Darwin` → `macOS` whenever `mac_ver()[0]` is non-empty, which it is on any real macOS —
+CPython's `platform.py` does this unconditionally:
+
+```python
+if system == 'Darwin':
+    macos_release = mac_ver()[0]
+    if macos_release:
+        system = 'macOS'
+```
+
+So the branch is always False there, `ext` is `"so"`, and a Darwin developer is handed the
+Linux `libmetis.so`. The correct predicate is `platform.system()`, which does return
+`"Darwin"`. Pre-existing — P2-3 moved the binaries without touching the selector, so the
+`.dylib` has been unreachable the whole time and CI (Linux-only) cannot see it. Filed as
+**P2-6**; verified against the stdlib source on Python 3.12.13, 2026-08-31.
 
 **B5 — a second, undocumented PGT wire form.**
 [pg_generator.py:262](dlg/dropmake/pg_generator.py#L262): `if type(pgt[0]) is str: pgt = pgt[1]`
