@@ -43,8 +43,9 @@ from dlg.translator.stages.map.stage import MapStage, MapOptions
 from dlg.translator.artefacts import LogicalGraphTemplate, PhysicalGraphTemplate, PhysicalGraphTemplatePartitioned
 from dlg.translator.pipeline import Pipeline
 from dlg.translator.errors import StageException
+from dlg.translator.stages.prepare.params import apply_config
+from dlg.translator.stages.partition.stage import known_algorithms
 
-from dlg.dropmake import pg_generator
 from dlg.translator.stages.partition.pgt import GPGTNoNeedMergeException
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -72,7 +73,7 @@ def unroll(lg_path, oid_prefix, zerorun=False, app=None):
     and return the latter.
     This method prepends `oid_prefix` to all generated Drop OIDs.
     """
-    from ..dropmake.pg_generator import unroll as pg_unroll
+    from dlg.translator.stages.unroll.stage import unroll as pg_unroll
 
     logger.info("Start to unroll %s", lg_path)
     return pg_unroll(_open_i(lg_path), oid_prefix=oid_prefix, zerorun=zerorun, app=app)
@@ -145,9 +146,10 @@ def _map_options(opts) -> MapOptions:
 
 
 def partition(pgt, opts):
+    from dlg.translator.stages.partition.stage import partition
 
     algo_params = parse_partition_algo_params(opts.algo_params or [])
-    pg = pg_generator.partition(
+    pg = partition(
         pgt,
         algo=opts.algo,
         num_partitions=opts.partitions,
@@ -266,7 +268,7 @@ def dlg_fill(parser, args):
     ):
         params.update(json_param)
 
-    from ..dropmake.pg_generator import fill
+    from dlg.translator.stages.prepare.params import fill
 
     graph = fill(_open_i(opts.logical_graph), params)
     dump(init_lg_repro_data(init_lgt_repro_data(graph, opts.reproducibility)))
@@ -318,7 +320,7 @@ def dlg_graph_config(parser, args):
     with open (opts.logical_graph) as fp:
         logical_graph = json.load(fp)
 
-    graph = pg_generator.apply_config(logical_graph, graph_config)
+    graph = apply_config(logical_graph, graph_config)
     dump(init_lg_repro_data(init_lgt_repro_data(graph, opts.reproducibility)))
 
 
@@ -405,10 +407,10 @@ def _add_partition_options(parser):
         "--algorithm",
         action="store",
         type="choice",
-        choices=pg_generator.known_algorithms(),
+        choices=known_algorithms(),
         dest="algo",
         help=f"Algorithm used to do the partitioning. Select from:\n"
-             f"{str(pg_generator.known_algorithms()).strip('[]')}",
+             f"{str(known_algorithms()).strip('[]')}",
         default="metis",
     )
     parser.add_option(
