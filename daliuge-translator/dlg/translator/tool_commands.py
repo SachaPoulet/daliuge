@@ -23,7 +23,7 @@
 
 import json
 import logging
-import optparse # pylint: disable=deprecated-module
+import optparse  # pylint: disable=deprecated-module
 import os
 import sys
 
@@ -273,6 +273,7 @@ def dlg_fill(parser, args):
     graph = fill(_open_i(opts.logical_graph), params)
     dump(init_lg_repro_data(init_lgt_repro_data(graph, opts.reproducibility)))
 
+
 def dlg_graph_config(parser, args):
     """
     Apply config passed to CLI to the LGT.
@@ -312,12 +313,12 @@ def dlg_graph_config(parser, args):
         sin = sys.stdin.read()
         graph_config = json.loads(sin)
     else:
-        with open (opts.graph_config) as fp:
+        with open(opts.graph_config) as fp:
             graph_config = json.load(fp)
 
     if not opts.logical_graph:
         parser.error("Must provide an option for --graph_config")
-    with open (opts.logical_graph) as fp:
+    with open(opts.logical_graph) as fp:
         logical_graph = json.load(fp)
 
     graph = apply_config(logical_graph, graph_config)
@@ -666,5 +667,3 @@ def register_commands():
                  "Apply a graph config to the logical graph", dlg_graph_config)
     tool.cmdwrap("fill", translator_group,
                  "[DEPRECATED] Fill a Logical Graph with parameters", dlg_fill)
-
-
