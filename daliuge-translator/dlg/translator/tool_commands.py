@@ -146,10 +146,10 @@ def _map_options(opts) -> MapOptions:
 
 
 def partition(pgt, opts):
-    from dlg.translator.stages.partition.stage import partition
+    from dlg.translator.stages.partition.stage import partition as stage_partition
 
     algo_params = parse_partition_algo_params(opts.algo_params or [])
-    pg = partition(
+    pg = stage_partition(
         pgt,
         algo=opts.algo,
         num_partitions=opts.partitions,
