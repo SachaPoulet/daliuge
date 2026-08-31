@@ -31,7 +31,7 @@ import networkx as nx
 import numpy as np
 from pyswarm import pso  # type: ignore[import-untyped]
 
-from dlg.translator.stages.partition.utils.antichains import get_max_weighted_antichain
+from dlg.translator.stages.partition.algorithms.utils.antichains import get_max_weighted_antichain
 from dlg.common import dropdict, get_roots, CategoryType
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -1140,7 +1140,7 @@ class DAGUtil(object):
             else:
                 ext = "so"  # what about Microsoft??!!
             os.environ["METIS_DLL"] = str(
-                importlib.resources.files("dlg.dropmake") / f"lib/libmetis.{ext}"
+                importlib.resources.files("dlg.translator.stages.partition.algorithms") / f"lib/libmetis.{ext}"
             )
             import metis as mt  # type: ignore[import-untyped]
         if not hasattr(mt, "dlg_patched"):
