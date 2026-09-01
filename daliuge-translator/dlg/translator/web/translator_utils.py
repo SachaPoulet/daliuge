@@ -12,7 +12,8 @@ from dlg.common.reproducibility.reproducibility import (
     init_pgt_partition_repro_data,
 )
 from dlg.translator.stages.prepare.loader import load_lg
-from dlg.dropmake.pg_generator import unroll, partition
+from dlg.translator.stages.unroll.stage import unroll
+from dlg.translator.stages.partition.stage import partition
 from dlg.restutils import RestClientException
 
 logger = logging.getLogger(f"dlg.{__name__}")

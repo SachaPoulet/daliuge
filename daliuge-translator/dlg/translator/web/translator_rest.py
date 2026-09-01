@@ -53,7 +53,11 @@ from jsonschema import validate, ValidationError
 from pydantic import BaseModel
 
 import dlg.constants as constants
-import dlg.dropmake.pg_generator
+import dlg
+from dlg.translator.stages.prepare.params import fill
+from dlg.translator.stages.unroll.stage import unroll
+from dlg.translator.stages.partition.stage import partition
+from dlg.translator.stages.map.stage import resource_map
 from dlg import restutils, common
 from dlg.clients import CompositeManagerClient
 from dlg.common.reproducibility.constants import (
@@ -760,7 +764,7 @@ def gen_pg_helm(
     Deploys a PGT as a K8s helm chart.
     """
     # Get pgt_data
-    from ...deploy.start_helm_cluster import start_helm
+    from dlg.deploy.start_helm_cluster import start_helm
 
     pgtp = pg_mgr.get_pgt(pgt_id)
     if pgtp is None:
@@ -882,7 +886,7 @@ def lg_fill(
         raise HTTPException(
             status_code=400,
             detail="Parameter string is invalid") from jerror
-    output_graph = dlg.dropmake.pg_generator.fill(lg_graph, params)
+    output_graph = fill(lg_graph, params)
     output_graph = init_lg_repro_data(init_lgt_repro_data(output_graph, rmode))
     return JSONResponse(output_graph)
 
@@ -915,7 +919,7 @@ def lg_unroll(
     One of lg_name or lg_content, but not both, needs to be specified.
     """
     lg_graph = load_graph(lg_content, lg_name)
-    pgt = dlg.dropmake.pg_generator.unroll(lg_graph, oid_prefix, zero_run, default_app)
+    pgt = unroll(lg_graph, oid_prefix, zero_run, default_app)
     pgt = init_pgt_unroll_repro_data(pgt)
     return JSONResponse(pgt)
 
@@ -954,7 +958,7 @@ def pgt_partition(
     reprodata = {}
     if not graph[-1].get("oid"):
         reprodata = graph.pop()
-    pgt = dlg.dropmake.pg_generator.partition(
+    pgt = partition(
         graph, algorithm, num_partitions, num_islands, algo_params.dict()
     )
     pgt.append(reprodata)
@@ -1004,10 +1008,10 @@ def lg_unroll_and_partition(
     One of lg_name and lg_content, but not both, must be specified.
     """
     lg_graph = load_graph(lg_content, lg_name)
-    pgt = dlg.dropmake.pg_generator.unroll(lg_graph, oid_prefix, zero_run, default_app)
+    pgt = unroll(lg_graph, oid_prefix, zero_run, default_app)
     pgt = init_pgt_unroll_repro_data(pgt)
     reprodata = pgt.pop()
-    pgt = dlg.dropmake.pg_generator.partition(
+    pgt = partition(
         pgt, algorithm, num_partitions, num_islands, algo_params.dict()
     )
     pgt.append(reprodata)
@@ -1062,7 +1066,7 @@ def pgt_map(
     if not pgt[-1].get("oid"):
         reprodata = pgt.pop()
     logger.info(nodes)
-    pg = dlg.dropmake.pg_generator.resource_map(pgt, nodes, num_islands, co_host_dim)
+    pg = resource_map(pgt, nodes, num_islands, co_host_dim)
     pg.append(reprodata)
     pg = init_pg_repro_data(pg)
     return JSONResponse(pg)
