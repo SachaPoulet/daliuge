@@ -74,9 +74,9 @@ from dlg.common.deployment_methods import DeploymentMethods
 from dlg.common.version import version as dlg_version
 from dlg.common.k8s_utils import check_k8s_env
 from dlg.translator.errors import GraphException
-from dlg.dropmake.pg_manager import PGManager
+from dlg.translator.web.pg_manager import PGManager
 from dlg.translator.stages.partition.scheduler import SchedulerException
-from dlg.dropmake.web.translator_utils import (
+from dlg.translator.web.translator_utils import (
     file_as_string,
     lg_repo_contents,
     lg_path,
