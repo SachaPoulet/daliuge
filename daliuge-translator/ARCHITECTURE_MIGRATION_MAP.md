@@ -323,8 +323,14 @@ both of which are dicts.
 and unlike B1 it is *live*. `convert_construct` assigns each construct a fresh `uuid.uuid4()`
 [dm_utils.py:410-544](dlg/dropmake/dm_utils.py#L410). Scatter and Gather do not care — they
 emit no DROP. **Service does**, so the same logical graph translates to a different PGT on
-every run. Reprodata is unaffected. This is what blocks `service_simple` from having a golden,
-and it has no issue and no phase yet.
+every run. Reprodata is unaffected — the hashes do not cover `oid` — which is why it survived
+until Phase 0 tried to golden `service_simple`.
+
+**Disposition, client's call 2026-09-01: known bug, no issue** — same as B8 / proposal §5
+row 15, and recorded there as **§5 row 17**. Not a candidate for a phase; a candidate for a
+post-rewrite cleanup pass over §7. ⚠ **The accepted cost is that `service_simple` stays
+ungoldenable**, so the Service path is unpinned through Phases 3 and 4. Review P4-3's Service
+PR by reading the diff — corpus drift there cannot be told apart from uuid churn.
 
 **B2 — the unknown-target error path is itself broken.**
 [lg.py:757](dlg/dropmake/lg.py#L757) formats `tlgn.jd.category`, but `jd` is a `dict` — this
@@ -344,7 +350,9 @@ of the three iteration-count keys is present, `_dop` is never assigned, so `dop`
 `None` and `range(lgn.dop)` raises a bare `TypeError` with no node name. Already recorded as
 proposal §5 row 5b.
 
-**B6 — `import_metis` never selects the macOS binary.** The extension picker at
+**B8 — `import_metis` never selects the macOS binary.** *(Renumbered from B6 on 2026-09-01
+— the number was already taken by the `categoryType` bug below. Proposal §9's 2026-08-31 rows
+still call this one B6; they are append-only and stand as written.)* The extension picker at
 [scheduler.py:1136-1139](dlg/dropmake/scheduler.py#L1136) tests
 `platform.platform().startswith("Darwin")`. `platform.platform()` rewrites the system name
 `Darwin` → `macOS` whenever `mac_ver()[0]` is non-empty, which it is on any real macOS —
@@ -396,4 +404,5 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 |------|--------|--------|
 | 2026-08-09 | Claude (Opus 5) | Initial map. Line-level read of `dlg/dropmake/**` and `dlg/translator/**`; every target file in proposal §3 has a stated source or is listed as NEW. Found ~600 LOC of confirmed-dead code (§6) and five latent bugs (§7) |
 | 2026-08-27 | Claude (Opus 5) | Two latent bugs added from proposal §8 Q11 — **B6** (missing `categoryType` raises a bare `KeyError` at [lg_node.py:60](dlg/dropmake/lg_node.py#L60), naming no node) and **B7** (`Categories.DATA` is in both `DATA_TYPES` and `APP_TYPES`, `APP_TYPES` tested first). B6 carries a constraint on `model.py`: the bare subscript is what makes the Gather `categoryType` default dead code, so relaxing it to `.get()` would revive a default the proposal deletes |
+| 2026-09-01 | Claude (Opus 5) | **Duplicate `B6` resolved.** Two bugs carried the number: the `categoryType` `KeyError` filed 2026-08-27, and the macOS `import_metis` picker filed 2026-08-31 by the P2-3 row, which did not check. The metis one is **renumbered B8**; the `categoryType` one keeps B6, since proposal §8 Q11 and the `model.py` constraint both cite it. Proposal §5 row 15's body text repointed to B8; §9's two append-only rows still say B6 and are left alone |
 | 2026-09-01 | Claude (Opus 5) | **B1 closed.** The entry still asked for a determination that Phase 0 had already made on 2026-08-31; proposal §5 row 9b records the verdict (dead code, delete, do not port) and this map contradicted it. B1 rewritten with both cases and their corpus pins, §3.2's `service.py` row repointed from "broken today" to "dead, DELETE in P4-2". **B1b added** — the Service `oid`/`lg_key` `uuid.uuid4()` nondeterminism from the same run, which is live, blocks `service_simple`'s golden, and has no issue yet |

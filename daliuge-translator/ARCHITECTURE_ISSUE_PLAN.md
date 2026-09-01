@@ -27,13 +27,14 @@ flowchart TD
     P1a_4["P1a-4 missing categoryType error"] --> P2_1
     P2_1 --> P2_2["P2-2 dlg.dropmake shims"] & P2_3["P2-3 libmetis"] & P2_4["P2-4 lg.graph.schema"]
     P2_2 & P2_3 & P2_4 --> P2_5["P2-5 Phase 2 exit check"]
-    P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + registry"] & P6_3["P6-3 PartitionAlgorithm + registry"]
+    P2_5 --> P2b_1["P2b-1 relocate web/"] & P3_1["P3-1 ConstructHandler + coordinate + model"] & P6_3["P6-3 PartitionAlgorithm + registry"]
     P2b_1 --> P2b_2["P2b-2 relocate test tree"]
     P2b_1 --> P2b_3["P2b-3 repoint API docs"]
     P3_1 --> P3_2["P3-2 dop chain to handlers"] & P3_3["P3-3 validate_link to handlers"]
     P3_2 & P3_3 --> P4_1["P4-1 lift link.py"]
     P4_1 --> P4_2["P4-2 instantiate/wire split"] --> P4_3["P4-3 resolve_edges per construct"] --> P4_4["P4-4 LoopHandler last"]
-    P4_4 --> P5_1["P5-1 InstanceId"] --> P6_1["P6-1 linearise + gojs"] & P6_2["P6-2 to_pg_spec split"]
+    P3_1 --> P4_5["P4-5 LGNode split into model.py"] --> P4_3
+    P4_4 --> P5_1["P5-1 retire the iid parse sites"] --> P6_1["P6-1 linearise + gojs"] & P6_2["P6-2 to_pg_spec split"]
     P6_3 --> P6_1
     P6_1 & P6_2 --> P7_1["P7-1 Updated glue"] --> P7_2["P7-2 Original sites"]
 ```
@@ -616,14 +617,26 @@ issue; if it is not taken here, it wants an issue of its own rather than being d
 
 # Phase 3 — construct registry, read path
 
-## P3-1 — `ConstructHandler` protocol + registry
+## P3-1 — `ConstructHandler` protocol + registry, `coordinate.py`, `model.py`
 
 - **Label:** `Phase 3`
 - **Blocked by:** P2-5
-- **Blocking:** P3-2, P3-3
+- **Blocking:** P3-2, P3-3, P4-5
+
+**Scope widened 2026-09-01** — see the proposal §9 row of that date. This issue was
+`constructs/` alone; it now also lands `coordinate.py` and the link half of `model.py`,
+because the protocol above cannot be written honestly without them. All three are new files.
+**Nothing is routed through any of them yet** — that is P3-2 and P3-3.
+
+### `constructs/` — the protocol and the registry
 
 `unroll/constructs/base.py` (the protocol) and `registry.py` (name → handler), plus empty
 handler files for scatter / gather / loop / groupby / mpi / service / subgraph / leaf.
+
+`service.py` needs no investigation before it is written: migration map §7 **B1** is closed,
+the dead `tlgn["categoryType"]` branch is deleted in P4-2, and the handler's real
+`instantiate` source is the working `make_single_drop` service branch at
+[lg_node.py:995-1001](dlg/dropmake/lg_node.py#L995).
 
 Interface is in §4.3. The one thing to get right up front is the **dispatch key**:
 `(source enclosing construct, target enclosing construct, h-level relation)`, with the
@@ -635,7 +648,52 @@ the *enclosing* construct, `gid` equality, `is_group_start`/`is_group_end`, h-le
 and `_loop_aware_set` membership. An endpoint-typed key routes all four into `LeafHandler`,
 i.e. straight back into the nested conditional this work exists to remove (§8 Q9).
 
-No behaviour routed through it yet — that is P3-2 and P3-3.
+### `model.py` — `LogicalLink` and `Edge`, and nothing else
+
+The dispatch key above says "loop-aware flag carried on the `LogicalLink`", but no such type
+exists. Links are raw dicts today, assembled at
+[lg.py:140-152](dlg/dropmake/lg.py#L140-L152) with `from` / `to` / `fromPort` / `toPort`, an
+`is_stream` flag stamped in the same loop, and loop-awareness held **outside** the link
+entirely — in `self._loop_aware_set`, a set of `"%s-%s"` id strings
+([lg.py:79](dlg/dropmake/lg.py#L79), [:152](dlg/dropmake/lg.py#L152)) that
+[lg.py:661](dlg/dropmake/lg.py#L661) re-derives by formatting the ids back into a string.
+Turning that into a field on `LogicalLink` is the whole reason the key can be stated at all.
+
+Also `Edge`, the return type of `resolve_edges`.
+
+**Not** the rest of migration map §3.1's `model.py` — the `LGNode` split is **P4-5**. This
+issue creates the file and puts the two link types in it.
+
+### `coordinate.py` — `InstanceId`, pulled forward from Phase 5
+
+§4.4's value type, landing here rather than in P5-1. `instantiate(node, coord: InstanceId,
+ctx)` is part of the protocol this issue defines; ship `coord: str` instead and P4-3 writes
+eight handlers against a string, which P5-1 then reopens. Later is *more* churn, not less.
+
+What moves here is the **construction** half only:
+
+- the `f"{iid}-{i}"` build and the `np.unravel_index` `$`-suffix for multi-key GroupBy
+  [lg.py:327-336](dlg/dropmake/lg.py#L327-L336)
+- the four `make_single_drop` call paths
+  [lg.py:358](dlg/dropmake/lg.py#L358), [:365](dlg/dropmake/lg.py#L365),
+  [:374](dlg/dropmake/lg.py#L374), [:383](dlg/dropmake/lg.py#L383)
+- `make_oid`'s `rank = [int(x) for x in iid.split("-")]`
+  [lg_node.py:740-742](dlg/dropmake/lg_node.py#L740) — reads `coord.path` instead
+
+**The seam that makes this safe:** `make_single_drop` writes the coordinate into the drop dict
+as a string, `kwargs["iid"] = iid` [lg_node.py:1010](dlg/dropmake/lg_node.py#L1010). Keep that
+as `str(coord)` and the **three parse sites stay untouched** —
+[lg.py:702](dlg/dropmake/lg.py#L702), [:710](dlg/dropmake/lg.py#L710),
+[:717](dlg/dropmake/lg.py#L717) all read `gdd["iid"]` back out of the dict. Those sit inside
+the GroupBy bucketing branch of the 278-line conditional, which is exactly the region this
+phase must not touch. Retiring them stays in P5-1, after P4-3 has moved them into
+`groupby.py`.
+
+⚠ `__str__` must produce the **bit-identical** wire string — the constraint moves forward
+with the type. It ships in the PG (§7.1), `humanReadableKey` interpolates it
+([pgt.py:336](dlg/dropmake/pgt.py#L336), [:369-371](dlg/dropmake/pgt.py#L369),
+[:485](dlg/dropmake/pgt.py#L485)), and `graph_init.js:219` renders it. **The golden corpus is
+the real gate on this issue**, not a formality as it would have been for `constructs/` alone.
 
 ## P3-2 — Route `degree_of_parallelism` through handlers
 
@@ -727,7 +785,7 @@ this one.
 ## P4-3 — Move `resolve_edges` into handlers — one construct per PR
 
 - **Label:** `Phase 4`
-- **Blocked by:** P4-2
+- **Blocked by:** P4-2, P4-5
 - **Blocking:** P4-4
 
 `resolve_edges` decides *which* source DROP pairs with *which* target DROP — the chunking,
@@ -766,22 +824,79 @@ intended — it just means the "one handler per PR" cadence has a fat tail, not 
 
 Do not start this while any other construct is unmerged.
 
+## P4-5 — Split `LGNode` into `model.py`
+
+- **Label:** `Phase 4`
+- **Blocked by:** P3-1
+- **Blocking:** P4-3
+
+**Filed 2026-09-01 to close a gap in this plan** — the same class of gap as P6-3, found the
+same way. Migration map §3.1 and §3.2 assign a large, specific body of `lg_node.py` to
+`unroll/model.py`, and P3-1 needs that file to exist for `LogicalLink`, but **no issue ever
+created it**: before this one, `model.py` appeared nowhere else in this document. P3-1 creates
+the file with the two link types; after P3-1 it exists and is otherwise empty. This issue
+fills it.
+
+MOVE out of `lg_node.py`, per map §3.1:
+
+- `LGNode.__init__` [lg_node.py:47-98](dlg/dropmake/lg_node.py#L47) and the plain accessors
+  `jd` / `id` / `name` / `category` / `categoryType` / `group` / `children` / `inputs` /
+  `outputs` / `weight` / `h_level` / `group_hierarchy`
+  [:126-344](dlg/dropmake/lg_node.py#L126)
+- `add_output` / `add_input` / `add_child` [:256-287](dlg/dropmake/lg_node.py#L256). Note
+  `add_child` [:270-287](dlg/dropmake/lg_node.py#L270) already branches on
+  scatter/loop/groupby — that branch becomes a handler call, not an `if/elif` that survives
+  the move.
+- the **structural** predicates `is_group`, `is_start`, `is_group_start`, `is_group_end`,
+  `is_start_listener`, `is_data`, `is_app`, `is_dag_root`
+  [:151-158, 345-449](dlg/dropmake/lg_node.py#L345). They describe graph *position*, not
+  construct kind, so they belong on the model.
+
+DELETE rather than move: the **construct** predicates `is_scatter` / `is_gather` / `is_loop` /
+`is_groupby` / `is_mpi` / `is_service` / `is_subgraph` / `is_branch`
+[:450-488](dlg/dropmake/lg_node.py#L450). They *are* the registry lookup — handler identity
+answers every one of them.
+
+**Why this blocks P4-3 rather than following it.** The deletion above is only safe once
+something else answers those questions, and P4-3's per-construct PRs are the first code that
+does. Land the split first and P4-3's handlers are written against a model that already looks
+the way the design wants; land it after and each of the seven PRs edits `lg_node.py` as well
+as its own handler file.
+
+Constraint carried from map §7 **B6**: the bare `categoryType` subscript at
+[lg_node.py:60](dlg/dropmake/lg_node.py#L60) is what makes the Gather `categoryType` default
+dead code. Do **not** soften it to `.get()` while moving `__init__` — that revives a default
+the proposal deletes (§8 Q11).
+
 ---
 
 # Phase 5 — `InstanceId`
 
-## P5-1 — Replace stringly-typed `iid`
+## P5-1 — Retire the `iid` parse sites
 
 - **Label:** `Phase 5`
 - **Blocked by:** P4-4
 - **Blocking:** P6-1, P6-2
 
-`iid` is the only link from a physical DROP back to its logical position, and it is a
-`-`/`$`-delimited string re-parsed with `split()` in several places. Replace the internals
-with a value type (`coordinate.py`, sketch in §4.4).
+**Reduced 2026-09-01.** This issue used to own the whole of `InstanceId`. The value type and
+its construction moved forward into **P3-1**, so `coordinate.py` already exists, drops already
+carry `str(coord)`, and `__str__` is already corpus-verified by the time this starts.
 
-⚠ `__str__` must produce the **bit-identical** wire string. It ships in the PG (§7.1) and the
-viewer's `humanReadableKey` interpolates `drop['iid']`. Internals change, output does not.
+What is left is the **read** side — the three places that parse the string back apart instead
+of asking the coordinate:
+
+- [lg.py:702](dlg/dropmake/lg.py#L702) `gdd["iid"].split("-")`
+- [lg.py:710](dlg/dropmake/lg.py#L710) `"-".join(src_ctx[0:-2])`
+- [lg.py:717](dlg/dropmake/lg.py#L717) `gdd["iid"].split("$")[1].split("-")`
+
+All three are the GroupBy key-bucketing logic. They stayed behind deliberately: they sit inside
+the 278-line `unroll_to_tpl` conditional, and P4-3's GroupBy PR is what moves them into
+`groupby.py`. By the time this issue runs they are a handful of lines in one small file, and
+the change is to read `coord.path` / `coord.group_key` directly and delete the `split()`s.
+
+⚠ The bit-identity constraint still holds, but it is now a *regression* guard rather than new
+risk: the wire string ships in the PG (§7.1) and `humanReadableKey` interpolates `drop['iid']`.
+Internals change, output does not.
 
 ---
 
