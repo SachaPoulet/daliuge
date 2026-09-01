@@ -640,7 +640,7 @@ def register_commands():
     tool.cmdwrap(
         "tm", translator_group,
         "A Web server for the Logical Graph Editor",
-        "dlg.dropmake.web.translator_rest:run",
+        "dlg.translator.web.translator_rest:run",
     )
     tool.cmdwrap(
         "submit", translator_group,
