@@ -94,7 +94,7 @@ Every handler file draws from four current locations. This is the table to work 
 | **loop.py** | [lg_node.py:644-651](dlg/dropmake/lg_node.py#L644) — **and add the missing fallback**, §7 B4 | none — Loop emits no DROP | iteration circle [lg.py:287-301](dlg/dropmake/lg.py#L287) | end→start relink [lg.py:620-645](dlg/dropmake/lg.py#L620); cross-loop stepwise lock [lg.py:646-655](dlg/dropmake/lg.py#L646); `loop_aware` first/last iteration [lg.py:657-682](dlg/dropmake/lg.py#L657) | [lg.py:166-170](dlg/dropmake/lg.py#L166), [:218-232](dlg/dropmake/lg.py#L218) |
 | **groupby.py** | [lg_node.py:642-643](dlg/dropmake/lg_node.py#L642) + `groupby_width` [:526-543](dlg/dropmake/lg_node.py#L526) + `group_by_scatter_layers` [:544-611](dlg/dropmake/lg_node.py#L544) + `group_keys` [:489-509](dlg/dropmake/lg_node.py#L489) | `_create_groupby_drops` [lg_node.py:779-813](dlg/dropmake/lg_node.py#L779); multikey shape [lg.py:317-325](dlg/dropmake/lg.py#L317) | group-start links [lg.py:302-315](dlg/dropmake/lg.py#L302) | key bucketing [lg.py:693-742](dlg/dropmake/lg.py#L693) — **the `iid` parsing here is what `coordinate.py` replaces**; GroupBy→Gather [lg.py:612-616](dlg/dropmake/lg.py#L612) | [lg.py:183-199](dlg/dropmake/lg.py#L183), [:210-217](dlg/dropmake/lg.py#L210) |
 | **mpi.py** | [lg_node.py:663-664](dlg/dropmake/lg_node.py#L663) | [lg.py:360-367](dlg/dropmake/lg.py#L360); rank handling [lg_node.py:307-312](dlg/dropmake/lg_node.py#L307) | none | default | none |
-| **service.py** | [lg_node.py:653-654](dlg/dropmake/lg_node.py#L653) | no-op [lg.py:368-370](dlg/dropmake/lg.py#L368); `make_single_drop` service branch [lg_node.py:995-1001](dlg/dropmake/lg_node.py#L995) | none | [lg.py:747-752](dlg/dropmake/lg.py#L747) — **broken today, §7 B1** | none |
+| **service.py** | [lg_node.py:653-654](dlg/dropmake/lg_node.py#L653) | no-op [lg.py:368-370](dlg/dropmake/lg.py#L368); `make_single_drop` service branch [lg_node.py:995-1001](dlg/dropmake/lg_node.py#L995) | none | [lg.py:747-752](dlg/dropmake/lg.py#L747) — **dead, DELETE in P4-2, §7 B1** | none |
 | **subgraph.py** | [lg_node.py:655-656](dlg/dropmake/lg_node.py#L655) | [lg.py:371-377](dlg/dropmake/lg.py#L371) | none | pass-throughs [lg.py:602-603](dlg/dropmake/lg.py#L602), [:753-754](dlg/dropmake/lg.py#L753) | none |
 | **leaf.py** | `1` [lg_node.py:665-666](dlg/dropmake/lg_node.py#L665) | [lg.py:378-388](dlg/dropmake/lg.py#L378) + `make_single_drop` [lg_node.py:962-1011](dlg/dropmake/lg_node.py#L962), `_create_app_drop` [:880-931](dlg/dropmake/lg_node.py#L880), `_create_data_drop` [:932-961](dlg/dropmake/lg_node.py#L932), `_create_listener_drops` [:849-879](dlg/dropmake/lg_node.py#L849) | none | default chunked [lg.py:683-691](dlg/dropmake/lg.py#L683) | [lg.py:233-251](dlg/dropmake/lg.py#L233) |
 
@@ -289,12 +289,42 @@ row's "except `bash_parameter.py`". All four moved intact in P2-3.
 Not fixed here. Flagged so nobody "cleans them up" mid-move and silently changes behaviour.
 Each needs a decision recorded in the proposal's changes log.
 
-**B1 — `is_service` wiring branch cannot execute.** [lg.py:750-751](dlg/dropmake/lg.py#L750)
-does `tlgn["categoryType"] = "Application"` where `tlgn` is an `LGNode`. `LGNode` defines
-neither `__setitem__` nor `__getitem__` (grep confirms), so this raises
-`TypeError: 'LGNode' object does not support item assignment` the moment it is reached.
-Either Service targets never reach this branch, or Service links are broken today. Determine
-which before writing `service.py`.
+**B1 — `is_service` wiring branch cannot execute. ✅ Resolved 2026-08-31: DELETE it.**
+[lg.py:750-755](dlg/dropmake/lg.py#L750) does `tlgn["categoryType"] = "Application"` where
+`tlgn` is an `LGNode`. `LGNode` defines neither `__setitem__` nor `__getitem__` (grep
+confirms), so this raises `TypeError: 'LGNode' object does not support item assignment` the
+moment it is reached.
+
+This entry originally asked which of two cases held — targets never reach the branch, or
+Service links are broken today. Phase 0 answered it with authored corpus cases: **both, and
+neither is behaviour.**
+
+- **Service *with* an input application — unreachable.** `convert_construct` gives the
+  generated app node the construct's original `id` (`_create_from_node`
+  [dm_utils.py:545-593](dlg/dropmake/dm_utils.py#L545), `new_node["id"] = node["id"]`), then
+  reassigns the construct a fresh `uuid.uuid4()`. Every link authored "into the Service"
+  therefore resolves to the app node, `tlgn.is_service` is False, and the branch is skipped.
+  Corpus case `service_simple`.
+- **Service *without* one — runs, crashes.** `convert_construct` gates on
+  `_has_app_keywords` and `continue`s, so the id is unchanged and links still target the
+  group. The branch fires and raises. Corpus case `service_no_input_app`, filed known-broken
+  to pin it.
+
+**Decision:** delete, alongside proposal §5 rows 6 and 10 — **do not** port it into
+`ServiceHandler.instantiate`. Recorded as proposal [§5 row 9b](ARCHITECTURE_PROPOSAL.md), which
+supersedes row 9's original "move the rewrite into the handler" plan (struck through there).
+The delete executes in **P4-2**, not in P3-1; `service.py` needs no probe before it is written.
+`service.py`'s real `instantiate` content is the *working* twin of this rewrite — the
+`make_single_drop` service branch at
+[lg_node.py:995-1001](dlg/dropmake/lg_node.py#L995), which assigns into `kwargs` and `self.jd`,
+both of which are dicts.
+
+**B1b — a Service DROP's `oid`/`lg_key` are not reproducible.** Found in the same Phase 0 run,
+and unlike B1 it is *live*. `convert_construct` assigns each construct a fresh `uuid.uuid4()`
+[dm_utils.py:410-544](dlg/dropmake/dm_utils.py#L410). Scatter and Gather do not care — they
+emit no DROP. **Service does**, so the same logical graph translates to a different PGT on
+every run. Reprodata is unaffected. This is what blocks `service_simple` from having a golden,
+and it has no issue and no phase yet.
 
 **B2 — the unknown-target error path is itself broken.**
 [lg.py:757](dlg/dropmake/lg.py#L757) formats `tlgn.jd.category`, but `jd` is a `dict` — this
@@ -366,3 +396,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 |------|--------|--------|
 | 2026-08-09 | Claude (Opus 5) | Initial map. Line-level read of `dlg/dropmake/**` and `dlg/translator/**`; every target file in proposal §3 has a stated source or is listed as NEW. Found ~600 LOC of confirmed-dead code (§6) and five latent bugs (§7) |
 | 2026-08-27 | Claude (Opus 5) | Two latent bugs added from proposal §8 Q11 — **B6** (missing `categoryType` raises a bare `KeyError` at [lg_node.py:60](dlg/dropmake/lg_node.py#L60), naming no node) and **B7** (`Categories.DATA` is in both `DATA_TYPES` and `APP_TYPES`, `APP_TYPES` tested first). B6 carries a constraint on `model.py`: the bare subscript is what makes the Gather `categoryType` default dead code, so relaxing it to `.get()` would revive a default the proposal deletes |
+| 2026-09-01 | Claude (Opus 5) | **B1 closed.** The entry still asked for a determination that Phase 0 had already made on 2026-08-31; proposal §5 row 9b records the verdict (dead code, delete, do not port) and this map contradicted it. B1 rewritten with both cases and their corpus pins, §3.2's `service.py` row repointed from "broken today" to "dead, DELETE in P4-2". **B1b added** — the Service `oid`/`lg_key` `uuid.uuid4()` nondeterminism from the same run, which is live, blocks `service_simple`'s golden, and has no issue yet |
