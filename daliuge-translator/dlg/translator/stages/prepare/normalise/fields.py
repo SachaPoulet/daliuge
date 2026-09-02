@@ -20,26 +20,30 @@
 #    MA 02111-1307  USA
 #
 
-"""
-Compatibility shim. The implementations moved to
-`dlg.translator.stages.partition.pgtp` when Tier 1 code was relocated into
-`stages/` (issue #16).
+import logging
 
-`daliuge-engine` imports `MetisPGTP` from here
-(`test/dlg_end_to_end_utils.py`), which proposal 7.1 treats as contract, and
-`web/translator_rest.py` constructs all four. Re-exports only -- do not add
-logic here.
+logger = logging.getLogger(f"dlg.{__name__}")
 
-Note the logger name changed with the module: records formerly emitted under
-`dlg.dlg.dropmake.pgtp` now come from
-`dlg.dlg.translator.stages.partition.pgtp`.
-"""
 
-from dlg.translator.stages.partition.pgtp import (
-    MetisPGTP,
-    MinNumPartsPGTP,
-    MySarkarPGTP,
-    PSOPGTP,
-)
+def convert_fields(lgo: dict) -> dict:
+    """Convert fields of all logical graph nodes to node attributes
 
-__all__ = ["MetisPGTP", "MySarkarPGTP", "MinNumPartsPGTP", "PSOPGTP"]
+    Args:
+        lgo: The logical graph object
+
+    Returns:
+        converted logical graph object
+    """
+    logger.debug("Converting fields")
+    nodes = lgo["nodeDataArray"]
+    for node in nodes:
+        fields = node["fields"]
+        node["inputPorts"] = {}
+        node["outputPorts"] = {}
+        for field in fields:
+            name = field.get("name", "")
+            if name != "":
+                node[name] = field.get("value", "")
+                if node[name] == "":
+                    node[name] = field.get("defaultValue", "")
+    return lgo

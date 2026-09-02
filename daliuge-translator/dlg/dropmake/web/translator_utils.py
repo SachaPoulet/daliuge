@@ -11,7 +11,7 @@ from dlg.common.reproducibility.reproducibility import (
     init_pgt_unroll_repro_data,
     init_pgt_partition_repro_data,
 )
-from dlg.dropmake.lg import load_lg
+from dlg.translator.stages.prepare.loader import load_lg
 from dlg.dropmake.pg_generator import unroll, partition
 from dlg.restutils import RestClientException
 

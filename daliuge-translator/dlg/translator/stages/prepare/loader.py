@@ -20,26 +20,20 @@
 #    MA 02111-1307  USA
 #
 
-"""
-Compatibility shim. The implementations moved to
-`dlg.translator.stages.partition.pgtp` when Tier 1 code was relocated into
-`stages/` (issue #16).
+import os
+import json
 
-`daliuge-engine` imports `MetisPGTP` from here
-(`test/dlg_end_to_end_utils.py`), which proposal 7.1 treats as contract, and
-`web/translator_rest.py` constructs all four. Re-exports only -- do not add
-logic here.
+from dlg.translator.errors import GraphException
 
-Note the logger name changed with the module: records formerly emitted under
-`dlg.dlg.dropmake.pgtp` now come from
-`dlg.dlg.translator.stages.partition.pgtp`.
-"""
 
-from dlg.translator.stages.partition.pgtp import (
-    MetisPGTP,
-    MinNumPartsPGTP,
-    MySarkarPGTP,
-    PSOPGTP,
-)
-
-__all__ = ["MetisPGTP", "MySarkarPGTP", "MinNumPartsPGTP", "PSOPGTP"]
+def load_lg(f):
+    if isinstance(f, str):
+        if not os.path.exists(f):
+            raise GraphException("Logical graph {0} not found".format(f))
+        with open(f) as fp:
+            lg = json.load(fp)
+    elif hasattr(f, "read"):
+        lg = json.load(f)
+    else:
+        lg = f
+    return lg
