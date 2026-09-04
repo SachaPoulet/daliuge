@@ -15,6 +15,9 @@ class PartitionOptions:
 
 
 class PartitionStage:
+    """
+    PGT -> PGT-partitioned
+    """
     name = "partition"
 
     def __init__(self, opts: PartitionOptions = PartitionOptions()):
