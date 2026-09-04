@@ -13,6 +13,9 @@ class MapOptions:
 
 
 class MapStage:
+    """
+    PGT-partitioned -> PG
+    """
     name = 'map'
 
     def __init__(self, opts: MapOptions):
