@@ -20,10 +20,12 @@ class MapStage:
 
     def run(self, pgtp: PhysicalGraphTemplatePartitioned) -> PhysicalGraph:
         return PhysicalGraph(
-            drops=resource_map(pgt=deepcopy(pgtp.drops),
-                               nodes=self._opts.nodes,
-                               num_islands=self._opts.num_islands,
-                               co_host_dim=self._opts.co_host_dim),
+            drops=resource_map(
+                pgt=deepcopy(pgtp.drops),
+                nodes=self._opts.nodes,
+                num_islands=self._opts.num_islands,
+                co_host_dim=self._opts.co_host_dim
+            ),
             reprodata=deepcopy(pgtp.reprodata)
         )
 
