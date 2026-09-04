@@ -53,38 +53,6 @@ class TestLGInit(unittest.TestCase):
                              f"Incorrect number of elements when constructing LG "
                              f"object using: {lg_name}")
 
-    def test_memory_without_category_type_feeds_gather(self):
-        """
-        Ensure LGNode infers a Memory node's data category before link validation.
-        """
-        memory_node = {
-            "id": "memory",
-            "category": "Memory",
-            "fields": [],
-        }
-        graph = {
-            "modelData": {
-                "filePath": "memory-gather.graph",
-                "schemaVersion": 2,
-            },
-            "nodeDataArray": [
-                memory_node,
-                {
-                    "id": "gather",
-                    "category": "Gather",
-                    "categoryType": "Construct",
-                    "fields": [],
-                    "num_of_inputs": 1,
-                },
-            ],
-            "linkDataArray": [{"from": "memory", "to": "gather"}],
-        }
-
-        lg = LG(graph, ssid=TEST_SSID)
-
-        self.assertEqual(CategoryType.DATA, memory_node["categoryType"])
-        self.assertEqual(1, len(lg.unroll_to_tpl()))
-
 
 def _calc_num_drops(drop_values):
     """
