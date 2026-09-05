@@ -23,7 +23,7 @@
 
 import json
 import logging
-import optparse # pylint: disable=deprecated-module
+import optparse  # pylint: disable=deprecated-module
 import os
 import sys
 
@@ -34,13 +34,19 @@ from dlg.common import tool
 from dlg.common.reproducibility.reproducibility import (
     init_lgt_repro_data,
     init_lg_repro_data,
-    init_pgt_unroll_repro_data,
-    init_pgt_partition_repro_data,
-    init_pg_repro_data,
 )
 
-from dlg.dropmake import pg_generator
-from dlg.dropmake.pgt import GPGTNoNeedMergeException
+from dlg.translator.stages.unroll.stage import UnrollStage, UnrollOptions
+from dlg.translator.stages.partition.stage import PartitionStage, PartitionOptions
+from dlg.translator.stages.map.stage import MapStage, MapOptions
+
+from dlg.translator.artefacts import LogicalGraphTemplate, PhysicalGraphTemplate, PhysicalGraphTemplatePartitioned
+from dlg.translator.pipeline import Pipeline
+from dlg.translator.errors import StageException
+from dlg.translator.stages.prepare.params import apply_config
+from dlg.translator.stages.partition.stage import known_algorithms
+
+from dlg.translator.stages.partition.pgt import GPGTNoNeedMergeException
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -67,7 +73,7 @@ def unroll(lg_path, oid_prefix, zerorun=False, app=None):
     and return the latter.
     This method prepends `oid_prefix` to all generated Drop OIDs.
     """
-    from ..dropmake.pg_generator import unroll as pg_unroll
+    from dlg.translator.stages.unroll.stage import unroll as pg_unroll
 
     logger.info("Start to unroll %s", lg_path)
     return pg_unroll(_open_i(lg_path), oid_prefix=oid_prefix, zerorun=zerorun, app=app)
@@ -101,10 +107,49 @@ def parse_partition_algo_params(algo_params):
     }
 
 
+def _unroll_options(opts, apps) -> UnrollOptions:
+    return UnrollOptions(
+        oid_prefix=opts.oid_prefix,
+        zerorun=opts.zerorun,
+        app=apps[opts.app],
+    )
+
+
+def _partition_options(opts) -> PartitionOptions:
+    return PartitionOptions(
+        algo=opts.algo,
+        num_partitions=opts.partitions,
+        num_islands=opts.islands,
+        algo_params=parse_partition_algo_params(opts.algo_params or []),
+    )
+
+
+def _map_options(opts) -> MapOptions:
+    if opts.nodes:
+        nodes = [n for n in opts.nodes.split(",") if n]
+    else:
+        client = CompositeManagerClient(opts.host, opts.port, timeout=10)
+        nodes = [opts.host] + client.nodes()
+
+    n_nodes = len(nodes)
+    if n_nodes <= opts.islands:
+        raise Exception(
+            "#nodes (%d) should be bigger than number of islands (%d)"
+            % (n_nodes, opts.islands)
+        )
+
+    return MapOptions(
+        nodes=nodes,
+        num_islands=opts.islands,
+        co_host_dim=opts.co_host_dim,
+    )
+
+
 def partition(pgt, opts):
+    from dlg.translator.stages.partition.stage import partition as stage_partition
 
     algo_params = parse_partition_algo_params(opts.algo_params or [])
-    pg = pg_generator.partition(
+    pg = stage_partition(
         pgt,
         algo=opts.algo,
         num_partitions=opts.partitions,
@@ -223,10 +268,11 @@ def dlg_fill(parser, args):
     ):
         params.update(json_param)
 
-    from ..dropmake.pg_generator import fill
+    from dlg.translator.stages.prepare.params import fill
 
     graph = fill(_open_i(opts.logical_graph), params)
     dump(init_lg_repro_data(init_lgt_repro_data(graph, opts.reproducibility)))
+
 
 def dlg_graph_config(parser, args):
     """
@@ -267,15 +313,15 @@ def dlg_graph_config(parser, args):
         sin = sys.stdin.read()
         graph_config = json.loads(sin)
     else:
-        with open (opts.graph_config) as fp:
+        with open(opts.graph_config) as fp:
             graph_config = json.load(fp)
 
     if not opts.logical_graph:
         parser.error("Must provide an option for --graph_config")
-    with open (opts.logical_graph) as fp:
+    with open(opts.logical_graph) as fp:
         logical_graph = json.load(fp)
 
-    graph = pg_generator.apply_config(logical_graph, graph_config)
+    graph = apply_config(logical_graph, graph_config)
     dump(init_lg_repro_data(init_lgt_repro_data(graph, opts.reproducibility)))
 
 
@@ -330,11 +376,12 @@ def dlg_unroll(parser, args):
     (opts, args) = parser.parse_args(args)
     tool.setup_logging(opts)
     dump = _setup_output(opts)
-    pgt = unroll(
-        opts.lg_path, opts.oid_prefix, zerorun=opts.zerorun, app=apps[opts.app]
-    )
+
+    with _open_i(opts.lg_path) as f:
+        lgt = LogicalGraphTemplate.from_wire(json.load(f))
+
+    dump(Pipeline([UnrollStage(_unroll_options(opts, apps))]).run(lgt).to_wire())
     # logger.debug(">>> pgt: %s", pgt)
-    dump(init_pgt_unroll_repro_data(pgt))
 
 
 def _add_partition_options(parser):
@@ -361,10 +408,10 @@ def _add_partition_options(parser):
         "--algorithm",
         action="store",
         type="choice",
-        choices=pg_generator.known_algorithms(),
+        choices=known_algorithms(),
         dest="algo",
         help=f"Algorithm used to do the partitioning. Select from:\n"
-             f"{str(pg_generator.known_algorithms()).strip('[]')}",
+             f"{str(known_algorithms()).strip('[]')}",
         default="metis",
     )
     parser.add_option(
@@ -395,8 +442,8 @@ def dlg_partition(parser, args):
     tool.setup_logging(opts)
     dump = _setup_output(opts)
     with _open_i(opts.pgt_path) as fi:
-        pgt = json.load(fi)
-    if not isinstance(pgt, list):
+        wire = json.load(fi)
+    if not isinstance(wire, list):
         print("\nOption 'partition' expects an unrolled graph, which is a "
               "JSON-compatible list."
               "\nEither you have passed in the wrong file, "
@@ -404,18 +451,27 @@ def dlg_partition(parser, args):
         print("\n\nRun 'dlg unroll -h' for more information.\n")
 
         sys.exit()
+    pgt = PhysicalGraphTemplate.from_wire(wire)
 
-    repro = pgt.pop()  # TODO: Re-integrate
     try:
-        pgt = partition(pgt, opts)
-    except GPGTNoNeedMergeException:
+        pgtp = Pipeline([PartitionStage(_partition_options(opts))]).run(pgt)
+    except StageException as e:
+        if not isinstance(e.__cause__, GPGTNoNeedMergeException):
+            raise
         print("\nThe combination of -N nodes and -i Islands does not work for "
-                "the graph provided. "
+              "the graph provided. "
               "\nThis is either a result of the parallelism of the graph being too low,"
               " or i >= N."
               "\nConsider reducing the number of islands.\n")
-    pgt.append(repro)
-    dump(init_pgt_partition_repro_data(pgt))
+
+        # Still stamp PGT (as PGTP) for dump, previous codebase behavior
+        pgtp = PartitionStage(_partition_options(opts)).stamp(
+            PhysicalGraphTemplatePartitioned(
+                drops=pgt.drops, reprodata=pgt.reprodata
+            )
+        )
+
+    dump(pgtp.to_wire())
 
 
 def dlg_unroll_and_partition(parser, args):
@@ -427,14 +483,10 @@ def dlg_unroll_and_partition(parser, args):
     tool.setup_logging(opts)
     dump = _setup_output(opts)
 
-    pgt = unroll(
-        opts.lg_path, opts.oid_prefix, zerorun=opts.zerorun, app=apps[opts.app]
-    )
-    init_pgt_unroll_repro_data(pgt)
-    repro = pgt.pop()  # TODO: Re-integrate
-    pgt = partition(pgt, opts)
-    pgt.append(repro)
-    dump(init_pgt_partition_repro_data(pgt))
+    with _open_i(opts.lg_path) as f:
+        lgt = LogicalGraphTemplate.from_wire(json.load(f))
+
+    dump(Pipeline([UnrollStage(_unroll_options(opts, apps)), PartitionStage(_partition_options(opts))]).run(lgt).to_wire())
 
 
 def dlg_map(parser, args):
@@ -495,29 +547,10 @@ def dlg_map(parser, args):
     tool.setup_logging(opts)
     dump = _setup_output(opts)
 
-
-    if opts.nodes:
-        nodes = [n for n in opts.nodes.split(",") if n]
-    else:
-        client = CompositeManagerClient(opts.host, opts.port, timeout=10)
-        nodes = [opts.host] + client.nodes()
-
-    n_nodes = len(nodes)
-    if n_nodes <= opts.islands:
-        raise Exception(
-            "#nodes (%d) should be bigger than number of islands (%d)"
-            % (n_nodes, opts.islands)
-        )
-
     with _open_i(opts.pgt_path) as f:
-        pgt = json.load(f)
+        pgtp = PhysicalGraphTemplatePartitioned.from_wire(json.load(f))
 
-    repro = pgt.pop()  # TODO: Re-include
-    pg = pg_generator.resource_map(
-        pgt, nodes, opts.islands, co_host_dim=opts.co_host_dim
-    )
-    pg.append(repro)
-    dump(init_pg_repro_data(pg))
+    dump(Pipeline([MapStage(_map_options(opts))]).run(pgtp).to_wire())
 
 
 def dlg_submit(parser, args):
@@ -607,7 +640,7 @@ def register_commands():
     tool.cmdwrap(
         "tm", translator_group,
         "A Web server for the Logical Graph Editor",
-        "dlg.dropmake.web.translator_rest:run",
+        "dlg.translator.web.translator_rest:run",
     )
     tool.cmdwrap(
         "submit", translator_group,
@@ -634,5 +667,3 @@ def register_commands():
                  "Apply a graph config to the logical graph", dlg_graph_config)
     tool.cmdwrap("fill", translator_group,
                  "[DEPRECATED] Fill a Logical Graph with parameters", dlg_fill)
-
-

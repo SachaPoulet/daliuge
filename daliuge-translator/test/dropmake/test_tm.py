@@ -31,7 +31,7 @@ import logging
 
 from dlg import common
 from dlg.common import tool
-from dlg.dropmake.web.translator_utils import get_mgr_deployment_methods
+from dlg.translator.web.translator_utils import get_mgr_deployment_methods
 from dlg.restutils import RestClient, RestClientException
 
 from importlib.resources import files
