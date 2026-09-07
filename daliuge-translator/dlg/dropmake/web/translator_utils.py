@@ -1,185 +1,82 @@
-import os
-import logging
-import importlib.resources
-from urllib.parse import urlparse
+#
+#    ICRAR - International Centre for Radio Astronomy Research
+#    (c) UWA - The University of Western Australia, 2015
+#    Copyright by UWA (in the framework of the ICRAR)
+#    All rights reserved
+#
+#    This library is free software; you can redistribute it and/or
+#    modify it under the terms of the GNU Lesser General Public
+#    License as published by the Free Software Foundation; either
+#    version 2.1 of the License, or (at your option) any later version.
+#
+#    This library is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#    Lesser General Public License for more details.
+#
+#    You should have received a copy of the GNU Lesser General Public
+#    License along with this library; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+#    MA 02111-1307  USA
+#
 
-from dlg import utils
-from dlg.clients import CompositeManagerClient
-from dlg.common.reproducibility.reproducibility import (
-    init_lg_repro_data,
-    init_lgt_repro_data,
-    init_pgt_unroll_repro_data,
-    init_pgt_partition_repro_data,
+"""
+Compatibility shim. The implementation moved to
+`dlg.translator.web.translator_utils` when `web/` was relocated out of
+`dropmake/` (issue #21).
+
+`daliuge-engine` imports this module from production code
+(`graph_compatibility.py`) and from `test/end_to_end/deploy/
+test_graph_to_manager.py`, which also gates itself on
+`pytest.importorskip("dlg.dropmake.web.translator_utils")` -- so the module
+must import cleanly, not merely exist. Both consumers want
+`unroll_and_partition_with_params` and `prepare_lgt`; proposal 7.1 treats that
+as contract. Re-exports only -- do not add logic here.
+
+`ALGO_PARAMS` is re-exported as the same list object, so the two names stay in
+sync under mutation. They would not stay in sync under rebinding: assigning to
+`dlg.dropmake.web.translator_utils.ALGO_PARAMS` replaces only this name and
+leaves the real module untouched. Nothing does that today; if you need to,
+reach for `dlg.translator.web.translator_utils.ALGO_PARAMS`.
+
+Note the logger name changed with the module: records formerly emitted under
+`dlg.dlg.dropmake.web.translator_utils` now come from
+`dlg.dlg.translator.web.translator_utils`.
+"""
+
+# pylint: disable=unused-import
+from dlg.translator.web.translator_utils import (
+    ALGO_PARAMS,
+    file_as_string,
+    filter_dict_to_algo_params,
+    get_mgr_deployment_methods,
+    lg_exists,
+    lg_path,
+    lg_repo_contents,
+    make_algo_param_dict,
+    parse_mgr_url,
+    prepare_lgt,
+    pgt_exists,
+    pgt_path,
+    pgt_repo_contents,
+    unroll_and_partition_with_params,
 )
-from dlg.dropmake.lg import load_lg
-from dlg.dropmake.pg_generator import unroll, partition
-from dlg.restutils import RestClientException
 
-logger = logging.getLogger(f"dlg.{__name__}")
+# pylint: enable=unused-import
 
-ALGO_PARAMS = [
-    ("min_goal", int),
-    ("ptype", int),
-    ("max_load_imb", int),
-    ("max_cpu", int),
-    ("time_greedy", float),
-    ("deadline", int),
-    ("topk", int),
-    ("swarm_size", int),
-    ("max_mem", int),
-]  # max_mem is only relevant for the old editor, not used in EAGLE
-
-
-def lg_path(lg_dir, lg_name):
-    return "{0}/{1}".format(lg_dir, lg_name)
-
-
-def lg_exists(lg_dir, lg_name):
-    return os.path.exists(lg_path(lg_dir, lg_name))
-
-
-def pgt_path(pgt_dir, pgt_name):
-    return "{0}/{1}".format(pgt_dir, pgt_name)
-
-
-def pgt_exists(pgt_dir, pgt_name):
-    return os.path.exists(pgt_path(pgt_dir, pgt_name))
-
-
-def lg_repo_contents(lg_dir):
-    return _repo_contents(lg_dir)
-
-
-def pgt_repo_contents(pgt_dir):
-    return _repo_contents(pgt_dir)
-
-
-def _repo_contents(root_dir):
-    # We currently allow only one depth level
-    b = os.path.basename
-    contents = {}
-    for dirpath, dirnames, fnames in os.walk(root_dir):
-        if ".git" in dirnames:
-            dirnames.remove(".git")
-        if dirpath == root_dir:
-            continue
-
-        # Not great yet -- we should do a full second step pruning branches
-        # of the tree that are empty
-        files = [f for f in fnames if f.endswith(".graph")]
-        if files:
-            contents[b(dirpath)] = files
-
-    return contents
-
-def file_as_string(fname, module, enc="utf8"):
-    module_path = importlib.resources.files(module)
-    res = module_path / fname
-    return utils.b2s(res.read_bytes(), enc)
-
-
-def prepare_lgt(filename, rmode: str):
-    return init_lg_repro_data(init_lgt_repro_data(load_lg(filename), rmode))
-
-
-def filter_dict_to_algo_params(input_dict: dict):
-    algo_params = {}
-    for name, _ in ALGO_PARAMS:
-        if name in input_dict:
-            algo_params[name] = input_dict.get(name)
-    return algo_params
-
-
-def get_mgr_deployment_methods(mhost, mport, mprefix):
-    try:
-        mgr_client = CompositeManagerClient(
-            host=mhost, port=mport, url_prefix=mprefix, timeout=15
-        )
-        response = mgr_client.get_submission_method()
-        response = response.get("methods", [])
-    except RestClientException:
-        logger.debug("Cannot connect to manager object at endpoint %s:%d", mhost, mport)
-        response = []
-    return response
-
-
-def parse_mgr_url(mgr_url):
-    mport = -1
-    mparse = urlparse(mgr_url)
-    if mparse.scheme == "http":
-        mport = 80
-    elif mparse.scheme == "https":
-        mport = 443
-    if mparse.port is not None:
-        mport = mparse.port
-    mprefix = mparse.path
-    if mprefix is not None:
-        if mprefix.endswith("/"):
-            mprefix = mprefix[:-1]
-    else:
-        mprefix = ""
-    return mparse.hostname, mport, mprefix
-
-
-def make_algo_param_dict(
-    min_goal,
-    ptype,
-    max_load_imb,
-    max_cpu,
-    time_greedy,
-    deadline,
-    topk,
-    swam_size,
-    max_mem,
-):
-    return {
-        "min_goal": min_goal,
-        "ptype": ptype,
-        "max_load_imb": max_load_imb,
-        "max_cpu": max_cpu,
-        "time_greedy": time_greedy,
-        "deadline": deadline,
-        "topk": topk,
-        "swarm_size": swam_size,
-        "max_mem": max_mem,
-    }
-
-
-def unroll_and_partition_with_params(
-    lgt: dict,
-    test: bool,
-    algorithm: str = "none",
-    num_partitions: int = 1,
-    num_islands: int = 0,
-    par_label: str = "Partition",
-    algorithm_parameters=None,
-):
-    if algorithm_parameters is None:
-        algorithm_parameters = {}
-    app = "dlg.apps.simple.SleepApp" if test else None
-    pgt = init_pgt_unroll_repro_data(unroll(lgt, app=app))
-    algo_params = filter_dict_to_algo_params(algorithm_parameters)
-    reprodata = pgt.pop()
-    # Partition the PGT
-    pgt = partition(
-        pgt,
-        algo=algorithm,
-        num_partitions=num_partitions,
-        num_islands=num_islands,
-        partition_label=par_label,
-        show_gojs=True,
-        **algo_params,
-    )
-
-    pgt_spec = pgt.to_pg_spec(
-        [],
-        ret_str=False,
-        num_islands=num_islands,
-        tpl_nodes_len=num_partitions + num_islands,
-    )
-    pgt_spec.append(reprodata)
-    init_pgt_partition_repro_data(pgt_spec)
-    reprodata = pgt_spec.pop()
-    pgt.reprodata = reprodata
-    logger.info(reprodata)
-    return pgt
+__all__ = [
+    "ALGO_PARAMS",
+    "file_as_string",
+    "filter_dict_to_algo_params",
+    "get_mgr_deployment_methods",
+    "lg_exists",
+    "lg_path",
+    "lg_repo_contents",
+    "make_algo_param_dict",
+    "parse_mgr_url",
+    "pgt_exists",
+    "pgt_path",
+    "pgt_repo_contents",
+    "prepare_lgt",
+    "unroll_and_partition_with_params",
+]

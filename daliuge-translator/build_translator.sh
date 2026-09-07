@@ -12,9 +12,9 @@ fi
 case "$1" in
     "dep")
         echo "Building daliuge-translator version ${VCS_TAG}"
-        echo $VCS_TAG > dlg/dropmake/web/VERSION
-        cp ../LICENSE dlg/dropmake/web/.
-        git rev-parse --verify HEAD >> dlg/dropmake/web/VERSION
+        echo $VCS_TAG > dlg/translator/web/VERSION
+        cp ../LICENSE dlg/translator/web/.
+        git rev-parse --verify HEAD >> dlg/translator/web/VERSION
         docker build --build-arg VCS_TAG=${VCS_TAG} --no-cache -t icrar/daliuge-translator:${VCS_TAG} -f docker/Dockerfile .
         echo "Build finished!"
         exit 0 ;;
@@ -23,9 +23,9 @@ case "$1" in
         [[ ! -z "$2" ]] && C_TAG=$2
         export VCS_TAG=$DEV_TAG
         echo "Building daliuge-translator development version using daliuge-common:${C_TAG}"
-        echo "$VERSION:$VCS_TAG" > dlg/dropmake/web/VERSION
-        git rev-parse --verify HEAD >> dlg/dropmake/web/VERSION
-        cp ../LICENSE dlg/dropmake/web/.
+        echo "$VERSION:$VCS_TAG" > dlg/translator/web/VERSION
+        git rev-parse --verify HEAD >> dlg/translator/web/VERSION
+        cp ../LICENSE dlg/translator/web/.
         # The complete casa and arrow installation is only required for the Plasma streaming
         # and should not go much further.
         docker build --build-arg VCS_TAG=${C_TAG} --no-cache -t icrar/daliuge-translator:${VCS_TAG} -f docker/Dockerfile.dev .
@@ -35,9 +35,9 @@ case "$1" in
         [[ ! -z "$2" ]] && C_TAG=$2
         export VCS_TAG=$DEV_TAG
         echo "Building daliuge-translator development version using daliuge-common:${C_TAG}"
-        echo "$VERSION:$VCS_TAG" > dlg/dropmake/web/VERSION
-        git rev-parse --verify HEAD >> dlg/dropmake/web/VERSION
-        cp ../LICENSE dlg/dropmake/web/.
+        echo "$VERSION:$VCS_TAG" > dlg/translator/web/VERSION
+        git rev-parse --verify HEAD >> dlg/translator/web/VERSION
+        cp ../LICENSE dlg/translator/web/.
         # The complete casa and arrow installation is only required for the Plasma streaming
         # and should not go much further.
         docker build --build-arg VCS_TAG=${VCS_TAG} --no-cache -t icrar/daliuge-translator:${VCS_TAG} -f docker/Dockerfile.dev .
@@ -46,9 +46,9 @@ case "$1" in
     "casa")
         export VCS_TAG=$DEV_TAG
         echo "Building daliuge-translator development version using tag ${VCS_TAG}"
-        echo $VCS_TAG > dlg/dropmake/web/VERSION
-        git rev-parse --verify HEAD >> dlg/dropmake/web/VERSION
-        cp ../LICENSE dlg/dropmake/web/.
+        echo $VCS_TAG > dlg/translator/web/VERSION
+        git rev-parse --verify HEAD >> dlg/translator/web/VERSION
+        cp ../LICENSE dlg/translator/web/.
         # The complete casa and arrow installation is only required for the Plasma streaming
         # and should not go much further.
         docker build --build-arg VCS_TAG=${C_TAG}-casa --no-cache -t icrar/daliuge-translator:${VCS_TAG}-casa -f docker/Dockerfile.dev .
