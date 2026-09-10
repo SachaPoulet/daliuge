@@ -55,6 +55,10 @@
         }
       },
       "expected": {
+        "LG": {
+          "file": "lg.json",
+          "sha256": "59eda663ba7089b44a94e25f7278b31f413ce09afe75e7b89b4a4a0be1dd4ed0"
+        },
         "PGT": {
           "file": "pgt.json",
           "sha256": "816e8f34689eea3cf6173c50a8509932f142d89d691844d89787daae7e1409bb"
