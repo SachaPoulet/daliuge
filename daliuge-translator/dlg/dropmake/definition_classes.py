@@ -88,7 +88,6 @@ DATA_TYPES = [
 
 APP_TYPES = [
     Categories.BRANCH,
-    Categories.DATA,
     Categories.COMPONENT,
     Categories.PYTHON_APP,
     Categories.DALIUGE_APP,
