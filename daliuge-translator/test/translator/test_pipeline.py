@@ -2,6 +2,9 @@
 
 The pipeline intentionally accepts structural Stage implementations, so the
 tests use small recording stages rather than a second production hierarchy.
+
+Base authored by LarkVenter (branch issue-40-...); additions below fill in
+edge cases not yet covered (marked with `# added`).
 """
 
 import unittest
@@ -111,6 +114,58 @@ class PipelineTest(unittest.TestCase):
         )
         self.assertIsInstance(context.exception.__cause__, LookupError)
 
+    # added: empty pipeline is a no-op that returns the same object
+    def test_empty_pipeline_returns_input_unchanged(self):
+        sentinel = object()
+        self.assertIs(Pipeline([]).run(sentinel), sentinel)
+
+    # added: a stage after the failing one must never be touched at all
+    def test_first_failing_stage_short_circuits_later_stages(self):
+        events = []
+
+        def fail(_value):
+            raise ValueError("boom")
+
+        first = RecordingStage("bad", events, fail, lambda value: value)
+        second = RecordingStage("never", events, lambda value: value, lambda value: value)
+
+        with self.assertRaises(StageException):
+            Pipeline([first, second]).run(1)
+
+        self.assertTrue(all(name != "never" for name, _, _ in events))
+
+    # added: with repro=False, stamp must be skipped entirely -- even a
+    # stamp that would itself raise must never be invoked
+    def test_stamp_skipped_when_repro_false_even_on_failure_path(self):
+        events = []
+
+        def failing_stamp(_value):
+            raise AssertionError("stamp should never run when repro=False")
+
+        stage = RecordingStage("only", events, lambda value: value + 1, failing_stamp)
+
+        result = Pipeline([stage], repro=False).run(1)
+
+        self.assertEqual(result, 2)
+        self.assertEqual(events, [("only", "run", 1)])
+
+
+# added: StageException's own formatting, tested directly rather than only
+# observed through Pipeline's wrapping behaviour
+class StageExceptionTest(unittest.TestCase):
+    def test_message_included_when_given(self):
+        exc = StageException("unroll", "bad input")
+        self.assertEqual(exc.stage, "unroll")
+        self.assertIn("unroll", str(exc))
+        self.assertIn("bad input", str(exc))
+
+    def test_message_omitted_when_not_given(self):
+        exc = StageException("unroll")
+        self.assertEqual(exc.stage, "unroll")
+        self.assertIn("unroll", str(exc))
+        # No trailing ": " when there's no message.
+        self.assertNotIn(":", str(exc))
+
 
 class UnrollStageTest(unittest.TestCase):
     @staticmethod
@@ -150,6 +205,20 @@ class UnrollStageTest(unittest.TestCase):
         kwargs["lg"]["nodeDataArray"][0]["fields"].append({"name": "changed"})
         self.assertEqual(logical_graph.to_wire(), before)
 
+    # added: the default (no options given) path was only ever exercised
+    # implicitly -- assert it explicitly so a broken default can't slip by
+    @patch("dlg.translator.stages.unroll.stage.unroll")
+    def test_run_uses_defaults_when_no_options_given(self, unroll):
+        unroll.return_value = [{"oid": "a"}, {}]
+        logical_graph = LogicalGraphTemplate.from_wire(self.logical_graph())
+
+        UnrollStage().run(logical_graph)
+
+        kwargs = unroll.call_args.kwargs
+        self.assertIsNone(kwargs["oid_prefix"])
+        self.assertFalse(kwargs["zerorun"])
+        self.assertIsNone(kwargs["app"])
+
     @patch("dlg.translator.stages.unroll.stage.init_pgt_unroll_repro_data")
     def test_stamp_wraps_the_repro_hook_result_and_keeps_input_isolated(self, hook):
         pgt = PhysicalGraphTemplate.from_wire(
@@ -176,6 +245,10 @@ class UnrollStageTest(unittest.TestCase):
         hook_input = hook.call_args.args[0]
         hook_input[0]["oid"] = "changed"
         self.assertEqual(pgt.to_wire(), before)
+
+    # added: the class-level `name` used in StageException messages
+    def test_name_is_unroll(self):
+        self.assertEqual(UnrollStage.name, "unroll")
 
 
 if __name__ == "__main__":
