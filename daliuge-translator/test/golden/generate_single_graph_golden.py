@@ -84,7 +84,7 @@ def main():
     for stage in ("LG", "PGT", "PGT-P", "PG"):
         output = outputs[stage]
         print(f"{stage}: {output} sha256={sha256_file(output)}")
-    print("Review these files before copying PGT, PGT-P and PG into expected/.")
+    print("Review these files before copying LG, PGT, PGT-P and PG into expected/.")
 
 
 if __name__ == "__main__":
