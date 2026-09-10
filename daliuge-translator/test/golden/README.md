@@ -1,11 +1,12 @@
 # Single LG to PG golden test
 
 This directory implements the single-graph compatibility test for Issue #5.
-It protects the translator wire format at three boundaries:
+It protects the translator wire format at four boundaries:
 
-1. PGT after `dlg unroll`;
-2. partitioned PGT (PGT-P) after `dlg partition`;
-3. PG after `dlg map`.
+1. LG after `dlg fill`;
+2. PGT after `dlg unroll`;
+3. partitioned PGT (PGT-P) after `dlg partition`;
+4. PG after `dlg map`.
 
 The test intentionally does not submit or execute the graph. It uses repository
 fixtures only, does not access the network, and writes candidate output only to
@@ -27,7 +28,7 @@ baseline. All graph source, environment, CLI options and fixture hashes are
 recorded in `manifest.json`.
 
 The fixtures were produced before adding this test. Two consecutive runs were
-byte-for-byte identical for PGT, PGT-P and PG with METIS two-way partitioning.
+byte-for-byte identical for LG, PGT, PGT-P and PG with METIS two-way partitioning.
 The JSON includes the trailing reproducibility payload; the test does not remove
 or broadly ignore fields.
 
