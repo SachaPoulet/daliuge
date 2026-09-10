@@ -36,7 +36,7 @@ def _assert_digest(path: Path, expected_digest: str, description: str) -> None:
 
 
 def test_single_graph_matches_legacy_outputs(tmp_path):
-    """Compare current PGT, partitioned PGT and PG with pinned legacy JSON."""
+    """Compare current filled LG, PGT, partitioned PGT and PG with legacy JSON."""
     manifest = _load_manifest()
     case = manifest["cases"][0]
     input_path = GOLDEN_DIR / case["input"]
@@ -61,7 +61,7 @@ def test_single_graph_matches_legacy_outputs(tmp_path):
     except PipelineError as error:
         pytest.fail(str(error), pytrace=False)
 
-    for stage in ("PGT", "PGT-P", "PG"):
+    for stage in ("LG", "PGT", "PGT-P", "PG"):
         fixture = case["expected"][stage]
         expected_path = expected_dir / fixture["file"]
         actual_path = actual_outputs[stage]
