@@ -51,7 +51,7 @@ from dlg.translator.stages.partition.pgt import GPGTNoNeedMergeException
 logger = logging.getLogger(f"dlg.{__name__}")
 
 
-def _open_i(path, flags=None):
+def _open_i(path, flags=None): # open input path
     if path == "-":
         logger.warning("Waiting for stdin '<' ")
         logger.warning("Please use Ctrl-D to signify end of input.")
@@ -59,7 +59,7 @@ def _open_i(path, flags=None):
     return open(os.path.expanduser(path), flags or "r")
 
 
-def _open_o(path, flags=None):
+def _open_o(path, flags=None): # open output path
     if path == "-":
         logger.warning("Waiting for stdout '>' ")
         logger.warning("Please use Ctrl-D to signify end.")
@@ -108,6 +108,8 @@ def parse_partition_algo_params(algo_params):
 
 
 def _unroll_options(opts, apps) -> UnrollOptions:
+    """
+    build unroll-stage options from command line argument"""
     return UnrollOptions(
         oid_prefix=opts.oid_prefix,
         zerorun=opts.zerorun,
@@ -116,6 +118,9 @@ def _unroll_options(opts, apps) -> UnrollOptions:
 
 
 def _partition_options(opts) -> PartitionOptions:
+    """
+    build partition-stage options from command line argument
+    """
     return PartitionOptions(
         algo=opts.algo,
         num_partitions=opts.partitions,
@@ -125,6 +130,10 @@ def _partition_options(opts) -> PartitionOptions:
 
 
 def _map_options(opts) -> MapOptions:
+    """
+    build map-stage options from command line argument
+    specified nodes taken from opts.nodes, if none supplied, queries composite manager
+    """
     if opts.nodes:
         nodes = [n for n in opts.nodes.split(",") if n]
     else:

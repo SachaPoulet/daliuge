@@ -132,11 +132,14 @@ class LGNode:
         from JSON.
         """
         if "categoryType" not in node_json:
+            # infer application type from node category
             if node_json["category"] in APP_TYPES:
                 node_json["categoryType"] = CategoryType.APPLICATION
+            # infer data type from node category
             elif node_json["category"] in DATA_TYPES:
                 node_json["categoryType"] = CategoryType.DATA
             else:
+                # category type cannot be inferred for this node
                 raise GInvalidNode(
                     f"Node '{node_json.get('name')}' ({self.id}) has category "
                     f"'{node_json['category']}' and no categoryType."
