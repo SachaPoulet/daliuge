@@ -1,7 +1,8 @@
-# Single LG to PG golden test
+# LG to PG golden test suite
 
-This directory implements the single-graph compatibility test for Issue #5.
-It protects the translator wire format at four boundaries:
+This directory contains the Issue #5 seed compatibility test and the
+manifest-driven test suite being extended by Issue #6. It protects the
+translator wire format at four boundaries:
 
 1. LG after `dlg fill`;
 2. PGT after `dlg unroll`;
@@ -12,7 +13,24 @@ The test intentionally does not submit or execute the graph. It uses repository
 fixtures only, does not access the network, and writes candidate output only to
 pytest's temporary directory.
 
-## Pinned input and baseline
+## Frozen Issue #6 scope
+
+Issue #6 is frozen to the 90 graphs bundled by Issue #4 under
+`test/corpus/graphs/eagle-graphs`, copied from `ICRAR/EAGLE-graph-repo` commit
+`829e3efc6dc7f86b79c12ec4381f24c72f30f4a8`. That set contains 84 translation
+candidates and 6 known-bad graphs. PR #51 is deliberately excluded from this
+scope.
+
+The manifest records an inventory SHA-256 over each sorted repository-relative
+path and file digest. A fast contract test detects graph additions, removals,
+renames, content changes, or known-bad classification drift.
+
+Freezing the corpus does not claim that all 84 candidates already have legacy
+golden outputs. At present, `ArrayLoop-metis` is the only complete four-stage
+case. New corpus cases are added only after their pipeline configuration and
+legacy outputs have been reviewed.
+
+## Initial pinned case and baseline
 
 `inputs/ArrayLoop.graph` is copied without modification from
 `ICRAR/EAGLE_test_repo` commit
@@ -82,18 +100,23 @@ Return to the current worktree and generate into a review directory:
 PYTHONPATH=daliuge-translator python -m test.golden.generate_single_graph_golden \
   --dlg ../daliuge-legacy-venv/bin/dlg \
   --legacy-repo ../daliuge-legacy \
-  --output-dir /tmp/issue5-golden-review
+  --case ArrayLoop-metis \
+  --output-dir /tmp/issue6-golden-review
 ```
 
-The generator verifies the legacy worktree commit and refuses to write into the
-committed `expected/` directory. Review the structural diff and printed hashes
-before deliberately copying PGT, PGT-P and PG into `expected/` and updating the
-manifest hashes.
+Omit `--case` to generate every manifest case. When multiple cases are selected,
+each writes to its own named subdirectory. The generator verifies both the
+legacy worktree HEAD and the Git version reported by the supplied `dlg`, and
+refuses to write into or around committed `expected/` directories. Review the
+structural diff and printed hashes before deliberately copying LG, PGT, PGT-P
+and PG into `expected/` and updating the manifest hashes.
 
 ## Known limits
 
-- This covers one graph, one parameter set and METIS only. Multi-graph and
-  multi-configuration coverage belongs to Issue #6.
+- The runner supports multiple manifest cases, but only the Issue #5
+  `ArrayLoop-metis` seed currently has reviewed four-stage golden outputs.
+- The 6 known-bad corpus entries have stage-specific expected-failure checks.
+  If one is fixed, its test fails so maintainers can reclassify it deliberately.
 - It does not start the Engine or validate workflow business output.
 - The manifest records key dependency versions but is not a complete dependency
   lock. If dependency drift affects output, reproduce the recorded environment

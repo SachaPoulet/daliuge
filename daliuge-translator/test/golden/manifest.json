@@ -1,16 +1,54 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "legacy_daliuge": {
     "repository": "https://github.com/SachaPoulet/daliuge.git",
     "upstream_repository": "https://github.com/ICRAR/daliuge.git",
     "commit": "c96d83fb56d523bfcf43e061a822e960dc48a2f6"
   },
-  "graph_source": {
-    "repository": "https://github.com/ICRAR/EAGLE_test_repo.git",
-    "commit": "2f1db6c99898c43a25d9a7d3a07acf8cfb7becff",
-    "path": "eagle_test_graphs/daliuge_tests/translator/logical_graphs/ArrayLoop.graph",
-    "sha256": "b1f65f1819d7e8f25c99be7aca2e4efde49780769b0bd1f04fb0aa85c48490cf",
-    "license": "GPL-3.0"
+  "corpus_scope": {
+    "repository": "https://github.com/ICRAR/EAGLE-graph-repo.git",
+    "commit": "829e3efc6dc7f86b79c12ec4381f24c72f30f4a8",
+    "root": "test/corpus/graphs/eagle-graphs",
+    "glob": "**/*.graph",
+    "expected_graphs": 90,
+    "expected_runnable": 84,
+    "inventory_sha256": "9b2bf713978c5cd5c0c5344cd881a022c2569dc1259b0de058cfaf560a24f780",
+    "known_bad_sha256": "da170b9889ec64bc0b8803d4afbf6a1b75ab58972ec961051f7544861111a2a2",
+    "excluded_pull_requests": [
+      51
+    ],
+    "known_bad": [
+      {
+        "path": "Omar/ms_transform_bash.graph",
+        "stage": "LG/fill",
+        "error_contains": "Invalid placeholder in string"
+      },
+      {
+        "path": "chilies_daliuge_split.graph",
+        "stage": "LG/fill",
+        "error_contains": "Invalid placeholder in string"
+      },
+      {
+        "path": "dummy/casda_download_pipeline_laptop_ABC.graph",
+        "stage": "LG/fill",
+        "error_contains": "Invalid placeholder in string"
+      },
+      {
+        "path": "graph_visual_examples/advent_simple.graph",
+        "stage": "PGT/unroll",
+        "error_contains": "nodeDataArray"
+      },
+      {
+        "path": "leap/LEAP-SDP-STREAMING.graph",
+        "stage": "PGT/unroll",
+        "error_contains": "should be either a GroupBy or Data"
+      },
+      {
+        "path": "leap/LeapAccelerateCLI.graph",
+        "stage": "PGT/unroll",
+        "error_contains": "63ef213a-26ed-4e4a-95d9-e82de2e5eba7"
+      }
+    ]
   },
   "generated_environment": {
     "generated_at": "2026-08-25T11:23:36Z",
@@ -23,7 +61,15 @@
   "cases": [
     {
       "name": "ArrayLoop-metis",
-      "input": "inputs/ArrayLoop.graph",
+      "coverage": "issue5-seed",
+      "input": "daliuge-translator/test/golden/inputs/ArrayLoop.graph",
+      "source": {
+        "repository": "https://github.com/ICRAR/EAGLE_test_repo.git",
+        "commit": "2f1db6c99898c43a25d9a7d3a07acf8cfb7becff",
+        "path": "eagle_test_graphs/daliuge_tests/translator/logical_graphs/ArrayLoop.graph",
+        "sha256": "b1f65f1819d7e8f25c99be7aca2e4efde49780769b0bd1f04fb0aa85c48490cf",
+        "license": "GPL-3.0"
+      },
       "expected_dir": "expected/ArrayLoop/metis",
       "pipeline": {
         "reproducibility": 0,
