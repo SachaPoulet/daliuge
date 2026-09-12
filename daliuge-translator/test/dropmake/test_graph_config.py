@@ -23,15 +23,18 @@
 import json
 import unittest
 import daliuge_tests.translator as test_graphs
-from dlg.dropmake.graph_config import (apply_active_configuration,
-                                       get_key_idx_from_list, fill_config)
+from dlg.translator.stages.prepare.config import (
+    apply_active_configuration,
+    get_key_idx_from_list, 
+    fill_config
+)
 
 try:
     from importlib.resources import files, as_file
 except ModuleNotFoundError:
     from importlib_resources import files
 
-LOG_PRFIX = "WARNING:dlg.dlg.dropmake.graph_config:"
+LOG_PRFIX = "WARNING:dlg.dlg.translator.stages.prepare.config:"
 
 
 def get_file_from_fname(lg_name: str) -> dict:

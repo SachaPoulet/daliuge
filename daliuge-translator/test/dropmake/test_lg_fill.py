@@ -24,7 +24,7 @@ import json
 import os
 import unittest
 import daliuge_tests.translator as test_graphs
-from dlg.dropmake import pg_generator
+from dlg.translator.stages.prepare.params import fill
 
 from importlib.resources import files
 
@@ -41,7 +41,7 @@ class LGFillTest(unittest.TestCase):
             "param4": {"what": "hi"},
         }
         with open(os.path.join(lg_dir, "cont_img_mvp.graph")) as f:
-            lg = pg_generator.fill(json.load(f), params)
+            lg = fill(json.load(f), params)
         for node_idx, value in zip((5, 12, 26, 34), ("1", "2", "True", "hi")):
             print(node_idx)
             node = lg["nodeDataArray"][node_idx]

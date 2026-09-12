@@ -21,13 +21,15 @@
 #
 
 """
-Test the dropmake.dm_utils functionality
+Test the prepare-stage normalisers (formerly dropmake.dm_utils)
 """
 
 import json
 import copy
 import unittest
-from dlg.dropmake.dm_utils import convert_construct, convert_subgraphs, extract_globals
+from dlg.translator.stages.prepare.normalise.constructs import convert_construct
+from dlg.translator.stages.prepare.normalise.globals import extract_globals
+from dlg.translator.stages.prepare.normalise.subgraphs import convert_subgraphs
 import daliuge_tests.translator as test_graphs
 
 try:
