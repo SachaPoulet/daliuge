@@ -198,8 +198,6 @@ class LG:
                     )
                 )
         elif tgt.is_gather:
-            if "categoryType" not in src.jd:
-                src.jd["categoryType"] = "Data"
             if not src.jd["categoryType"].lower() == "data" and not src.is_groupby:
                 raise GInvalidLink(
                     "Gather {0}'s input {1} should be either a GroupBy or Data. {2}".format(
