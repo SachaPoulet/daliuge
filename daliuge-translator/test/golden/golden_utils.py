@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -44,19 +46,49 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_bytes(payload: bytes) -> str:
+    """Return the lowercase SHA-256 digest for an in-memory payload."""
+    return hashlib.sha256(payload).hexdigest()
+
+
+def deterministic_gzip(payload: bytes) -> bytes:
+    """Compress *payload* without embedding a timestamp or source filename."""
+    compressed = io.BytesIO()
+    with gzip.GzipFile(
+        filename="",
+        mode="wb",
+        compresslevel=9,
+        fileobj=compressed,
+        mtime=0,
+    ) as stream:
+        stream.write(payload)
+    return compressed.getvalue()
+
+
+def read_fixture_bytes(path: Path) -> bytes:
+    """Read a plain JSON fixture or transparently decompress a .json.gz file."""
+    payload = path.read_bytes()
+    if path.suffix == ".gz":
+        try:
+            return gzip.decompress(payload)
+        except (gzip.BadGzipFile, EOFError) as error:
+            raise PipelineError(f"Invalid gzip fixture at {path}") from error
+    return payload
+
+
 def find_dlg_executable() -> str:
     """Locate the ``dlg`` console script belonging to the active environment."""
     configured = os.environ.get("DLG_CLI")
     if configured:
         return configured
 
-    executable = shutil.which("dlg")
-    if executable:
-        return executable
-
     sibling = Path(sys.executable).with_name("dlg")
     if sibling.is_file():
         return str(sibling)
+
+    executable = shutil.which("dlg")
+    if executable:
+        return executable
 
     raise PipelineError(
         "Cannot locate the dlg CLI. Activate the DALiuGE virtual environment "
@@ -64,7 +96,17 @@ def find_dlg_executable() -> str:
     )
 
 
-def _run_stage(stage: str, command: Iterable[str], output_path: Path) -> None:
+def isolated_cli_environment() -> Dict[str, str]:
+    """Prevent the runner's import path from contaminating another dlg install."""
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment.pop("PYTHONHOME", None)
+    return environment
+
+
+def _run_stage(
+    stage: str, command: Iterable[str], output_path: Path
+) -> subprocess.CompletedProcess[str]:
     command = list(command)
     result = subprocess.run(
         command,
@@ -72,6 +114,7 @@ def _run_stage(stage: str, command: Iterable[str], output_path: Path) -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=isolated_cli_environment(),
     )
     if result.returncode != 0:
         rendered = " ".join(command)
@@ -89,6 +132,55 @@ def _run_stage(stage: str, command: Iterable[str], output_path: Path) -> None:
             json.load(stream)
     except (OSError, json.JSONDecodeError) as error:
         raise PipelineError(f"{stage} produced invalid JSON at {output_path}") from error
+    return result
+
+
+def _drop_records(path: Path) -> list[Mapping[str, Any]]:
+    """Load translator DROPs, excluding the trailing reproducibility record."""
+    document = load_json(path)
+    if not isinstance(document, list):
+        raise PipelineError(f"Expected a DROP list at {path}")
+    if document and isinstance(document[-1], dict) and not document[-1].get("oid"):
+        document = document[:-1]
+    if not all(isinstance(drop, dict) for drop in document):
+        raise PipelineError(f"Expected every DROP in {path} to be an object")
+    return document
+
+
+def _resource_extent(drops: list[Mapping[str, Any]], key: str) -> int:
+    """Return the highest numbered resource label plus one."""
+    labels = []
+    for drop in drops:
+        label = drop.get(key)
+        if not isinstance(label, str) or not label.startswith("#"):
+            raise PipelineError(
+                "PGT-P/partition returned exit code 0 without assigning "
+                f"a valid {key} label to DROP {drop.get('oid', '<unknown>')}. "
+                "The legacy CLI may have swallowed GPGTNoNeedMergeException."
+            )
+        try:
+            labels.append(int(label[1:]))
+        except ValueError as error:
+            raise PipelineError(
+                f"PGT-P/partition produced an invalid {key} label: {label!r}"
+            ) from error
+    if not labels:
+        raise PipelineError("PGT-P/partition produced no DROPs to map")
+    return max(labels) + 1
+
+
+def _automatic_map_configuration(
+    pgtp_path: Path, map_config: Mapping[str, Any]
+) -> tuple[list[str], int]:
+    """Build a host list large enough for the actual partition label extents."""
+    drops = _drop_records(pgtp_path)
+    islands = _resource_extent(drops, "island")
+    nodes = _resource_extent(drops, "node")
+    island_prefix = map_config.get("island_prefix", "island")
+    node_prefix = map_config.get("node_prefix", "node")
+    hosts = [f"{island_prefix}{index}" for index in range(islands)]
+    hosts.extend(f"{node_prefix}{index}" for index in range(nodes))
+    return hosts, islands
 
 
 def run_pipeline(
@@ -125,14 +217,14 @@ def run_pipeline(
         str(outputs["LG"]),
         "-p",
         pipeline["oid_prefix"],
-        "--app",
-        str(unroll_config["app"]),
         "-o",
         str(outputs["PGT"]),
         "-f",
     ]
     if unroll_config["zerorun"]:
         unroll_command.append("-z")
+    if unroll_config["app"]:
+        unroll_command.extend(["--app", str(unroll_config["app"])])
     _run_stage("PGT/unroll", unroll_command, outputs["PGT"])
 
     partition_config = pipeline["partition"]
@@ -154,15 +246,22 @@ def run_pipeline(
     _run_stage("PGT-P/partition", partition_command, outputs["PGT-P"])
 
     map_config = pipeline["map"]
+    if map_config["nodes"] == "auto":
+        map_nodes, map_islands = _automatic_map_configuration(
+            outputs["PGT-P"], map_config
+        )
+    else:
+        map_nodes = map_config["nodes"]
+        map_islands = map_config["islands"]
     map_command = [
         dlg_executable,
         "map",
         "-P",
         str(outputs["PGT-P"]),
         "-N",
-        ",".join(map_config["nodes"]),
+        ",".join(map_nodes),
         "-i",
-        str(map_config["islands"]),
+        str(map_islands),
         "-o",
         str(outputs["PG"]),
         "-f",
@@ -234,9 +333,11 @@ def first_json_difference(
 
 
 def load_json(path: Path) -> Any:
-    """Load a UTF-8 JSON document."""
-    with path.open(encoding="utf-8") as stream:
-        return json.load(stream)
+    """Load a plain or gzip-compressed UTF-8 JSON document."""
+    try:
+        return json.loads(read_fixture_bytes(path).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise PipelineError(f"Invalid JSON fixture at {path}") from error
 
 
 def format_json_value(value: Any, limit: int = 500) -> str:
