@@ -33,7 +33,7 @@ case "$1" in
         docker exec -u root daliuge-translator bash -c "service avahi-daemon stop > /dev/null 2>&1 && service dbus restart > /dev/null 2>&1 && service avahi-daemon start > /dev/null 2>&1";;
     *)
         echo "Usage: run_translator.sh <dep|dev|slim|casa> [tag]" >&2
-        exit 2;;
+        exit 0;;
 esac
 sleep 3
 TRANS_NAME=`docker exec daliuge-translator sh -c "hostname"`
