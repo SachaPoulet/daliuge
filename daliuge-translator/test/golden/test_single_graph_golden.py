@@ -14,11 +14,15 @@ from .generate_single_graph_golden import (
 from .golden_utils import (
     PipelineError,
     STAGE_FILENAMES,
+    deterministic_gzip,
     find_dlg_executable,
     first_json_difference,
     format_json_value,
+    isolated_cli_environment,
     load_json,
+    read_fixture_bytes,
     run_pipeline,
+    sha256_bytes,
     sha256_file,
 )
 
@@ -47,6 +51,24 @@ def _assert_digest(path: Path, expected_digest: str, description: str) -> None:
         f"{description} SHA-256 mismatch\n"
         f"Path: {path}\n"
         f"Expected: {expected_digest}\n"
+        f"Actual:   {actual_digest}"
+    )
+
+
+def _assert_fixture(path: Path, fixture, description: str) -> None:
+    assert path.stat().st_size == fixture["stored_bytes"], (
+        f"{description} stored byte count mismatch"
+    )
+    _assert_digest(path, fixture["stored_sha256"], f"{description} stored blob")
+    payload = read_fixture_bytes(path)
+    assert len(payload) == fixture["bytes"], (
+        f"{description} uncompressed byte count mismatch"
+    )
+    actual_digest = sha256_bytes(payload)
+    assert actual_digest == fixture["sha256"], (
+        f"{description} uncompressed SHA-256 mismatch\n"
+        f"Path: {path}\n"
+        f"Expected: {fixture['sha256']}\n"
         f"Actual:   {actual_digest}"
     )
 
@@ -114,8 +136,22 @@ def test_manifest_cases_are_complete_and_isolated():
     manifest = _load_manifest()
     cases = manifest["cases"]
 
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert cases, "At least one golden case is required"
+    assert manifest["fixture_format"] == {
+        "encoding": "utf-8 JSON",
+        "compression": "gzip",
+        "compresslevel": 9,
+        "mtime": 0,
+        "sha256": "uncompressed CLI output",
+        "stored_sha256": "stored gzip blob",
+    }
+    requirements = _resolve_inside(
+        GOLDEN_DIR,
+        manifest["generated_environment"]["requirements"],
+        "Legacy requirements",
+    )
+    assert requirements.is_file()
 
     names = [case["name"] for case in cases]
     expected_dirs = [case["expected_dir"] for case in cases]
@@ -124,6 +160,25 @@ def test_manifest_cases_are_complete_and_isolated():
         set(expected_dirs)
     ), "Golden expected directories must be unique"
 
+    scope = manifest["corpus_scope"]
+    corpus_root = _resolve_inside(
+        REPOSITORY_ROOT, scope["root"], "Frozen corpus root"
+    )
+    graph_paths = set(_corpus_graph_paths(corpus_root, scope["glob"]))
+    known_bad_paths = {entry["path"] for entry in scope["known_bad"]}
+    expected_runnable_paths = graph_paths - known_bad_paths
+    frozen_cases = [case for case in cases if case["coverage"] == "frozen-corpus"]
+    frozen_case_paths = {
+        (REPOSITORY_ROOT / case["input"])
+        .resolve()
+        .relative_to(corpus_root)
+        .as_posix()
+        for case in frozen_cases
+    }
+    assert len(frozen_cases) == scope["expected_runnable"]
+    assert frozen_case_paths == expected_runnable_paths
+
+    referenced_fixtures = set()
     for case in cases:
         assert case["coverage"] in {"issue5-seed", "frozen-corpus"}
         input_path = _resolve_inside(
@@ -135,6 +190,11 @@ def test_manifest_cases_are_complete_and_isolated():
             case["source"]["sha256"],
             f"{case['name']} pinned logical graph",
         )
+        if case["coverage"] == "frozen-corpus":
+            relative_input = input_path.relative_to(corpus_root).as_posix()
+            assert case["source"]["path"] == relative_input
+            assert case["source"]["repository"] == scope["repository"]
+            assert case["source"]["commit"] == scope["commit"]
 
         expected_dir = _resolve_inside(
             GOLDEN_DIR, case["expected_dir"], f"{case['name']} expected directory"
@@ -161,11 +221,24 @@ def test_manifest_cases_are_complete_and_isolated():
             assert fixture_path.is_file(), (
                 f"Golden fixture is missing: {fixture_path}"
             )
-            _assert_digest(
+            assert fixture["file"].endswith(".json.gz")
+            assert fixture["bytes"] > 0
+            assert fixture["stored_bytes"] > 0
+            _assert_fixture(
                 fixture_path,
-                fixture["sha256"],
+                fixture,
                 f"{case['name']} legacy {stage} fixture",
             )
+            referenced_fixtures.add(fixture_path)
+
+    files_on_disk = {
+        path.resolve()
+        for path in (GOLDEN_DIR / "expected").rglob("*")
+        if path.is_file()
+    }
+    assert files_on_disk == referenced_fixtures, (
+        "Golden expected/ contains missing or unreferenced fixture files"
+    )
 
 
 def test_generator_selects_cases_and_isolates_multiple_outputs(tmp_path):
@@ -176,16 +249,22 @@ def test_generator_selects_cases_and_isolates_multiple_outputs(tmp_path):
     assert _select_cases(manifest, None) == cases
     assert _select_cases(manifest, [cases[0]["name"]]) == [cases[0]]
 
-    multiple_cases = [{"name": "first"}, {"name": "nested/second"}]
+    multiple_cases = [
+        {"name": "first", "expected_dir": "expected/first"},
+        {"name": "nested/second", "expected_dir": "expected/nested/second"},
+    ]
     outputs = _planned_output_dirs(tmp_path.resolve(), multiple_cases)
     assert outputs == [
-        (tmp_path / "first").resolve(),
-        (tmp_path / "nested/second").resolve(),
+        (tmp_path / "expected/first").resolve(),
+        (tmp_path / "expected/nested/second").resolve(),
     ]
     with pytest.raises(SystemExit, match="escapes review directory"):
         _planned_output_dirs(
             tmp_path.resolve(),
-            [{"name": "../escape"}, {"name": "safe"}],
+            [
+                {"name": "escape", "expected_dir": "../escape"},
+                {"name": "safe", "expected_dir": "expected/safe"},
+            ],
         )
 
 
@@ -255,9 +334,9 @@ def test_graph_matches_legacy_outputs(case, tmp_path):
         f"{case['name']} pinned logical graph",
     )
     for stage, fixture in case["expected"].items():
-        _assert_digest(
+        _assert_fixture(
             expected_dir / fixture["file"],
-            fixture["sha256"],
+            fixture,
             f"Legacy {stage} fixture",
         )
 
@@ -266,7 +345,10 @@ def test_graph_matches_legacy_outputs(case, tmp_path):
             find_dlg_executable(), input_path, tmp_path, case["pipeline"]
         )
     except PipelineError as error:
-        pytest.fail(str(error), pytrace=False)
+        pytest.fail(
+            f"Case: {case['name']}\nInput: {input_path}\n{error}",
+            pytrace=False,
+        )
 
     for stage in ("LG", "PGT", "PGT-P", "PG"):
         fixture = case["expected"][stage]
@@ -277,7 +359,10 @@ def test_graph_matches_legacy_outputs(case, tmp_path):
         )
         if difference:
             pytest.fail(
+                f"Case: {case['name']}\n"
+                f"Input: {input_path}\n"
                 f"Stage: {stage}\n"
+                f"Expected fixture: {expected_path}\n"
                 f"Path: {difference.path}\n"
                 f"Reason: {difference.reason}\n"
                 f"Expected: {format_json_value(difference.expected)}\n"
@@ -306,7 +391,7 @@ def test_comparator_reports_first_nested_difference():
 
 def test_comparator_detects_mutated_golden_fixture():
     """A mutation of a real fixture is caught without altering the fixture file."""
-    pgt_path = GOLDEN_DIR / "expected/ArrayLoop/metis/pgt.json"
+    pgt_path = GOLDEN_DIR / "expected/ArrayLoop/metis/pgt.json.gz"
     expected = load_json(pgt_path)
     actual = json.loads(json.dumps(expected))
     actual[0]["name"] = "mutated-array"
@@ -316,3 +401,28 @@ def test_comparator_detects_mutated_golden_fixture():
     assert difference.path == "$[0].name"
     assert difference.expected == "array"
     assert difference.actual == "mutated-array"
+
+
+def test_compressed_fixture_is_deterministic_and_loadable(tmp_path):
+    """Compressed fixtures have stable bytes and remain ordinary JSON to callers."""
+    document = {"outer": [1, {"value": "hello"}]}
+    payload = json.dumps(document).encode("utf-8")
+    first = deterministic_gzip(payload)
+    second = deterministic_gzip(payload)
+    assert first == second
+
+    fixture = tmp_path / "fixture.json.gz"
+    fixture.write_bytes(first)
+    assert load_json(fixture) == document
+
+
+def test_cli_subprocess_environment_isolated(monkeypatch):
+    """A test runner import path must not leak into another dlg installation."""
+    monkeypatch.setenv("PYTHONPATH", "/wrong/translator")
+    monkeypatch.setenv("PYTHONHOME", "/wrong/python")
+    monkeypatch.setenv("DLG_CLI", "/chosen/dlg")
+
+    environment = isolated_cli_environment()
+    assert "PYTHONPATH" not in environment
+    assert "PYTHONHOME" not in environment
+    assert environment["DLG_CLI"] == "/chosen/dlg"
