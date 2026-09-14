@@ -34,9 +34,13 @@ KNOWN_BAD_PIPELINE = {
     "reproducibility": 0,
     "oid_prefix": "issue6-known-bad",
     "fill": {"parameters": []},
-    "unroll": {"zerorun": True, "app": 1},
+    "unroll": {"zerorun": False, "app": 0},
     "partition": {"algorithm": "metis", "partitions": 2, "islands": 1},
-    "map": {"nodes": ["island0", "node0", "node1"], "islands": 1},
+    "map": {
+        "nodes": "auto",
+        "island_prefix": "island",
+        "node_prefix": "node",
+    },
 }
 
 
@@ -106,11 +110,17 @@ def _path_list_digest(paths) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def test_frozen_corpus_scope_matches_checkout():
-    """Guard the Issue #4 corpus membership used by Issue #6."""
-    scope = _load_manifest()["corpus_scope"]
+@pytest.mark.parametrize(
+    "corpus_name,scope",
+    tuple(_load_manifest()["corpus_scope"].items()),
+    ids=tuple(_load_manifest()["corpus_scope"]),
+)
+def test_frozen_corpus_scope_matches_checkout(corpus_name, scope):
+    """Guard every frozen corpus membership used by Issue #6."""
     corpus_root = _resolve_inside(
-        REPOSITORY_ROOT, scope["root"], "Frozen corpus root"
+        REPOSITORY_ROOT,
+        scope["root"],
+        f"{corpus_name} frozen corpus root",
     )
 
     assert corpus_root.is_dir(), (
@@ -128,7 +138,7 @@ def test_frozen_corpus_scope_matches_checkout():
     assert (
         _corpus_inventory_digest(corpus_root, graph_paths)
         == scope["inventory_sha256"]
-    ), "Frozen corpus inventory changed"
+    ), f"{corpus_name} frozen corpus inventory changed"
 
 
 def test_manifest_cases_are_complete_and_isolated():
@@ -136,7 +146,7 @@ def test_manifest_cases_are_complete_and_isolated():
     manifest = _load_manifest()
     cases = manifest["cases"]
 
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
     assert cases, "At least one golden case is required"
     assert manifest["fixture_format"] == {
         "encoding": "utf-8 JSON",
@@ -160,27 +170,46 @@ def test_manifest_cases_are_complete_and_isolated():
         set(expected_dirs)
     ), "Golden expected directories must be unique"
 
-    scope = manifest["corpus_scope"]
-    corpus_root = _resolve_inside(
-        REPOSITORY_ROOT, scope["root"], "Frozen corpus root"
-    )
-    graph_paths = set(_corpus_graph_paths(corpus_root, scope["glob"]))
-    known_bad_paths = {entry["path"] for entry in scope["known_bad"]}
-    expected_runnable_paths = graph_paths - known_bad_paths
-    frozen_cases = [case for case in cases if case["coverage"] == "frozen-corpus"]
-    frozen_case_paths = {
-        (REPOSITORY_ROOT / case["input"])
-        .resolve()
-        .relative_to(corpus_root)
-        .as_posix()
-        for case in frozen_cases
-    }
-    assert len(frozen_cases) == scope["expected_runnable"]
-    assert frozen_case_paths == expected_runnable_paths
+    corpus_scopes = manifest["corpus_scope"]
+    assert isinstance(corpus_scopes, dict) and corpus_scopes
+    corpus_roots = {}
+    for corpus_name, scope in corpus_scopes.items():
+        corpus_root = _resolve_inside(
+            REPOSITORY_ROOT,
+            scope["root"],
+            f"{corpus_name} frozen corpus root",
+        )
+        assert corpus_root not in corpus_roots.values(), (
+            "Frozen corpus roots must be unique"
+        )
+        corpus_roots[corpus_name] = corpus_root
+
+        graph_paths = set(_corpus_graph_paths(corpus_root, scope["glob"]))
+        known_bad_paths = {entry["path"] for entry in scope["known_bad"]}
+        expected_runnable_paths = graph_paths - known_bad_paths
+        frozen_cases = [
+            case
+            for case in cases
+            if case["coverage"] == "frozen-corpus"
+            and case["corpus"] == corpus_name
+        ]
+        frozen_case_paths = {
+            (REPOSITORY_ROOT / case["input"])
+            .resolve()
+            .relative_to(corpus_root)
+            .as_posix()
+            for case in frozen_cases
+        }
+        assert len(frozen_cases) == scope["expected_runnable"]
+        assert frozen_case_paths == expected_runnable_paths
 
     referenced_fixtures = set()
     for case in cases:
-        assert case["coverage"] in {"issue5-seed", "frozen-corpus"}
+        assert case["coverage"] in {
+            "issue5-seed",
+            "frozen-corpus",
+            "partition-variant",
+        }
         input_path = _resolve_inside(
             REPOSITORY_ROOT, case["input"], f"{case['name']} input"
         )
@@ -190,7 +219,11 @@ def test_manifest_cases_are_complete_and_isolated():
             case["source"]["sha256"],
             f"{case['name']} pinned logical graph",
         )
-        if case["coverage"] == "frozen-corpus":
+        if case["coverage"] in {"frozen-corpus", "partition-variant"}:
+            corpus_name = case["corpus"]
+            assert corpus_name in corpus_scopes
+            scope = corpus_scopes[corpus_name]
+            corpus_root = corpus_roots[corpus_name]
             relative_input = input_path.relative_to(corpus_root).as_posix()
             assert case["source"]["path"] == relative_input
             assert case["source"]["repository"] == scope["repository"]
@@ -291,15 +324,27 @@ def test_generator_rejects_committed_fixture_directory():
 
 
 @pytest.mark.parametrize(
-    "known_bad",
-    _load_manifest()["corpus_scope"]["known_bad"],
-    ids=lambda entry: entry["path"],
+    "corpus_name,known_bad",
+    [
+        (corpus_name, known_bad)
+        for corpus_name, scope in _load_manifest()["corpus_scope"].items()
+        for known_bad in scope["known_bad"]
+    ],
+    ids=[
+        f"{corpus_name}/{known_bad['path']}"
+        for corpus_name, scope in _load_manifest()["corpus_scope"].items()
+        for known_bad in scope["known_bad"]
+    ],
 )
-def test_known_bad_graph_fails_as_documented(known_bad, tmp_path):
+def test_known_bad_graph_fails_as_documented(
+    corpus_name, known_bad, tmp_path
+):
     """Keep known-bad graphs out of golden cases until their defect is fixed."""
-    scope = _load_manifest()["corpus_scope"]
+    scope = _load_manifest()["corpus_scope"][corpus_name]
     corpus_root = _resolve_inside(
-        REPOSITORY_ROOT, scope["root"], "Frozen corpus root"
+        REPOSITORY_ROOT,
+        scope["root"],
+        f"{corpus_name} frozen corpus root",
     )
     input_path = _resolve_inside(
         corpus_root, known_bad["path"], "Known-bad graph"

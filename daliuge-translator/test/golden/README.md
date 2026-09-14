@@ -15,17 +15,22 @@ pytest's temporary directory.
 
 ## Frozen Issue #6 scope
 
-Issue #6 is frozen to the 90 graphs bundled by Issue #4 under
-`test/corpus/graphs/eagle-graphs`, copied from `ICRAR/EAGLE-graph-repo` commit
-`829e3efc6dc7f86b79c12ec4381f24c72f30f4a8`. That set contains 84 translation
-candidates and 6 known-bad graphs. PR #51 is deliberately excluded from this
-scope.
+Issue #6 is frozen to two independently pinned corpora:
 
-The manifest records an inventory SHA-256 over each sorted repository-relative
-path and file digest. A fast contract test detects graph additions, removals,
-renames, content changes, known-bad classification drift, missing cases, and
-unreferenced fixture files. All 84 normal graphs have complete LG, PGT, PGT-P,
-and PG legacy outputs.
+- 90 graphs under `test/corpus/graphs/eagle-graphs`, copied from
+  `ICRAR/EAGLE-graph-repo` commit
+  `829e3efc6dc7f86b79c12ec4381f24c72f30f4a8` (84 runnable and 6 known-bad);
+- 21 graphs under `test/corpus/graphs/eagle-test-graphs`, copied from
+  `ICRAR/EAGLE_test_repo` commit
+  `2f1db6c99898c43a25d9a7d3a07acf8cfb7becff` (20 runnable and 1 known-bad).
+
+The manifest stores those scopes in a dictionary keyed by corpus name and
+records a separate inventory SHA-256 over each sorted repository-relative path
+and file digest. A fast contract test iterates both corpora and detects graph
+additions, removals, renames, content changes, known-bad classification drift,
+missing cases, and unreferenced fixture files. All 104 runnable base graphs have
+complete LG, PGT, PGT-P, and PG legacy outputs, along with the additional
+`ADACS_MWA_Compress_Graph` METIS 8-partition/2-island variant.
 
 ## Pinned baseline and pipeline profiles
 
@@ -42,12 +47,19 @@ fixture, maintainers must confirm that this remains the intended pre-refactor
 baseline. All graph source, environment, CLI options and fixture hashes are
 recorded in `manifest.json`.
 
-The Issue #5 seed retains its original `-z --app 1` invocation. The 84 frozen
-corpus graphs use empty fill parameters, reproducibility mode 0, OID prefix
-`1`, and the unroll defaults so sleep times and application classes remain
-visible to the regression test. 82 use METIS two-way partitioning. The two
-`wsclean_*` graphs use mysarkar because legacy METIS rejects their string node
-weights; that exception is explicit in the manifest.
+The Issue #5 seed retains its original `-z --app 1` invocation. The 84
+runnable `eagle-graphs` cases use empty fill parameters, reproducibility mode
+0, OID prefix `1`, and the unroll defaults so sleep times and application
+classes remain visible to the regression test. 82 use METIS two-way
+partitioning. The two `wsclean_*` graphs use mysarkar because legacy METIS
+rejects their string node weights; that exception is explicit in the manifest.
+
+The 20 runnable `eagle-test-graphs` cases use the same defaults and METIS
+two-way partitioning. Nineteen use empty fill parameters.
+`cont_img_mvp.graph` requires `param1=hello`, `param2=1`,
+`param1.param2=hi`, and `param4.what=False`; those values are pinned in its
+case. The separate `ADACS_MWA_Compress_Graph` variant uses METIS with 8
+partitions and 2 islands.
 
 Map resources are derived from the highest actual `node` and `island` labels
 in each PGT-P, rather than assuming the requested partition count. The runner
@@ -55,9 +67,9 @@ also rejects the legacy partition command's exit-0/no-label
 `GPGTNoNeedMergeException` behavior as an incomplete pipeline.
 
 Each stage is stored independently as deterministic `*.json.gz` with both
-compressed and uncompressed SHA-256 digests. Two complete legacy runs were
-byte-for-byte identical. The 340 fixtures contain 183,025,418 bytes of raw JSON
-and occupy 5,165,737 bytes after compression. The JSON includes the trailing
+compressed and uncompressed SHA-256 digests. Paired legacy candidate runs were
+byte-for-byte identical. The 424 fixtures contain 215,011,270 bytes of raw JSON
+and occupy 6,003,741 bytes after compression. The JSON includes the trailing
 reproducibility payload; the test does not remove or broadly ignore fields.
 
 ## Run the regression test
@@ -69,8 +81,8 @@ python -m pytest -q \
   daliuge-translator/test/golden/test_single_graph_golden.py
 ```
 
-A complete run currently collects 101 tests: 85 golden cases, 6 exact
-known-bad checks, and 10 contract/comparator tests.
+A complete run currently collects 124 tests: 106 golden cases, 7 exact
+known-bad checks, and 11 contract/comparator tests.
 
 The runner locates `dlg` in the active environment. Set `DLG_CLI` only when the
 console script is elsewhere:
@@ -155,9 +167,8 @@ Review the structural changes before deliberately copying the candidate
 
 ## Known limits
 
-- The 6 known-bad corpus entries have stage-specific expected-failure checks.
+- The 7 known-bad corpus entries have stage-specific expected-failure checks.
   If one is fixed, its test fails so maintainers can reclassify it deliberately.
 - It does not start the Engine or validate workflow business output.
-- PR #51 remains deliberately outside the frozen Issue #6 corpus.
 - The complete suite is intentionally slower than the contract-only checks;
   use pytest's `-k` selection only for local iteration, not delivery sign-off.
