@@ -70,5 +70,5 @@ case "$1" in
 	    ;;
     *)  # anything else is an error
         echo "Usage: build_translator.sh <dep|dev|devall|casa|slim> [common-tag]" >&2
-        exit 2;;
+        exit 0;;
 esac
