@@ -68,7 +68,7 @@ case "$1" in
         --include-path /usr/bin/hostname --include-path /usr/local/lib --include-path /usr/local/bin --include-path /daliuge --include-path /dlg \
         --include-bin /usr/sbin/service --include-bin /usr/bin/hostname --http-probe=false --tag=icrar/daliuge-translator.slim:${VCS_TAG} icrar/daliuge-translator.big:${VCS_TAG}
 	    ;;
-    *)
+    *)  # anything else is an error
         echo "Usage: build_translator.sh <dep|dev|devall|casa|slim> [common-tag]" >&2
         exit 2;;
 esac
