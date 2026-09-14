@@ -3,9 +3,9 @@
 # branch name or with a release tag depending whether this is a development or deployment
 # version.
 
-export VCS_TAG=`git describe --tags --always --abbrev=0|sed s/v//`
-export DEV_TAG=`git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]'`
-if [ $DEV_TAG=="master" ]; then
+export VCS_TAG=$(git describe --tags --always --abbrev=0 | sed 's/^v//')
+export DEV_TAG=$(git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]')
+if [[ "$DEV_TAG" == "master" ]]; then
     VCS_TAG=$DEV_TAG;
 fi
 
@@ -20,7 +20,7 @@ case "$1" in
         exit 0 ;;
     "dev")
         C_TAG="master"
-        [[ ! -z "$2" ]] && C_TAG=$2
+        [[ -n "${2:-}" ]] && C_TAG=$2
         export VCS_TAG=$DEV_TAG
         echo "Building daliuge-translator development version using daliuge-common:${C_TAG}"
         echo "$VERSION:$VCS_TAG" > dlg/dropmake/web/VERSION
@@ -32,7 +32,7 @@ case "$1" in
         echo "Build finished!"
         exit 0;;
       "devall")
-        [[ ! -z "$2" ]] && C_TAG=$2
+        [[ -n "${2:-}" ]] && C_TAG=$2
         export VCS_TAG=$DEV_TAG
         echo "Building daliuge-translator development version using daliuge-common:${C_TAG}"
         echo "$VERSION:$VCS_TAG" > dlg/dropmake/web/VERSION
@@ -46,7 +46,7 @@ case "$1" in
     "casa")
         export VCS_TAG=$DEV_TAG
         echo "Building daliuge-translator development version using tag ${VCS_TAG}"
-        echo $VCS_TAG > dlg/dropmake/web/VERSION
+        echo "$VCS_TAG" > dlg/dropmake/web/VERSION
         git rev-parse --verify HEAD >> dlg/dropmake/web/VERSION
         cp ../LICENSE dlg/dropmake/web/.
         # The complete casa and arrow installation is only required for the Plasma streaming
@@ -69,6 +69,6 @@ case "$1" in
         --include-bin /usr/sbin/service --include-bin /usr/bin/hostname --http-probe=false --tag=icrar/daliuge-translator.slim:${VCS_TAG} icrar/daliuge-translator.big:${VCS_TAG}
 	    ;;
     *)
-        echo "Usage: build_translator.sh <dep|dev|slim>"
-        exit 0;;
+        echo "Usage: build_translator.sh <dep|dev|devall|casa|slim> [common-tag]" >&2
+        exit 2;;
 esac
