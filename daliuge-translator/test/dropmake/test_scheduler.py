@@ -23,8 +23,8 @@ import os
 import unittest
 
 import psutil
-from dlg.dropmake.lg import LG
-from dlg.dropmake.scheduler import (
+from dlg.translator.stages.unroll.lg import LG
+from dlg.translator.stages.partition.scheduler import (
     Scheduler,
     MySarkarScheduler,
     DAGUtil,

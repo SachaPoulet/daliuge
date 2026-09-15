@@ -46,7 +46,6 @@ class Categories:
     PLASMAFLIGHT = "PlasmaFlight"
     PARSET = "ParameterSet"
 
-    MKN = "MKN"
     SCATTER = "Scatter"
     GATHER = "Gather"
     GROUP_BY = "GroupBy"
@@ -104,7 +103,6 @@ CONSTRUCT_TYPES = [
     Categories.GATHER,
     Categories.GROUP_BY,
     Categories.LOOP,
-    Categories.MKN,
     Categories.SERVICE,
     Categories.SUBGRAPH
 ]
@@ -116,6 +114,5 @@ class ConstructTypes:
     GATHER = Categories.GATHER
     GROUP_BY = Categories.GROUP_BY
     LOOP = Categories.LOOP
-    MKN = Categories.MKN
     SERVICE = Categories.SERVICE
     SUBGRAPH = Categories.SUBGRAPH
