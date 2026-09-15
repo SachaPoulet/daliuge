@@ -33,6 +33,12 @@ from dlg.dropmake.graph_config import fill_config
 from dlg.dropmake.lg import LG, GraphException
 from dlg.dropmake.pgt import PGT
 from dlg.dropmake.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
+from dlg.translator.stages.partition.parameters import (
+    MetisParameters,
+    MinNumPartsParameters,
+    MySarkarParameters,
+    PsoParameters,
+)
 
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -120,14 +126,6 @@ def known_algorithms():
     return [x for x in _known_algos.keys() if isinstance(x, str)]
 
 
-def _get_algo_param(algo_params, param_name, default):
-    """
-    Make sure that default is set even if value has been passed as None.
-    """
-    param = algo_params.get(param_name)
-    return param if param is not None else default
-
-
 def partition(
     pgt,
     algo,
@@ -162,40 +160,29 @@ def partition(
         algo_params,
     )
 
-    # Read all possible values with defaults
-    # Not all algorithms use them, but makes the coding easier
-    # do_merge = num_islands > 1
     could_merge = True
-    min_goal = _get_algo_param(algo_params, "min_goal", 0)
-    ptype = _get_algo_param(algo_params, "ptype", 0)
-    max_load_imb = _get_algo_param(algo_params, "max_load_imb", 90)
-    max_cpu = _get_algo_param(algo_params, "max_cpu", 8)
-    max_mem = _get_algo_param(algo_params, "max_mem", 1000)
-    time_greedy = _get_algo_param(algo_params, "time_greedy", 50)
-    deadline = _get_algo_param(algo_params, "deadline", None)
-    topk = _get_algo_param(algo_params, "topk", 30)
-    swarm_size = _get_algo_param(algo_params, "swarm_size", 40)
-
-    max_dop = {"num_cpus": max_cpu, "mem_usage": max_mem}
 
     if algo == ALGO_NONE:
         pgt = PGT(pgt)
 
     elif algo == ALGO_METIS:
-        ufactor = 100 - max_load_imb + 1
+        params = MetisParameters.from_mapping(algo_params)
+        ufactor = 100 - params.max_load_imb + 1
         if ufactor <= 0:
             ufactor = 1
         pgt = MetisPGTP(
             pgt,
             num_partitions,
-            min_goal,
+            params.min_goal,
             partition_label,
-            ptype,
+            params.ptype,
             ufactor,
             merge_parts=could_merge,
         )
 
     elif algo == ALGO_MY_SARKAR:
+        params = MySarkarParameters.from_mapping(algo_params)
+        max_dop = {"num_cpus": params.max_cpu, "mem_usage": params.max_mem}
         pgt = MySarkarPGTP(
             pgt,
             num_partitions,
@@ -205,25 +192,28 @@ def partition(
         )
 
     elif algo == ALGO_MIN_NUM_PARTS:
-        time_greedy = 1 - time_greedy / 100.0  # assuming between 1 to 100
+        params = MinNumPartsParameters.from_mapping(algo_params)
+        time_greedy = 1 - params.time_greedy / 100.0  # assuming between 1 to 100
         pgt = MinNumPartsPGTP(
             pgt,
-            deadline,
+            params.deadline,
             num_partitions,
             partition_label,
-            max_cpu,
+            params.max_cpu,
             merge_parts=could_merge,
             optimistic_factor=time_greedy,
         )
 
     elif algo == ALGO_PSO:
+        params = PsoParameters.from_mapping(algo_params)
+        max_dop = {"num_cpus": params.max_cpu, "mem_usage": params.max_mem}
         pgt = PSOPGTP(
             pgt,
             partition_label,
             max_dop,
-            deadline=deadline,
-            topk=topk,
-            swarm_size=swarm_size,
+            deadline=params.deadline,
+            topk=params.topk,
+            swarm_size=params.swarm_size,
             merge_parts=could_merge,
         )
 
