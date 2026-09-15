@@ -3,8 +3,8 @@
 # branch name or with a release tag depending whether this is a development or deployment
 # version.
 
-export VCS_TAG=`git describe --tags --abbrev=0 --always|sed s/v//`
-export DEV_TAG=`git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]'`
+export VCS_TAG=$(git describe --tags --abbrev=0 --always|sed 's^/v//')
+export DEV_TAG=$(git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]')
 
 case "$1" in
     "dep")
@@ -16,9 +16,9 @@ case "$1" in
         exit 0 ;;
     "dev")
         C_TAG="master"
-        [[ ! -z $2 ]] && C_TAG=$2
-        export VERSION=`git describe --tags --abbrev=0|sed s/v//`
-        export VCS_TAG=DEV_TAG
+        [[ -n "${2:-}" ]] && C_TAG=$2
+        export VERSION=$(git describe --tags --abbrev=0|sed 's/^v//')
+        export VCS_TAG=$DEV_TAG
         echo "Building daliuge-engine development version using daliuge-common:${C_TAG}"
         echo "$VERSION:$VCS_TAG" > dlg/manager/web/VERSION
         git rev-parse --verify HEAD >> dlg/manager/web/VERSION
@@ -27,9 +27,9 @@ case "$1" in
         echo "Build finished!"
         exit 0;;
     "devall")
-        [[ ! -z $2 ]] && C_TAG=$2
-        export VERSION=`git describe --tags --abbrev=0|sed s/v//`
-        export VCS_TAG=`git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]'`
+        [[ -n "${2:-}" ]] && C_TAG=$2
+        export VERSION=$(git describe --tags --abbrev=0|sed 's/^v//')
+        export VCS_TAG=$(git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]')
         echo "Building daliuge-engine development version using daliuge-common:${DEV_TAG}"
         echo "$VERSION:$VCS_TAG" > dlg/manager/web/VERSION
         git rev-parse --verify HEAD >> dlg/manager/web/VERSION
