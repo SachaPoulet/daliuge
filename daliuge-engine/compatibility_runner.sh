@@ -2,8 +2,7 @@
 set -uo pipefail
 
 # Directory containing files to process
-DIR="${1}"
-
+DIR="${1:-}"
 # Track overall failure
 overall_status=0
 
@@ -13,7 +12,7 @@ if [ ! -d "$DIR" ]; then
 fi
 
 # Find all files
-mapfile -t FILES < <(find $DIR -iname "*.graph" | sort)
+mapfile -t FILES < <(find "$DIR" -iname "*.graph" | sort)
 
 if [ ${#FILES[@]} -eq 0 ]; then
     echo "No files found in $DIR"
