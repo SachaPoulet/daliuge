@@ -20,24 +20,24 @@ common_prep ()
     mkdir -p ${DLG_ROOT}/testdata
     mkdir -p ${DLG_ROOT}/code
     # get current user and group id and prepare passwd and group files
-    DOCKER_GID=`python3 -c "from prepareUser import prepareUser; print(prepareUser(DLG_ROOT='${DLG_ROOT}'))"`
+    DOCKER_GID=$(python3 -c "from prepareUser import prepareUser; print(prepareUser(DLG_ROOT='${DLG_ROOT}'))")
     DOCKER_OPTS=${DOCKER_OPTS}" --group-add ${DOCKER_GID}"
     DOCKER_OPTS=${DOCKER_OPTS}" -v ${DLG_ROOT}/workspace/settings/passwd:/etc/passwd"
     DOCKER_OPTS=${DOCKER_OPTS}" -v ${DLG_ROOT}/workspace/settings/group:/etc/group"
     DOCKER_OPTS=${DOCKER_OPTS}" -v ${DLG_ROOT}:${DLG_ROOT} --env DLG_ROOT=${DLG_ROOT}"
 }
-if [ $2 ]
+if [[ -n "${2:-}" ]]
 then
 	export VCS_TAG=$2
 	export C_TAG=$VCS_TAG
 else
-	export VCS_TAG=`git describe --tags --abbrev=0 --always|sed s/v//`
-	export C_TAG=`git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]'`
+	export VCS_TAG=$(git describe --tags --abbrev=0 --always|sed 's/v//')
+	export C_TAG=$(git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]')
 fi
 case "$1" in
     "dep")
         DLG_ROOT="/var/dlg_home"
-        if [ ! -d ${DLG_ROOT} ]
+        if [ ! -d "$DLG_ROOT" ]
         then
             echo "Deployment version requires access to a directory /var/dlg_home, but that does not exist!"
             echo "Please either create and grant access to $USER or build and run the development version."
@@ -48,8 +48,8 @@ case "$1" in
             docker run -td ${DOCKER_OPTS}  icrar/daliuge-engine:${VCS_TAG}
             sleep 3
             docker exec -u root daliuge-engine bash -c "service avahi-daemon stop > /dev/null 2>&1 && service dbus restart > /dev/null 2>&1 && service avahi-daemon start > /dev/null 2>&1"
-            ENGINE_NAME=`docker exec daliuge-engine sh -c "hostname"`
-            ENGINE_IP=`docker exec daliuge-engine sh -c "hostname --ip-address"`
+            ENGINE_NAME=$(docker exec daliuge-engine sh -c "hostname")
+            ENGINE_IP=$(docker exec daliuge-engine sh -c "hostname --ip-address")
             curl -X POST http://${ENGINE_IP}:9000/managers/node/start
         fi;;
     "dev")
@@ -60,15 +60,15 @@ case "$1" in
         docker run -td ${DOCKER_OPTS}  icrar/daliuge-engine:${C_TAG}
         sleep 3
         docker exec -u root daliuge-engine bash -c "service avahi-daemon stop > /dev/null 2>&1 && service dbus restart > /dev/null 2>&1 && service avahi-daemon start > /dev/null 2>&1"
-        ENGINE_NAME=`docker exec daliuge-engine sh -c "hostname"`
-        ENGINE_IP=`docker exec daliuge-engine sh -c "hostname --ip-address"`
+        ENGINE_NAME=$(docker exec daliuge-engine sh -c "hostname")
+        ENGINE_IP=$(docker exec daliuge-engine sh -c "hostname --ip-address")
         curl -X POST http://${ENGINE_IP}:9000/managers/node/start
         curl -X POST http://${ENGINE_IP}:9000/managers/island/start
         sleep 1
         curl -X POST http://${ENGINE_IP}:8001/api/node/dlg-engine.local:8000;;
     "casa")
         DLG_ROOT="/tmp/dlg"
-        export VCS_TAG=`git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]'`
+        export VCS_TAG=$(git rev-parse --abbrev-ref HEAD | tr '[:upper:]' '[:lower:]')
         echo "Running Engine development version in background..."
         common_prep
         CONTAINER_NM="icrar/daliuge-engine:${VCS_TAG}-casa"
@@ -76,8 +76,8 @@ case "$1" in
         docker run -td ${DOCKER_OPTS}  ${CONTAINER_NM}
         sleep 3
         docker exec -u root daliuge-engine bash -c "service avahi-daemon stop > /dev/null 2>&1 && service dbus restart > /dev/null 2>&1 && service avahi-daemon start > /dev/null 2>&1"
-        ENGINE_NAME=`docker exec daliuge-engine sh -c "hostname"`
-        ENGINE_IP=`docker exec daliuge-engine sh -c "hostname --ip-address"`
+        ENGINE_NAME=$(docker exec daliuge-engine sh -c "hostname")
+        ENGINE_IP=$(docker exec daliuge-engine sh -c "hostname --ip-address")
         curl -X POST http://${ENGINE_IP}:9000/managers/node/start
         curl -X POST http://${ENGINE_IP}:9000/managers/island/start
         sleep 1
@@ -89,7 +89,7 @@ case "$1" in
         echo "docker run -td ${DOCKER_OPTS}  icrar/daliuge-engine.slim:${VCS_TAG}"
         docker run -td ${DOCKER_OPTS}  icrar/daliuge-engine.slim:${VCS_TAG}
         sleep 3
-        ENGINE_IP=`docker exec daliuge-engine sh -c "hostname --ip-address"`
+        ENGINE_IP=$(docker exec daliuge-engine sh -c "hostname --ip-address")
         curl -X POST http://${ENGINE_IP}:9000/managers/node/start
         curl -X POST http://${ENGINE_IP}:9000/managers/island/start
         sleep 1
@@ -106,9 +106,9 @@ case "$1" in
         python -c "from dlg.utils import get_local_ip_addr; print([f'http://{addr}:8001' for addr,name in get_local_ip_addr() if not name.startswith('docker')])"
         echo "Log files can be found in ${DLG_ROOT}/log"
         ENGINE_NAME="localhost"
-        ENGINE_IP=`hostname --ip-address`;;
+        ENGINE_IP=$(hostname --ip-address);;
     *)
-        echo "Usage run_engine.sh <dep|dev|slim|local>"
+        echo "Usage run_engine.sh <dep|dev|casa|slim|local>"
         exit 0;;
 esac
 echo -e $"Container IP: ${ENGINE_IP}, Hostname: ${ENGINE_NAME}"
