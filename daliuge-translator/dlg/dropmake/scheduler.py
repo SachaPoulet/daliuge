@@ -23,7 +23,7 @@
 """
 Compatibility shim. The implementations moved to
 `dlg.translator.stages.partition.scheduler` when Tier 1 code was relocated into
-`stages/` (issue #16).
+`stages/`.
 
 Unlike the other shims in this package, this one exists for the **documentation
 build**, not for daliuge-engine: `docs/api/dropmake.rst` carries an

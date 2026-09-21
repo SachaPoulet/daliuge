@@ -21,7 +21,7 @@
 #
 """
 Compatibility shim. Every function that lived here moved into the stage that
-owns its transition when Tier 1 code was relocated into `stages/` (issue #16):
+owns its transition when Tier 1 code was relocated into `stages/`:
 
     fill, apply_config, fill_config  -> stages/prepare/
     unroll                           -> stages/unroll/stage.py
