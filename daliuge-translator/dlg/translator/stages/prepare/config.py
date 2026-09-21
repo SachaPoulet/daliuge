@@ -24,6 +24,8 @@
 Module containing utility methods for working with GraphConfigs
 """
 
+from __future__ import annotations
+
 from dlg.translator.errors import (
     GraphConfigException,
     GraphConfigFieldDoesNotExist,
