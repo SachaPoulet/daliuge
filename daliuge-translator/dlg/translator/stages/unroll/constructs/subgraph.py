@@ -7,4 +7,6 @@ class SubgraphHandler:
     construct_type = Categories.SUBGRAPH
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
+        del node, ctx
+
         return 1
