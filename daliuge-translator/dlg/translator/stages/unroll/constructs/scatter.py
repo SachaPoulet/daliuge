@@ -8,6 +8,8 @@ class ScatterHandler:
     construct_type = Categories.SCATTER
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
+        del ctx
+
         for key in [
             "num_of_copies",
             "num_of_splits",
@@ -18,5 +20,6 @@ class ScatterHandler:
 
         raise GInvalidNode(
             f"Scatter '{node.name}' ({node.id}) has no degree of parallelism. "
-            "One of 'num_of_copies', 'num_of_splits', 'Number of copies' is required."
+            "One of 'num_of_copies', 'num_of_splits', "
+            "'Number of copies' is required."
         )
