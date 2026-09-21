@@ -1,4 +1,3 @@
-#
 #    ICRAR - International Centre for Radio Astronomy Research
 #    (c) UWA - The University of Western Australia, 2015
 #    Copyright by UWA (in the framework of the ICRAR)
@@ -19,21 +18,3 @@
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston,
 #    MA 02111-1307  USA
 #
-
-"""
-Compatibility shim package. The web app moved to `dlg.translator.web` when
-`web/` was relocated out of `dropmake/` (issue #21).
-
-This package exists for one reason: `daliuge-engine` imports
-`dlg.dropmake.web.translator_utils`, and that dotted path needs an importable
-`dlg.dropmake.web` in front of it. `translator_utils` is the only module left
-here. `translator_rest` and everything it serves -- the HTML, `src/`, `img/`,
-and `pg_manager` -- moved wholesale and is deliberately **not** re-exported:
-nothing outside the translator ever imported it, and `dlg tm` launches the app
-from the entry-point string in `tool_commands.py`, not by importing this path.
-
-The static assets are gone from this directory. Anything resolving a path
-relative to this package -- `importlib.resources.files("dlg.dropmake.web")`, a
-`StaticFiles` mount -- now finds an empty directory rather than raising. Reach
-for `dlg.translator.web` instead.
-"""

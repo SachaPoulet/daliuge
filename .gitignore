@@ -12,8 +12,8 @@ dist
 .vscode
 .venv
 *.code-workspace
-daliuge-translator/dlg/translator/dropmake/web/VERSION
-daliuge-translator/dlg/translator/dropmake/web/LICENSE
+daliuge-translator/dlg/translator/web/VERSION
+daliuge-translator/dlg/translator/web/LICENSE
 daliuge-engine/dlg/runtime/version.py
 daliuge-common/dlg/common/version.py
 daliuge-translator/dlg/translator/version.py
