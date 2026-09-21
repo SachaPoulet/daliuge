@@ -9,6 +9,8 @@ class GatherHandler:
     construct_type = Categories.GATHER
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
+        del ctx
+
         try:
             input_node = node.inputs[0]
         except IndexError as error:
