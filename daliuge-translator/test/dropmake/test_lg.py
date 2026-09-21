@@ -24,7 +24,7 @@ import pickle
 import unittest
 
 from dlg.common import CategoryType, path_utils
-from dlg.dropmake.lg import LG
+from dlg.translator.stages.unroll.lg import LG
 
 NODES = 'nodeDataArray'
 LINKS = 'linkDataArray'
