@@ -11,7 +11,7 @@ import sys
 
 from jsonschema import validate, ValidationError
 
-LG_SCHEMA_FILENAME = "../daliuge-translator/dlg/dropmake/lg.graph.schema"
+LG_SCHEMA_FILENAME = "../daliuge-translator/dlg/translator/stages/prepare/lg.graph.schema"
 
 
 def get_args():

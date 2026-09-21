@@ -142,7 +142,7 @@ gen_pgt_sem = threading.Semaphore(1)
 global lg_dir
 global pgt_dir
 global pg_mgr
-LG_SCHEMA = json.loads(file_as_string("lg.graph.schema", module="dlg.dropmake"))
+LG_SCHEMA = json.loads(file_as_string("lg.graph.schema", module="dlg.translator.stages.prepare"))
 
 
 @app.post("/jsonbody", tags=["Original"])
