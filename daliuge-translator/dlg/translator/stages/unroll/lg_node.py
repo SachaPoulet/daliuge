@@ -27,15 +27,14 @@ which will then be deployed and monitored by the Physical Graph Manager
 
 import json
 import logging
-import math
 import random
 import re
 
+from dlg.translator.stages.unroll.constructs.registry import get_handler_for_node
 from dlg.common import CategoryType
 from dlg.common import dropdict
 from dlg.translator.errors import (
     GraphException,
-    GInvalidLink,
     GInvalidNode,
 )
 from dlg.translator.vocabulary import Categories, DATA_TYPES, APP_TYPES
@@ -619,67 +618,13 @@ class LGNode:
     @property
     def dop(self):
         """
-        Degree of Parallelism:  integer
-        default:    1
+        Degree of Parallelism: integer
+        default: 1
         """
         if self._dop is None:
-            if self.is_group:
-                if self.is_scatter:
-                    for kw in [
-                        "num_of_copies",
-                        "num_of_splits",
-                        "Number of copies",
-                    ]:
-                        if kw in self.jd and self.jd[kw]:
-                            self._dop = int(self.jd[kw])
-                            break
-                    if self._dop is None:
-                        raise GInvalidNode(
-                            f"Scatter '{self.name}' ({self.id}) has no degree of parallelism. "
-                            "One of 'num_of_copies', 'num_of_splits', 'Number of copies' is required."
-                        )
-                elif self.is_gather:
-                    try:
-                        tlgn = self.inputs[0]
-                    except IndexError as e:
-                        raise GInvalidLink(
-                            "Gather '{0}' does not have input!".format(self.id)
-                        ) from e
-                    if tlgn.is_groupby:
-                        tt = tlgn.dop
-                    else:
-                        tt = self.dop_diff(tlgn)
-                    self._dop = int(math.ceil(tt / float(self.gather_width)))
-                elif self.is_groupby:
-                    self._dop = self.group_by_scatter_layers[0]
-                elif self.is_loop:
-                    for key in [
-                        "num_of_iter",
-                        "Number of Iterations",
-                        "Number of loops",
-                    ]:
-                        if key in self.jd and self.jd[key]:
-                            self._dop = int(self.jd[key])
-                            break
-                    if self._dop is None:
-                        raise GInvalidNode(
-                            f"Loop '{self.name}' ({self.id}) has no iteration count. "
-                            "One of 'num_of_iter', 'Number of Iterations', 'Number of loops' is required."
-                        )
-                elif self.is_service:
-                    self._dop = 1  # TODO: number of compute nodes
-                elif self.is_subgraph:
-                    self._dop = 1
-                else:
-                    raise GInvalidNode(
-                        "Unrecognised (Group) Logical Graph Node: '{0}'".format(
-                            self._jd["category"]
-                        )
-                    )
-            elif self.is_mpi:
-                self._dop = int(self.jd["num_of_procs"])
-            else:
-                self._dop = 1
+            handler = get_handler_for_node(self)
+            self._dop = handler.degree_of_parallelism(self, None)
+
         return self._dop
 
     def dop_diff(self, that_lgn):
