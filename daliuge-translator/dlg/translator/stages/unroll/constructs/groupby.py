@@ -7,4 +7,6 @@ class GroupByHandler:
     construct_type = Categories.GROUP_BY
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
+        del ctx
+
         return node.group_by_scatter_layers[0]
