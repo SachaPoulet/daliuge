@@ -1,10 +1,9 @@
 from typing import Any, Protocol
 
+from dlg.common import dropdict
+
 from ..coordinate import InstanceId
 from ..model import Edge, LogicalLink
-
-
-DropDict = dict[str, Any]
 
 
 class ConstructHandler(Protocol):
@@ -18,7 +17,7 @@ class ConstructHandler(Protocol):
         node: Any,
         coord: InstanceId,
         ctx: Any,
-    ) -> list[DropDict]:
+    ) -> list[dropdict]:
         ...
 
     def synthesise_links(
