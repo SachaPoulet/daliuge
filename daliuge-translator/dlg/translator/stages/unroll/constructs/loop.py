@@ -8,6 +8,8 @@ class LoopHandler:
     construct_type = Categories.LOOP
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
+        del ctx
+
         for key in [
             "num_of_iter",
             "Number of Iterations",
@@ -18,5 +20,6 @@ class LoopHandler:
 
         raise GInvalidNode(
             f"Loop '{node.name}' ({node.id}) has no iteration count. "
-            "One of 'num_of_iter', 'Number of Iterations', 'Number of loops' is required."
+            "One of 'num_of_iter', 'Number of Iterations', "
+            "'Number of loops' is required."
         )
