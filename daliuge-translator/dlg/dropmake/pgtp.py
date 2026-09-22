@@ -23,7 +23,7 @@
 """
 Compatibility shim. The implementations moved to
 `dlg.translator.stages.partition.pgtp` when Tier 1 code was relocated into
-`stages/` (issue #16).
+`stages/`.
 
 `daliuge-engine` imports `MetisPGTP` from here
 (`test/dlg_end_to_end_utils.py`), which proposal 7.1 treats as contract, and

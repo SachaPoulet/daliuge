@@ -23,7 +23,7 @@
 """
 Compatibility shim. The implementation moved to
 `dlg.translator.stages.partition.pgt` when Tier 1 code was relocated into
-`stages/` (issue #16).
+`stages/`.
 
 `daliuge-engine` imports this module (`test/dlg_end_to_end_utils.py`), which
 proposal 7.1 treats as contract. Re-exports only -- do not add logic here.

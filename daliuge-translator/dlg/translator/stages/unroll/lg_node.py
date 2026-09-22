@@ -39,6 +39,7 @@ from dlg.translator.errors import (
     GInvalidNode,
 )
 from dlg.translator.vocabulary import Categories, DATA_TYPES, APP_TYPES
+from dlg.translator.stages.unroll.coordinate import InstanceId
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -132,11 +133,14 @@ class LGNode:
         from JSON.
         """
         if "categoryType" not in node_json:
+            # infer application type from node category
             if node_json["category"] in APP_TYPES:
                 node_json["categoryType"] = CategoryType.APPLICATION
+            # infer data type from node category
             elif node_json["category"] in DATA_TYPES:
                 node_json["categoryType"] = CategoryType.DATA
             else:
+                # category type cannot be inferred for this node
                 raise GInvalidNode(
                     f"Node '{node_json.get('name')}' ({self.id}) has category "
                     f"'{node_json['category']}' and no categoryType."
@@ -729,7 +733,7 @@ class LGNode:
 
         return that_gh.find(this_gh) > -1 or this_gh.find(that_gh) > -1
 
-    def make_oid(self, iid="0"):
+    def make_oid(self, iid=InstanceId((0,))):
         """
         return:
             ssid_id_iid (string), where
@@ -738,8 +742,8 @@ class LGNode:
             iid:    instance id (for the physical graph node)
         """
         # TODO: This is rather ugly, but a quick and dirty fix. The iid is the rank data we need
-        rank = [int(x) for x in iid.split("-")]
-        return "{0}_{1}_{2}".format(self._ssid, self.id, iid), rank
+        rank = list(iid.path)
+        return "{0}_{1}_{2}".format(self._ssid, self.id, str(iid)), rank
 
     def _update_key_value_attributes(self, kwargs):
         """
@@ -969,7 +973,7 @@ class LGNode:
         drop_spec.update(kwargs)
         return drop_spec
 
-    def make_single_drop(self, iid="0", **kwargs):
+    def make_single_drop(self, iid=InstanceId((0,)), **kwargs):
         """
         make only one drop from a LG nodes
         one-one mapping
@@ -1007,7 +1011,7 @@ class LGNode:
             self.jd["categoryType"] = "Application"
             drop_spec = self._create_app_drop(drop_spec)
         self._update_key_value_attributes(kwargs)
-        kwargs["iid"] = iid
+        kwargs["iid"] = str(iid)
         kwargs["lg_key"] = self.id
         if self.is_branch:
             kwargs["categoryType"] = "Application"

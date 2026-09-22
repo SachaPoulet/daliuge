@@ -28,6 +28,8 @@ class Stage(Protocol[TIn, TOut]):
 class Pipeline(Generic[TIn, TOut]):
     """
     Pipeline of stages, and the only place in the translator that stamps reprodata.
+    Each stage is responsible for stamping its own output, 
+    and the pipeline is responsible for calling that stamp method.
     """
 
     def __init__(self, stages: Sequence[Stage], repro: bool = True):
