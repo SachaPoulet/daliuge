@@ -19,5 +19,6 @@ class LogicalLink:
 
 @dataclass(frozen=True)
 class Edge:
+    link: LogicalLink
     source: dropdict
     target: dropdict
