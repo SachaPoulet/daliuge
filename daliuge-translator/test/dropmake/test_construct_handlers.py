@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from dlg.translator.errors import GInvalidNode
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
 from dlg.translator.stages.unroll.constructs.groupby import GroupByHandler
 from dlg.translator.stages.unroll.constructs.leaf import LeafHandler
@@ -80,13 +81,27 @@ class TestConstructHandlerDoP(unittest.TestCase):
             GatherHandler().degree_of_parallelism(gather, None),
         )
 
-    def test_registry_dispatch(self):
-        scatter = SimpleNamespace(
+    @staticmethod
+    def _group_node(category, **predicates):
+        node = SimpleNamespace(
             is_group=True,
+            is_scatter=False,
+            is_gather=False,
+            is_groupby=False,
+            is_loop=False,
+            is_service=False,
             is_subgraph=False,
-            category=Categories.SCATTER,
             is_mpi=False,
+            jd={"category": category},
         )
+
+        for name, value in predicates.items():
+            setattr(node, name, value)
+
+        return node
+
+    def test_registry_dispatch(self):
+        scatter = self._group_node(Categories.SCATTER, is_scatter=True)
         mpi = SimpleNamespace(
             is_group=False,
             is_mpi=True,
@@ -108,6 +123,28 @@ class TestConstructHandlerDoP(unittest.TestCase):
             get_handler_for_node(leaf),
             LeafHandler,
         )
+
+    def test_registry_rejects_group_node_matching_no_construct(self):
+        for category in [Categories.MPI, Categories.SUBGRAPH]:
+            with self.subTest(category=category):
+                with self.assertRaises(GInvalidNode):
+                    get_handler_for_node(self._group_node(category))
+
+    def test_registry_dispatch_prefers_construct_over_subgraph_flag(self):
+        node = self._group_node(
+            Categories.SCATTER,
+            is_scatter=True,
+            is_subgraph=True,
+        )
+
+        self.assertIsInstance(get_handler_for_node(node), ScatterHandler)
+
+    def test_registry_rejects_group_node_without_category(self):
+        node = self._group_node(Categories.SCATTER)
+        node.jd = {}
+
+        with self.assertRaises(KeyError):
+            get_handler_for_node(node)
 
     def test_lgnode_dop_uses_handler_and_caches_result(self):
         node = object.__new__(LGNode)

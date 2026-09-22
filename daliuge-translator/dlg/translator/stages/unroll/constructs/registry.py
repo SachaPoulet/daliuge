@@ -31,23 +31,34 @@ def get_handler(construct_type: str) -> ConstructHandler:
 
 def get_handler_for_node(node: Any) -> ConstructHandler:
     if node.is_group:
-        construct_type = (
-            Categories.SUBGRAPH if node.is_subgraph else node.category
-        )
+        if node.is_scatter:
+            return get_handler(Categories.SCATTER)
 
-        if construct_type not in _handlers:
-            raise GInvalidNode(
-                "Unrecognised (Group) Logical Graph Node: '{0}'".format(
-                    node.category
-                )
+        if node.is_gather:
+            return get_handler(Categories.GATHER)
+
+        if node.is_groupby:
+            return get_handler(Categories.GROUP_BY)
+
+        if node.is_loop:
+            return get_handler(Categories.LOOP)
+
+        if node.is_service:
+            return get_handler(Categories.SERVICE)
+
+        if node.is_subgraph:
+            return get_handler(Categories.SUBGRAPH)
+
+        raise GInvalidNode(
+            "Unrecognised (Group) Logical Graph Node: '{0}'".format(
+                node.jd["category"]
             )
-
-        return get_handler(construct_type)
+        )
 
     if node.is_mpi:
         return get_handler(Categories.MPI)
 
-    return get_handler("leaf")
+    return get_handler(LeafHandler.construct_type)
 
 
 def get_edge_handler(
