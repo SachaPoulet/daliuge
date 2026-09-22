@@ -623,7 +623,7 @@ class LGNode:
         """
         if self._dop is None:
             handler = get_handler_for_node(self)
-            self._dop = handler.degree_of_parallelism(self, None)
+            self._dop = handler.degree_of_parallelism(self)
 
         return self._dop
 

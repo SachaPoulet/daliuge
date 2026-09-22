@@ -161,10 +161,7 @@ class TestConstructHandlerDoP(unittest.TestCase):
             self.assertEqual(7, node.dop)
 
             get_handler.assert_called_once_with(node)
-            handler.degree_of_parallelism.assert_called_once_with(
-                node,
-                None,
-            )
+            handler.degree_of_parallelism.assert_called_once_with(node)
 
 
 if __name__ == "__main__":

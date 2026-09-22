@@ -1,14 +1,20 @@
-from typing import Any
+from typing import Any, Optional
 
 from dlg.translator.errors import GInvalidNode
 from dlg.translator.vocabulary import Categories
+
+from .base import GraphContext
 
 
 class LoopHandler:
     construct_type = Categories.LOOP
     edge_keys = ()
 
-    def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
+    def degree_of_parallelism(
+        self,
+        node: Any,
+        ctx: Optional[GraphContext] = None,
+    ) -> int:
         del ctx
 
         for key in [
