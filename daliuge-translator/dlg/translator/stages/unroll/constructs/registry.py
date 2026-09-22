@@ -1,7 +1,6 @@
 from typing import Iterator, Optional
 
-from .base import ConstructHandler
-from ..model import ANY_CONSTRUCT, EdgeKey, HLevelRelation
+from .base import ANY_CONSTRUCT, ConstructHandler, EdgeKey, HLevelRelation
 
 
 _handlers: dict[str, ConstructHandler] = {}
