@@ -6,6 +6,7 @@ from dlg.translator.vocabulary import Categories
 
 class LoopHandler:
     construct_type = Categories.LOOP
+    edge_keys = ()
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
         del ctx

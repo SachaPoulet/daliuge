@@ -7,6 +7,7 @@ from dlg.translator.vocabulary import Categories
 
 class GatherHandler:
     construct_type = Categories.GATHER
+    edge_keys = ()
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
         del ctx
