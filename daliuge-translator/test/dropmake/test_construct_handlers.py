@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from dlg.translator.errors import GInvalidNode
+from dlg.translator.errors import GInvalidLink, GInvalidNode
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
 from dlg.translator.stages.unroll.constructs.groupby import GroupByHandler
 from dlg.translator.stages.unroll.constructs.leaf import LeafHandler
@@ -17,6 +17,37 @@ from dlg.translator.vocabulary import Categories
 
 
 class TestConstructHandlerDoP(unittest.TestCase):
+
+    def test_gather_input_defaults_missing_category_type_to_data(self):
+        source = SimpleNamespace(
+            id="source",
+            jd={},
+            is_groupby=False,
+            is_gather=False,
+        )
+        target = SimpleNamespace(
+            id="gather",
+            is_gather=True,
+        )
+
+        GatherHandler().validate_link(source, target)
+
+        self.assertEqual("Data", source.jd["categoryType"])
+
+    def test_gather_rejects_non_data_input(self):
+        source = SimpleNamespace(
+            id="source",
+            jd={"categoryType": "Application"},
+            is_groupby=False,
+            is_gather=False,
+        )
+        target = SimpleNamespace(
+            id="gather",
+            is_gather=True,
+        )
+
+        with self.assertRaises(GInvalidLink):
+            GatherHandler().validate_link(source, target)
 
     def test_handler_dop_values(self):
         scatter = SimpleNamespace(
