@@ -65,7 +65,11 @@ class ConstructHandler(Protocol):
     construct_type: str
     edge_keys: tuple[EdgeKey, ...]
 
-    def degree_of_parallelism(self, node: "LGNode", ctx: GraphContext) -> int:
+    def degree_of_parallelism(
+        self,
+        node: "LGNode",
+        ctx: Optional[GraphContext] = None,
+    ) -> int:
         ...
 
     def instantiate(
