@@ -54,6 +54,7 @@ from dlg.translator.stages.prepare.normalise.subgraphs import convert_subgraphs
 from dlg.translator.stages.prepare.normalise.globals import extract_globals
 from dlg.translator.vocabulary import Categories
 from dlg.translator.stages.unroll.lg_node import LGNode
+from dlg.translator.stages.unroll.coordinate import InstanceId
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -258,13 +259,13 @@ class LG:
         else:
             return None
 
-    def lgn_to_pgn(self, lgn, iid="0", lpcxt=None, recursive=True):
+    def lgn_to_pgn(self, lgn, iid=InstanceId((0,)), lpcxt=None, recursive=True):
         """
         convert a logical graph node to physical graph node(s)
         without considering pg links. This is a recursive method, creating also
         all child nodes required by constructs.
 
-        iid:    instance id (string)
+        iid:    instance id (InstanceId)
         lpcxt:  Loop context
         """
         if lgn.is_group:
@@ -326,14 +327,12 @@ class LG:
                 shape = [x.dop for x in scatters]
 
             for i in range(lgn.dop):
-                # todo - create iid(?)
-                miid = f"{iid}-{i}"
+                miid = iid.child(i)
                 if multikey_grpby:
                     # set up more refined hierarchical context for group by with multiple keys
                     # recover multl-dimension indexes from i
-                    grp_h = np.unravel_index(i, shape)
-                    grp_h = [str(x) for x in grp_h]
-                    miid += "${0}".format("-".join(grp_h))
+                    grp_h = tuple(int(x) for x in np.unravel_index(i, shape))
+                    miid = miid.with_group_key(grp_h)
 
                 if not lgn.is_scatter and not lgn.is_loop:
                     # make GroupBy and Gather drops
@@ -362,7 +361,7 @@ class LG:
                 if lgn.loop_ctx:
                     lpcxt = lgn.loop_ctx
                     iid = lgn.iid
-                miid = "{0}-{1}".format(iid, i)
+                miid = iid.child(i)
                 src_drop = lgn.make_single_drop(miid, loop_ctx=lpcxt, proc_index=i)
                 self._drop_dict[lgn.id].append(src_drop)
         elif lgn.is_service:
