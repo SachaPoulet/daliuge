@@ -34,6 +34,7 @@ flowchart TD
     P3_2 & P3_3 --> P4_1["P4-1 lift link.py"]
     P4_1 --> P4_2["P4-2 instantiate/wire split"] --> P4_3["P4-3 resolve_edges per construct"] --> P4_4["P4-4 LoopHandler last"]
     P3_1 --> P4_5["P4-5 LGNode split into model.py"] --> P4_3
+    P4_3 & P4_5 --> P4_6["P4-6 DoP helpers onto handlers"]
     P4_4 --> P5_1["P5-1 retire the iid parse sites"] --> P6_1["P6-1 linearise + gojs"] & P6_2["P6-2 to_pg_spec split"]
     P6_3 --> P6_1
     P6_1 & P6_2 --> P7_1["P7-1 Updated glue"] --> P7_2["P7-2 Original sites"]
@@ -867,6 +868,67 @@ Constraint carried from map §7 **B6**: the bare `categoryType` subscript at
 [lg_node.py:60](dlg/dropmake/lg_node.py#L60) is what makes the Gather `categoryType` default
 dead code. Do **not** soften it to `.get()` while moving `__init__` — that revives a default
 the proposal deletes (§8 Q11).
+
+---
+
+## P4-6 — Move the construct-specific DoP helpers onto their handlers
+
+- **Label:** `Phase 4`
+- **Blocked by:** P4-3, P4-5
+- **Blocking:** —
+
+**Filed 2026-09-22 to close a gap in this plan** — the third instance of the class that
+produced P4-5 and P6-3, found while reviewing P3-2 (#23). Migration map §3.2 assigns five
+`LGNode` helpers to handler files in its `degree_of_parallelism` column, and the paragraph
+below that table assigns a sixth batch to `constructs/base.py` or `model.py`. **No issue
+moves any of them.** A grep of this document for `gather_width`, `groupby_width`,
+`group_by_scatter_layers`, `group_keys` and `dop_diff` returns one hit, and it belongs to
+P3-1's `make_oid` note.
+
+P3-2 routed the `dop` chain into handlers and stopped there, which was correct — its scope is
+one sentence and the helpers were never in it. The result is that the handlers compute DoP by
+reaching back through `node.` into `LGNode`, which map §3.2 does not intend as the end state.
+
+MOVE onto handlers, per map §3.2:
+
+- `gather_width` [lg_node.py:510-525](dlg/dropmake/lg_node.py#L510) → `gather.py`
+- `group_keys` [:489-509](dlg/dropmake/lg_node.py#L489), `groupby_width`
+  [:526-543](dlg/dropmake/lg_node.py#L526), `group_by_scatter_layers`
+  [:544-611](dlg/dropmake/lg_node.py#L544) → `groupby.py`
+
+MOVE to `model.py`, per map §3.2's "Shared by all handlers" paragraph — land with P4-5 if it
+has not merged: `dop_diff` [:669-707](dlg/dropmake/lg_node.py#L669), `h_related`
+[:708-719](dlg/dropmake/lg_node.py#L708), `make_oid` [:720-731](dlg/dropmake/lg_node.py#L720),
+`_update_key_value_attributes` [:732-754](dlg/dropmake/lg_node.py#L732), `getPortName`
+[:755-778](dlg/dropmake/lg_node.py#L755), `str_to_bool`
+[:1012-1016](dlg/dropmake/lg_node.py#L1012).
+
+**Why this follows P4-3 rather than joining P3-2.** Four of the five construct helpers have a
+call site inside the 278-line `unroll_to_tpl` conditional, the region Phase 3 may not touch:
+
+| helper | callers outside `lg_node.py` | inside `unroll_to_tpl` [:545-822](dlg/dropmake/lg.py#L545) |
+|--------|------------------------------|--------------------------------|
+| `gather_width` | [lg.py:414](dlg/dropmake/lg.py#L414), [:587](dlg/dropmake/lg.py#L587), [:590](dlg/dropmake/lg.py#L590) | yes — map §3.4 row 3, Gather sequentialisation |
+| `group_by_scatter_layers` | [:324](dlg/dropmake/lg.py#L324), [:700](dlg/dropmake/lg.py#L700) | yes — row 14, GroupBy bucketing |
+| `group_keys` | [:319](dlg/dropmake/lg.py#L319), [:703](dlg/dropmake/lg.py#L703) | yes — row 14 |
+| `dop_diff` | [:418](dlg/dropmake/lg.py#L418) | no — `_get_chunk_size` |
+| `groupby_width` | [:416](dlg/dropmake/lg.py#L416) | no — `_get_chunk_size` |
+
+Rows 3 and 14 are two of the six the map flags as carrying essentially all the semantic
+weight, and §6 Phase 4 lands them one per PR with a corpus run between each. Moving the
+helpers before P4-3 has moved those rows into handlers means editing that region twice.
+
+⚠ **`group_by_scatter_layers` closes a loop.** Its body reads the `dop` of each scatter
+layer at [:578](dlg/dropmake/lg_node.py#L578), [:585](dlg/dropmake/lg_node.py#L585),
+[:591](dlg/dropmake/lg_node.py#L591) and [:603](dlg/dropmake/lg_node.py#L603). Once it
+lives on `GroupByHandler`, a handler calls back into `LGNode.dop`, which dispatches through
+the registry to another handler. That is workable — the registry is keyed on the category
+string, not the node — but decide where the recursion lives before writing it, rather than
+discovering it mid-move.
+
+**`groupby_width` is the one that could move today.** It has a single caller, in
+`_get_chunk_size`, and nothing in the `dop` path reads it — P3-2 left it behind for that
+reason. If this issue is ever split, that is the separable half.
 
 ---
 
