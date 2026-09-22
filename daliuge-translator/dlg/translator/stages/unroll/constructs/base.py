@@ -3,11 +3,12 @@ from typing import Any, Protocol
 from dlg.common import dropdict
 
 from ..coordinate import InstanceId
-from ..model import Edge, LogicalLink
+from ..model import Edge, EdgeKey, LogicalLink
 
 
 class ConstructHandler(Protocol):
     construct_type: str
+    edge_keys: tuple[EdgeKey, ...]
 
     def degree_of_parallelism(self, node: Any, ctx: Any) -> int:
         ...
