@@ -1,14 +1,24 @@
 from typing import Any, Optional
 
-from dlg.translator.errors import GInvalidNode
+from dlg.translator.errors import GInvalidLink, GInvalidNode
 from dlg.translator.vocabulary import Categories
 
-from .base import GraphContext
+from .base import GraphContext, validate_hierarchy
 
 
 class LoopHandler:
     construct_type = Categories.LOOP
     edge_keys = ()
+
+    def validate_link(self, source: Any, target: Any) -> None:
+        if source.is_loop or target.is_loop:
+            raise GInvalidLink(
+                "Loop construct {0} or {1} cannot be linked".format(
+                    source.name, target.name
+                )
+            )
+
+        validate_hierarchy(source, target)
 
     def degree_of_parallelism(
         self,

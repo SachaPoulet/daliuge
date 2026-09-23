@@ -37,7 +37,6 @@ from dlg.common import CategoryType, dropdict
 
 from dlg.translator.errors import (
     GraphException,
-    GInvalidLink,
     GInvalidNode,
 )
 from dlg.translator.stages.prepare.versions import (
@@ -55,6 +54,8 @@ from dlg.translator.stages.prepare.normalise.globals import extract_globals
 from dlg.translator.vocabulary import Categories
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.coordinate import InstanceId
+from dlg.translator.stages.unroll.constructs.base import validate_hierarchy
+from dlg.translator.stages.unroll.constructs.registry import get_handler_for_node
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -157,98 +158,14 @@ class LG:
         self._reprodata = lg.get("reprodata", {})
 
     def validate_link(self, src, tgt):
-        # print("validate_link()", src.id, src.is_scatter(), tgt.id, tgt.is_scatter())
-        if src.is_scatter or tgt.is_scatter:
-            prompt = "Remember to specify Input App Type for the Scatter construct!"
-            raise GInvalidLink(
-                "Scatter construct {0} or {1} cannot be linked. {2}".format(
-                    src.name, tgt.name, prompt
-                )
-            )
-
-        if src.is_loop or tgt.is_loop:
-            raise GInvalidLink(
-                "Loop construct {0} or {1} cannot be linked".format(src.name, tgt.name)
-            )
-
-        if src.is_gather:
-            if not (
-                tgt.jd["categoryType"] in ["app", "application", "Application"]
-                and tgt.is_group_start
-                and src.inputs[0].h_level == tgt.h_level
-            ):
-                raise GInvalidLink(
-                    "Gather {0}'s output {1} must be a Group-Start Component inside a Group with the same H level as Gather's input".format(
-                        src.id, tgt.id
-                    )
-                )
-            # raise GInvalidLink("Gather {0} cannot be the input".format(src.id))
-        if tgt.is_groupby:
-            if src.is_group:
-                raise GInvalidLink(
-                    "GroupBy {0} input must not be a group {1}".format(tgt.id, src.id)
-                )
-            if len(tgt.inputs) > 0:
-                raise GInvalidLink(
-                    "GroupBy {0} already has input {2} other than {1}".format(
-                        tgt.id, src.id, tgt.inputs[0].id
-                    )
-                )
-            if src.gid == 0:
-                raise GInvalidLink(
-                    "GroupBy {0} requires at least one Scatter around input {1}".format(
-                        tgt.id, src.id
-                    )
-                )
-        elif tgt.is_gather:
-            if not src.jd["categoryType"].lower() == "data" and not src.is_groupby:
-                raise GInvalidLink(
-                    "Gather {0}'s input {1} should be either a GroupBy or Data. {2}".format(
-                        tgt.id, src.id, src.jd
-                    )
-                )
-
-        if src.is_groupby and not tgt.is_gather:
-            raise GInvalidLink(
-                "Output {1} from GroupBy {0} must be Gather, otherwise embbed {1} inside GroupBy {0}".format(
-                    src.id, tgt.id
-                )
-            )
-
-        if not src.h_related(tgt):
-            src_group = src.group
-            tgt_group = tgt.group
-            if src_group.is_loop and tgt_group.is_loop:
-                valid_loop_link = True
-                while True:
-                    if src_group is None or tgt_group is None:
-                        break
-                    if src_group.is_loop and tgt_group.is_loop:
-                        if src_group.dop != tgt_group.dop:
-                            valid_loop_link = False
-                            break
-                        else:
-                            src_group = src_group.group
-                            tgt_group = tgt_group.group
-                    else:
-                        break
-                if not valid_loop_link:
-                    raise GInvalidLink(
-                        "{0} and {1} are not loop synchronised: {2} <> {3}".format(
-                            src_group.id, tgt_group.id, src_group.dop, tgt_group.dop
-                        )
-                    )
-            else:
-                raise GInvalidLink(
-                    "{0} and {1} are not hierarchically related: {2}-({4}) and {3}-({5})".format(
-                        src.id,
-                        tgt.id,
-                        src.group_hierarchy,
-                        tgt.group_hierarchy,
-                        src.name,
-                        tgt.name,
-                    )
-                )
+        source_validator = getattr(get_handler_for_node(src), "validate_link", None)
+        if source_validator is not None:
+            source_validator(src, tgt)
+        target_validator = getattr(get_handler_for_node(tgt), "validate_link", None)
+        if target_validator is not None:
+            target_validator(src, tgt)
+        if not (src.is_loop or tgt.is_loop):
+            validate_hierarchy(src, tgt) 
 
     def get_child_lp_ctx(self, lgn, lpcxt, idx):
         if lgn.is_loop:

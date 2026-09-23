@@ -11,6 +11,29 @@ class GatherHandler:
     construct_type = Categories.GATHER
     edge_keys = ()
 
+    def validate_link(self, source: Any, target: Any) -> None:
+        if source.is_gather:
+            if not (
+                target.jd["categoryType"] in ["app", "application", "Application"]
+                and target.is_group_start
+                and source.inputs[0].h_level == target.h_level
+            ):
+                raise GInvalidLink(
+                    "Gather {0}'s output {1} must be a Group-Start Component inside a Group with the same H level as Gather's input".format(
+                        source.id, target.id
+                    )
+                )
+
+        if target.is_gather:
+            if "categoryType" not in source.jd:
+                source.jd["categoryType"] = "Data"
+            if not source.jd["categoryType"].lower() == "data" and not source.is_groupby:
+                raise GInvalidLink(
+                    "Gather {0}'s input {1} should be either a GroupBy or Data. {2}".format(
+                        target.id, source.id, source.jd
+                    )
+                )
+
     def degree_of_parallelism(
         self,
         node: Any,
