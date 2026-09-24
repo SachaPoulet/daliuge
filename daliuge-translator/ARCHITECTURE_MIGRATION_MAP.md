@@ -394,6 +394,25 @@ it to `.get()`, that default comes back to life — soften it to a `GInvalidNode
 `Application`. Recorded as proposal §5 row 5e; fixing it is a possible corpus change, so it
 does not ride along with a move.
 
+**B9 — nested constructs synthesise their artificial links once per enclosing instance.**
+`lgn_to_pgn` appends the loop-circle and group-start links
+([lg.py:303](dlg/dropmake/lg.py#L303), [:316](dlg/dropmake/lg.py#L316)) every time it visits a
+construct, and it visits a nested construct once per instance of each enclosing construct
+([lg.py:349](dlg/dropmake/lg.py#L349), inside `for i in range(lgn.dop)`). `add_input` /
+`add_output` deduplicate, but `self._lg_links.append(lk)` does not, so the same
+`{"from", "to"}` link lands in the list repeatedly. The link loop does not deduplicate either:
+each copy re-wires the same DROP pairs, and the PGT carries **repeated `consumers` / `inputs` /
+`ports` entries** — e.g. in `NGASLogProcessGather` each `PickOne` lists one input oid
+three times, where deduplicated synthesis gives two. Measured 2026-09-24 over the 111-graph corpus: 257 of 338
+synthesised links are duplicates, across 17 graphs, and deduplicating them changes all 17
+PGTs. Recorded as proposal §5 row 18.
+
+Pre-existing. P4-2 keeps it on purpose: its gate is byte-for-byte, so the link-synthesis
+pre-pass walks the tree exactly as `lgn_to_pgn` did, including the per-instance repeat.
+Fixing it is a corpus change (17 graphs), so it wants its own issue with the diff explained,
+and it interacts with `synthesise_links` moving onto handlers — whichever lands second should
+not re-introduce the repeat.
+
 ---
 
 ## 8. Changes log
@@ -406,3 +425,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | 2026-08-27 | Claude (Opus 5) | Two latent bugs added from proposal §8 Q11 — **B6** (missing `categoryType` raises a bare `KeyError` at [lg_node.py:60](dlg/dropmake/lg_node.py#L60), naming no node) and **B7** (`Categories.DATA` is in both `DATA_TYPES` and `APP_TYPES`, `APP_TYPES` tested first). B6 carries a constraint on `model.py`: the bare subscript is what makes the Gather `categoryType` default dead code, so relaxing it to `.get()` would revive a default the proposal deletes |
 | 2026-09-01 | Claude (Opus 5) | **Duplicate `B6` resolved.** Two bugs carried the number: the `categoryType` `KeyError` filed 2026-08-27, and the macOS `import_metis` picker filed 2026-08-31 by the P2-3 row, which did not check. The metis one is **renumbered B8**; the `categoryType` one keeps B6, since proposal §8 Q11 and the `model.py` constraint both cite it. Proposal §5 row 15's body text repointed to B8; §9's two append-only rows still say B6 and are left alone |
 | 2026-09-01 | Claude (Opus 5) | **B1 closed.** The entry still asked for a determination that Phase 0 had already made on 2026-08-31; proposal §5 row 9b records the verdict (dead code, delete, do not port) and this map contradicted it. B1 rewritten with both cases and their corpus pins, §3.2's `service.py` row repointed from "broken today" to "dead, DELETE in P4-2". **B1b added** — the Service `oid`/`lg_key` `uuid.uuid4()` nondeterminism from the same run, which is live, blocks `service_simple`'s golden, and has no issue yet |
+| 2026-09-24 | Claude (Opus 5.5) | **B9 added** — nested constructs append their artificial links once per enclosing instance, and the duplicates reach the PGT as repeated `consumers`/`inputs`/`ports` entries (257 of 338 synthesised links, 17 corpus graphs). Found during P4-2; kept there for byte parity. No issue yet |
