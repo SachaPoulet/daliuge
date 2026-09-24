@@ -522,12 +522,6 @@ class LG:
                     self._unroll_gather_as_output(
                         slgn, tlgn, sdrops, tdrops, chunk_size, lk
                     )
-                elif tlgn.is_service:
-                    # Only the service node's inputApplication will be translated
-                    # to the physical graph as a node of type SERVICE_APP instead of APP
-                    # per compute instance
-                    tlgn["categoryType"] = "Application"
-                    tlgn["category"] = "DALiuGEApp"
                 elif tlgn.is_subgraph:
                     pass
                 else:
