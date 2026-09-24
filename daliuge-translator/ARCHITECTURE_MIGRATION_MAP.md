@@ -344,6 +344,10 @@ whatever the *previous* `for lk in self._lg_links` iteration left behind. So gat
 port names depend on link iteration order. The two-pass rewrite removes this code, which
 means **the corpus may legitimately drift here** — treat drift in gather port names as
 expected, not as a regression, and confirm the new value is the correct one.
+*Update 2026-09-24 (P4-2):* measured, the leaked `slgn` is always a Gather construct — the last
+link processed is a synthesised Gather → start-child link — and `getPortName` returns `None` in
+all 19 corpus graphs that reach the drain. A rewrite that passes `name=None` shows no drift; P4-2
+keeps the drain, local to `wire()`, and passes the corpus byte-for-byte.
 
 **B4 — Loop DoP returns `None`.** [lg_node.py:644-651](dlg/dropmake/lg_node.py#L644): if none
 of the three iteration-count keys is present, `_dop` is never assigned, so `dop` returns
@@ -413,6 +417,43 @@ Fixing it is a corpus change (17 graphs), so it wants its own issue with the dif
 and it interacts with `synthesise_links` moving onto handlers — whichever lands second should
 not re-introduce the repeat.
 
+**B10 — Gather output validation depends on link order and dies as a bare `IndexError`.**
+The Gather rule of `validate_link` ([lg.py:175](dlg/dropmake/lg.py#L175), now
+`GatherHandler.validate_link`) reads `src.inputs[0].h_level`. `LG.__init__` validates each link
+*before* adding it, in `linkDataArray` order, so when a Gather → X link is listed before the
+Gather's own input link, `inputs` is still empty and validation raises
+`IndexError: list index out of range` — no node, no `GInvalidLink`. The same graph with its
+links in the other order translates. Pre-existing; reproduced 2026-09-24 on both the pre-P4-2
+code and the P4-2 branch with an authored variant of `SuperBasicScatterGather`. Side effect: it
+makes the Gather-sequentialisation "not yet in cache" warning
+([lg.py:583](dlg/dropmake/lg.py#L583)) unreachable in practice, since any graph that would hit
+it fails validation first.
+
+**B11 — the Gather drain wires every input to the first output DROP only.** *(Suspected, not
+observed.)* The drain takes `output_drop = v[2][0]`
+([lg.py:766](dlg/dropmake/lg.py#L766), "peek the first element") and splices all of the Gather
+instance's inputs onto it. A Gather instance with more than one downstream DROP would leave the
+others with none of its inputs. No corpus Gather has more than one output DROP (measured
+2026-09-24), so nothing pins it either way. P4-2 keeps the behaviour.
+
+**B12 — the Gather drain's `is_stream` comes from whichever link touched the Gather first.**
+`llink = v[-1]` ([lg.py:769](dlg/dropmake/lg.py#L769)) is the link that *created* the cache
+entry, which is the input-side link or the output-side link depending on `linkDataArray`
+order, and it decides streaming vs. plain wiring for every input. Using the input link instead
+changes nothing in the corpus (2026-09-24). Minor; P4-2 keeps it.
+
+**B13 — Gather sequentialisation, once working, bypasses `_link_drops` and may re-use inputs.**
+Until P4-2 the branch ([lg.py:577-601](dlg/dropmake/lg.py#L577)) could never wire an edge: it
+called `getPortName(port=...)`, a keyword that does not exist, so every graph reaching it raised
+`TypeError` (reachable only from a Gather *without* an input application, linked to a
+group-start Application in a group at the same h-level as the Gather's input). P4-2 fixes the
+keyword and guards the two faults the fix exposed — an endless loop when the Gather has no
+inputs, and `tdrops[j]` overrunning the `while` bound. Two limitations remain: the chained edges
+are wired by hand, so they get no stream NullDROP, no `port_map` and no `BASH_SHELL_APP`
+parameters; and the inherited `while` walks the Gather's inputs again when there are fewer of
+them than `gather_width`, pairing the same inputs with further targets. Whether that re-use is
+intended is unknown. Belongs with `GatherHandler.resolve_edges` (P4-3).
+
 ---
 
 ## 8. Changes log
@@ -426,3 +467,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | 2026-09-01 | Claude (Opus 5) | **Duplicate `B6` resolved.** Two bugs carried the number: the `categoryType` `KeyError` filed 2026-08-27, and the macOS `import_metis` picker filed 2026-08-31 by the P2-3 row, which did not check. The metis one is **renumbered B8**; the `categoryType` one keeps B6, since proposal §8 Q11 and the `model.py` constraint both cite it. Proposal §5 row 15's body text repointed to B8; §9's two append-only rows still say B6 and are left alone |
 | 2026-09-01 | Claude (Opus 5) | **B1 closed.** The entry still asked for a determination that Phase 0 had already made on 2026-08-31; proposal §5 row 9b records the verdict (dead code, delete, do not port) and this map contradicted it. B1 rewritten with both cases and their corpus pins, §3.2's `service.py` row repointed from "broken today" to "dead, DELETE in P4-2". **B1b added** — the Service `oid`/`lg_key` `uuid.uuid4()` nondeterminism from the same run, which is live, blocks `service_simple`'s golden, and has no issue yet |
 | 2026-09-24 | Claude (Opus 5.5) | **B9 added** — nested constructs append their artificial links once per enclosing instance, and the duplicates reach the PGT as repeated `consumers`/`inputs`/`ports` entries (257 of 338 synthesised links, 17 corpus graphs). Found during P4-2; kept there for byte parity. No issue yet |
+| 2026-09-24 | Claude (Opus 5.5) | **B10-B13 added, B3 updated**, all from P4-2. B10: Gather output validation reads `src.inputs[0]` before the input link exists when links are listed in the other order — bare `IndexError`. B11 (suspected): the Gather drain splices inputs onto the first output DROP only. B12: the drain's `is_stream` comes from whichever link created the entry. B13: the sequentialisation branch, fixed in P4-2, still bypasses `_link_drops` and may re-use inputs. B3: the leaked `slgn` measured as always a Gather with port name `None`, so no drift is expected |
