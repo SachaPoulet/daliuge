@@ -19,7 +19,6 @@
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston,
 #    MA 02111-1307  USA
 #
-import copy
 import logging
 
 import numpy as np
@@ -49,7 +48,7 @@ def get_child_lp_ctx(lgn, lpcxt, idx):
         return None
 
 
-def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None, recursive=True):
+def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
     """
     convert a logical graph node to physical graph node(s)
     without considering pg links. This is a recursive method, creating also
@@ -133,17 +132,8 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None, recursive=True):
                 elif lgn.is_gather:
                     pass
                     # lg._drop_dict['new_added'].append(src_drop['gather-data_drop'])
-            if recursive:
-                for child in lgn.children:
-                    lgn_to_pgn(lg, child, miid, get_child_lp_ctx(lgn, lpcxt, i))
-            else:
-                for child in lgn.children:
-                    # Approach next 'set' of children
-                    c_copy = copy.deepcopy(child)
-                    c_copy.happy = True
-                    c_copy.loop_ctx = get_child_lp_ctx(lgn, lpcxt, i)
-                    c_copy.iid = miid
-                    lg._start_list.append(c_copy)
+            for child in lgn.children:
+                lgn_to_pgn(lg, child, miid, get_child_lp_ctx(lgn, lpcxt, i))
     elif lgn.is_mpi:
         for i in range(lgn.dop):
             if lgn.loop_ctx:

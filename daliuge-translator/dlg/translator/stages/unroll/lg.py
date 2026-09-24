@@ -157,11 +157,11 @@ class LG:
         get_handler_for_node(tgt).validate_link(src, tgt)
         validate_hierarchy(src, tgt)
 
-    def lgn_to_pgn(self, lgn, iid=InstanceId((0,)), lpcxt=None, recursive=True):
+    def lgn_to_pgn(self, lgn, iid=InstanceId((0,)), lpcxt=None):
         """
         See dlg.translator.stages.unroll.instantiate.lgn_to_pgn
         """
-        lgn_to_pgn(self, lgn, iid, lpcxt, recursive)
+        lgn_to_pgn(self, lgn, iid, lpcxt)
 
     @staticmethod
     def _split_list(ls, n):
