@@ -165,7 +165,7 @@ class LG:
         if target_validator is not None:
             target_validator(src, tgt)
         if not (src.is_loop or tgt.is_loop):
-            validate_hierarchy(src, tgt) 
+            validate_hierarchy(src, tgt)
 
     def get_child_lp_ctx(self, lgn, lpcxt, idx):
         if lgn.is_loop:
