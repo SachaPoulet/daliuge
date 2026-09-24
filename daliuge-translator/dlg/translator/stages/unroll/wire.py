@@ -21,9 +21,11 @@
 #
 import collections
 import logging
+from functools import partial
 from itertools import product
 
 from dlg.translator.errors import GraphException
+from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -32,6 +34,14 @@ def wire(lg):
     """
     Wire the drops in lg._drop_dict along every link in lg._lg_links.
     """
+    # key - gather drop oid, value - [gather drop, input list, output list, link]
+    #
+    # A Gather drop is a placeholder: cleanup deletes it, and its inputs are
+    # wired straight to its first output drop. Which output that is only
+    # becomes known when a link out of the Gather is wired, so the inputs
+    # are held here and spliced after every link has been wired.
+    gathers = {}
+    link = partial(_link_or_defer, lg, gathers)
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
         tid = lk["to"]  # target key
@@ -51,23 +61,28 @@ def wire(lg):
                 # gather iteration case, tgt must be a Group-Start Component
                 # this is a way to manually sequentialise a Scatter that has a high DoP
                 for i, ga_drop in enumerate(sdrops):
-                    if ga_drop["oid"] not in lg._gather_cache:
+                    if ga_drop["oid"] not in gathers:
                         logger.warning(
                             "Gather %s Drop not yet in cache, sequentialisation may fail!",
                             slgn.name,
                         )
                         continue
+                    ga_inputs = gathers[ga_drop["oid"]][1]
+                    if not ga_inputs:
+                        # nothing to chain, and j would never advance
+                        continue
                     j = (i + 1) * slgn.gather_width
                     if j >= tlgn.group.dop and j % tlgn.group.dop == 0:
                         continue
-                    while j < (i + 2) * slgn.gather_width and j < tlgn.group.dop * (
-                        i + 1
-                    ):
+                    j_end = min((i + 2) * slgn.gather_width, tlgn.group.dop * (i + 1))
+                    while j < j_end:
                         # TODO merge this code into the function
                         # def _link_drops(self, slgn, tlgn, src_drop, tgt_drop, llink)
-                        tname = tlgn.getPortName(port="inputPorts")
-                        # Go through gather cache list
-                        for gddrop in lg._gather_cache[ga_drop["oid"]][1]:
+                        tname = tlgn.getPortName(ports="inputPorts")
+                        # Go through the gather's inputs
+                        for gddrop in ga_inputs:
+                            if j >= j_end:
+                                break
                             gddrop.addConsumer(tdrops[j], name=tname)
                             tdrops[j].addInput(gddrop, name=tname)
                             j += 1
@@ -81,11 +96,11 @@ def wire(lg):
                     )
                     raise GraphException(err_info)
                 for i, sdrop in enumerate(sdrops):
-                    lg._link_drops(slgn, tlgn, sdrop, tdrops[i], lk)
+                    link(slgn, tlgn, sdrop, tdrops[i], lk)
         elif slgn.is_group and tlgn.is_group:
             # slgn must be GroupBy and tlgn must be Gather
             _unroll_gather_as_output(
-                lg, slgn, tlgn, sdrops, tdrops, chunk_size, lk
+                link, slgn, tlgn, sdrops, tdrops, chunk_size, lk
             )
         elif not slgn.is_group and (not tlgn.is_group):
             if slgn.is_start_node:
@@ -112,7 +127,7 @@ def wire(lg):
                 ):
                     for j, sdrop in enumerate(chunk):
                         if j < loop_chunk_size - 1:
-                            lg._link_drops(
+                            link(
                                 slgn,
                                 tlgn,
                                 sdrop,
@@ -129,7 +144,7 @@ def wire(lg):
                 # stepwise locking for links between two Loops
                 for sdrop, tdrop in product(sdrops, tdrops):
                     if sdrop["loop_ctx"] == tdrop["loop_ctx"]:
-                        lg._link_drops(slgn, tlgn, sdrop, tdrop, lk)
+                        link(slgn, tlgn, sdrop, tdrop, lk)
             else:
                 lpaw = ("%s-%s" % (sid, tid)) in lg._loop_aware_set
                 if (
@@ -143,7 +158,7 @@ def wire(lg):
                         for j, sdrop in enumerate(chunk):
                             # only link drops in the last loop iteration
                             if j % loop_iter == loop_iter - 1:
-                                lg._link_drops(slgn, tlgn, sdrop, tdrops[i], lk)
+                                link(slgn, tlgn, sdrop, tdrops[i], lk)
                 elif (
                     tlgn.group is not None
                     and tlgn.group.is_loop
@@ -155,18 +170,18 @@ def wire(lg):
                         for j, tdrop in enumerate(chunk):
                             # only link drops in the first loop iteration
                             if j % loop_iter == 0:
-                                lg._link_drops(slgn, tlgn, sdrops[i], tdrop, lk)
+                                link(slgn, tlgn, sdrops[i], tdrop, lk)
 
                 elif slgn.h_level >= tlgn.h_level:
                     for i, chunk in enumerate(_split_list(sdrops, chunk_size)):
                         # distribute slgn evenly to tlgn
                         for sdrop in chunk:
-                            lg._link_drops(slgn, tlgn, sdrop, tdrops[i], lk)
+                            link(slgn, tlgn, sdrop, tdrops[i], lk)
                 else:
                     for i, chunk in enumerate(_split_list(tdrops, chunk_size)):
                         # distribute tlgn evenly to slgn
                         for tdrop in chunk:
-                            lg._link_drops(slgn, tlgn, sdrops[i], tdrop, lk)
+                            link(slgn, tlgn, sdrops[i], tdrop, lk)
         else:  # slgn is not group, but tlgn is group
             if tlgn.is_groupby:
                 grpby_dict = collections.defaultdict(list)
@@ -213,12 +228,12 @@ def wire(lg):
                     grpby_drop = tdrops[i]
                     drop_list = grpby_dict[gk]
                     for drp in drop_list:
-                        lg._link_drops(slgn, tlgn, drp, grpby_drop, lk)
+                        link(slgn, tlgn, drp, grpby_drop, lk)
                         # drp.addOutput(grpby_drop)
                         # grpby_drop.addInput(drp)
             elif tlgn.is_gather:
                 _unroll_gather_as_output(
-                    lg, slgn, tlgn, sdrops, tdrops, chunk_size, lk
+                    link, slgn, tlgn, sdrops, tdrops, chunk_size, lk
                 )
             elif tlgn.is_subgraph:
                 pass
@@ -227,7 +242,7 @@ def wire(lg):
                     "Unsupported target group {0}".format(tlgn.jd.category)
                 )
 
-    for _, v in lg._gather_cache.items():
+    for _, v in gathers.items():
         input_list = v[1]
         try:
             output_drop = v[2][0]  # "peek" the first element of the output list
@@ -257,6 +272,46 @@ def wire(lg):
     )
 
 
+def _link_or_defer(lg, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
+    """
+    lg._link_drops, except that links into or out of a Gather are held in
+    gathers instead of wired; see wire().
+    """
+    if tlgn.is_gather:
+        if slgn.is_groupby:
+            sdrop = src_drop["grp-data_drop"]
+        elif slgn.is_gather:
+            sdrop = None
+        else:
+            sdrop = src_drop
+        gather_oid = tgt_drop["oid"]
+        if gather_oid not in gathers:
+            gathers[gather_oid] = [tgt_drop, [], [], llink]
+        gathers[gather_oid][1].append(sdrop)
+        logger.debug(
+            "Hit gather, link is from %s to %s", llink["from"], llink["to"]
+        )
+        return
+
+    s_type = slgn.jd["categoryType"]
+    t_type = tlgn.jd["categoryType"]
+    if (
+        slgn.is_gather
+        and not lg._is_stream_link(s_type, t_type)
+        and s_type not in ["Application", "Control"]
+    ):
+        gather_oid = src_drop["oid"]
+        if gather_oid not in gathers:
+            gathers[gather_oid] = [src_drop, [], [], llink]
+        gathers[gather_oid][2].append(tgt_drop)
+        if Categories.BASH_SHELL_APP == t_type:
+            bc = tgt_drop["command"]
+            bc.add_input_param(slgn.id, src_drop["oid"])
+        return
+
+    lg._link_drops(slgn, tlgn, src_drop, tgt_drop, llink)
+
+
 def _split_list(ls, n):
     """
     Yield successive n-sized chunks from l.
@@ -265,7 +320,7 @@ def _split_list(ls, n):
         yield ls[i: i + n]
 
 
-def _unroll_gather_as_output(lg, slgn, tlgn, sdrops, tdrops, chunk_size, llink):
+def _unroll_gather_as_output(link, slgn, tlgn, sdrops, tdrops, chunk_size, llink):
     if slgn.h_level < tlgn.h_level:
         raise GraphException(
             "Gather {0} has higher h-level than its input {1}".format(
@@ -275,7 +330,7 @@ def _unroll_gather_as_output(lg, slgn, tlgn, sdrops, tdrops, chunk_size, llink):
     # src must be data
     for i, chunk in enumerate(_split_list(sdrops, chunk_size)):
         for sdrop in chunk:
-            lg._link_drops(slgn, tlgn, sdrop, tdrops[i], llink)
+            link(slgn, tlgn, sdrop, tdrops[i], llink)
 
 
 def _get_chunk_size(s, t):

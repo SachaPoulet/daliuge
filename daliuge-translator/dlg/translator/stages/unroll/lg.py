@@ -79,10 +79,6 @@ class LG:
         self._session_id = ssid
         self._loop_aware_set = set()
 
-        # key - gather drop oid, value - a tuple with two elements
-        # input drops list and output drops list
-        self._gather_cache = {}
-
         lgver = get_lg_ver_type(lg)
         logger.info("Loading graph: %s", lg["modelData"]["filePath"])
         logger.info("Found LG version: %s", lgver)
@@ -200,17 +196,6 @@ class LG:
         else:
             sdrop = src_drop
 
-        if tlgn.is_gather:
-            gather_oid = tgt_drop["oid"]
-            if gather_oid not in self._gather_cache:
-                # [self, input_list, output_list]
-                self._gather_cache[gather_oid] = [tgt_drop, [], [], llink]
-            self._gather_cache[gather_oid][1].append(sdrop)
-            logger.debug(
-                "Hit gather, link is from %s to %s", llink["from"], llink["to"]
-            )
-            return
-
         tdrop = tgt_drop
         s_type = slgn.jd["categoryType"]
         t_type = tlgn.jd["categoryType"]
@@ -259,34 +244,27 @@ class LG:
                 bc = src_drop["command"]
                 bc.add_output_param(tlgn.id, tgt_drop["oid"])
         else:
-            if slgn.is_gather:  # don't really add them
-                gather_oid = src_drop["oid"]
-                if gather_oid not in self._gather_cache:
-                    # [self, input_list, output_list]
-                    self._gather_cache[gather_oid] = [src_drop, [], [], llink]
-                self._gather_cache[gather_oid][2].append(tgt_drop)
-            else:  # sdrop is a data drop
-                # there should be only one port, get the name
-                # ^ TODO This comment is no longer true, need to address
-                portId = llink["fromPort"] if "fromPort" in llink else None
-                sname = slgn.getPortName("outputPorts", portId=portId)
-                # could be multiple ports, need to identify
-                portId = llink["toPort"] if "toPort" in llink else None
-                tname = tlgn.getPortName("inputPorts", portId=portId)
-                logger.debug("Found port names: IN: %s, OUT: %s", sname, tname)
+            # there should be only one port, get the name
+            # ^ TODO This comment is no longer true, need to address
+            portId = llink["fromPort"] if "fromPort" in llink else None
+            sname = slgn.getPortName("outputPorts", portId=portId)
+            # could be multiple ports, need to identify
+            portId = llink["toPort"] if "toPort" in llink else None
+            tname = tlgn.getPortName("inputPorts", portId=portId)
+            logger.debug("Found port names: IN: %s, OUT: %s", sname, tname)
 
-                if llink.get("is_stream", False):
-                    logger.debug(
-                        "link stream connection %s to %s",
-                        sdrop["oid"],
-                        tdrop["oid"],
-                    )
-                    sdrop.addStreamingConsumer(tdrop, name=sname)
-                    tdrop.addStreamingInput(sdrop, name=tname)
+            if llink.get("is_stream", False):
+                logger.debug(
+                    "link stream connection %s to %s",
+                    sdrop["oid"],
+                    tdrop["oid"],
+                )
+                sdrop.addStreamingConsumer(tdrop, name=sname)
+                tdrop.addStreamingInput(sdrop, name=tname)
 
-                else:
-                    sdrop.addConsumer(tdrop, name=sname)
-                    tdrop.addInput(sdrop, name=tname)
+            else:
+                sdrop.addConsumer(tdrop, name=sname)
+                tdrop.addInput(sdrop, name=tname)
             if Categories.BASH_SHELL_APP == t_type:
                 bc = tgt_drop["command"]
                 bc.add_input_param(slgn.id, src_drop["oid"])
