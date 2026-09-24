@@ -273,8 +273,10 @@ class LG:
         """
         Not thread-safe!
 
-        1. just create pgn anyway
-        2. sort out the links
+        0. add the artificial links constructs need (synthesise_links)
+        1. create every drop, no edges (instantiate)
+        2. wire every link (wire); only stream NullDROPs are created here
+        3. clean up the construct placeholder drops
         """
         synthesise_links(self)
         instantiate(self)
