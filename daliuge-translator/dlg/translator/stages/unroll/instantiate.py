@@ -136,9 +136,6 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
                 lgn_to_pgn(lg, child, miid, get_child_lp_ctx(lgn, lpcxt, i))
     elif lgn.is_mpi:
         for i in range(lgn.dop):
-            if lgn.loop_ctx:
-                lpcxt = lgn.loop_ctx
-                iid = lgn.iid
             miid = iid.child(i)
             src_drop = lgn.make_single_drop(miid, loop_ctx=lpcxt, proc_index=i)
             lg._drop_dict[lgn.id].append(src_drop)
@@ -146,17 +143,12 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
         # no action required, inputapp node aleady created and marked with "isService"
         pass
     elif lgn.is_subgraph and lgn.jd["isSubGraphApp"]:
-        if lgn.loop_ctx:
-            iid = lgn.iid
         src_drop = lgn.make_single_drop(iid, loop_ctx=lpcxt)
         if lgn.subgraph:
             kwargs = {"subgraph": lgn.subgraph}
             src_drop.update(kwargs)
         lg._drop_dict[lgn.id].append(src_drop)
     else:
-        if lgn.loop_ctx or lgn.iid:
-            lpcxt = lgn.loop_ctx
-            iid = lgn.iid
         src_drop = lgn.make_single_drop(iid, loop_ctx=lpcxt)
         lg._drop_dict[lgn.id].append(src_drop)
         if lgn.is_start_listener:
