@@ -28,7 +28,6 @@ import collections
 import datetime
 import logging
 import time
-from itertools import product
 
 from dlg.common import CategoryType, dropdict
 
@@ -53,6 +52,7 @@ from dlg.translator.stages.unroll.instantiate import (
     lgn_to_pgn,
     synthesise_links,
 )
+from dlg.translator.stages.unroll.wire import wire
 from dlg.translator.stages.unroll.constructs.base import validate_hierarchy
 from dlg.translator.stages.unroll.constructs.registry import get_handler_for_node
 
@@ -166,39 +166,6 @@ class LG:
         See dlg.translator.stages.unroll.instantiate.lgn_to_pgn
         """
         lgn_to_pgn(self, lgn, iid, lpcxt)
-
-    @staticmethod
-    def _split_list(ls, n):
-        """
-        Yield successive n-sized chunks from l.
-        """
-        for i in range(0, len(ls), n):
-            yield ls[i: i + n]
-
-    def _unroll_gather_as_output(self, slgn, tlgn, sdrops, tdrops, chunk_size, llink):
-        if slgn.h_level < tlgn.h_level:
-            raise GraphException(
-                "Gather {0} has higher h-level than its input {1}".format(
-                    tlgn.id, slgn.id
-                )
-            )
-        # src must be data
-        for i, chunk in enumerate(self._split_list(sdrops, chunk_size)):
-            for sdrop in chunk:
-                self._link_drops(slgn, tlgn, sdrop, tdrops[i], llink)
-
-    def _get_chunk_size(self, s, t):
-        """
-        Assumption:
-        s or t cannot be Scatter as Scatter does not convert into DROPs
-        """
-        if t.is_gather:
-            ret = t.gather_width
-        elif t.is_groupby:
-            ret = t.groupby_width
-        else:
-            ret = s.dop_diff(t)
-        return ret
 
     def _is_stream_link(self, s_type, t_type):
         return s_type in [
@@ -339,229 +306,7 @@ class LG:
             len(self._start_list),
             self._session_id,
         )
-        for lk in self._lg_links:
-            sid = lk["from"]  # source key
-            tid = lk["to"]  # target key
-            slgn = self._done_dict[sid]
-            tlgn = self._done_dict[tid]
-            sdrops = self._drop_dict[sid]
-            tdrops = self._drop_dict[tid]
-            chunk_size = self._get_chunk_size(slgn, tlgn)
-            if slgn.is_group and not tlgn.is_group:
-                # this link must be artifically added (within group link)
-                # since
-                # 1. GroupBy's "natural" output must be a Scatter (i.e. group)
-                # 2. Scatter "naturally" does not have output
-                if (
-                    slgn.is_gather and tlgn.gid != sid
-                ):  # not the artifical link between gather and its own start child
-                    # gather iteration case, tgt must be a Group-Start Component
-                    # this is a way to manually sequentialise a Scatter that has a high DoP
-                    for i, ga_drop in enumerate(sdrops):
-                        if ga_drop["oid"] not in self._gather_cache:
-                            logger.warning(
-                                "Gather %s Drop not yet in cache, sequentialisation may fail!",
-                                slgn.name,
-                            )
-                            continue
-                        j = (i + 1) * slgn.gather_width
-                        if j >= tlgn.group.dop and j % tlgn.group.dop == 0:
-                            continue
-                        while j < (i + 2) * slgn.gather_width and j < tlgn.group.dop * (
-                            i + 1
-                        ):
-                            # TODO merge this code into the function
-                            # def _link_drops(self, slgn, tlgn, src_drop, tgt_drop, llink)
-                            tname = tlgn.getPortName(port="inputPorts")
-                            # Go through gather cache list
-                            for gddrop in self._gather_cache[ga_drop["oid"]][1]:
-                                gddrop.addConsumer(tdrops[j], name=tname)
-                                tdrops[j].addInput(gddrop, name=tname)
-                                j += 1
-
-                elif slgn.is_subgraph or tlgn.is_subgraph:
-                    pass
-                else:
-                    if len(sdrops) != len(tdrops):
-                        err_info = "For within-group links, # {2} Group Inputs {0} must be the same as # {3} of Component Outputs {1}".format(
-                            slgn.id, tlgn.id, len(sdrops), len(tdrops)
-                        )
-                        raise GraphException(err_info)
-                    for i, sdrop in enumerate(sdrops):
-                        self._link_drops(slgn, tlgn, sdrop, tdrops[i], lk)
-            elif slgn.is_group and tlgn.is_group:
-                # slgn must be GroupBy and tlgn must be Gather
-                self._unroll_gather_as_output(
-                    slgn, tlgn, sdrops, tdrops, chunk_size, lk
-                )
-            elif not slgn.is_group and (not tlgn.is_group):
-                if slgn.is_start_node:
-                    continue
-                if (
-                    (slgn.group is not None)
-                    and slgn.group.is_loop
-                    and slgn.gid == tlgn.gid
-                    and slgn.is_group_end
-                    and tlgn.is_group_start
-                ):
-                    # Re-link to the next iteration's start
-                    lsd = len(sdrops)
-                    if lsd != len(tdrops):
-                        raise GraphException(
-                            "# of sdrops '{0}' != # of tdrops '{1}'for Loop '{2}'".format(
-                                slgn.name, tlgn.name, slgn.group.name
-                            )
-                        )
-                    # first add the outer construct (scatter, gather, group-by) boundary
-                    loop_chunk_size = slgn.group.dop
-                    for i, chunk in enumerate(
-                        self._split_list(sdrops, loop_chunk_size)
-                    ):
-                        for j, sdrop in enumerate(chunk):
-                            if j < loop_chunk_size - 1:
-                                self._link_drops(
-                                    slgn,
-                                    tlgn,
-                                    sdrop,
-                                    tdrops[i * loop_chunk_size + j + 1],
-                                    lk,
-                                )
-                elif (
-                    slgn.group is not None
-                    and slgn.group.is_loop
-                    and tlgn.group is not None
-                    and tlgn.group.is_loop
-                    and (not slgn.h_related(tlgn))
-                ):
-                    # stepwise locking for links between two Loops
-                    for sdrop, tdrop in product(sdrops, tdrops):
-                        if sdrop["loop_ctx"] == tdrop["loop_ctx"]:
-                            self._link_drops(slgn, tlgn, sdrop, tdrop, lk)
-                else:
-                    lpaw = ("%s-%s" % (sid, tid)) in self._loop_aware_set
-                    if (
-                        slgn.group is not None
-                        and slgn.group.is_loop
-                        and lpaw
-                        and slgn.h_level > tlgn.h_level
-                    ):
-                        loop_iter = slgn.group.dop
-                        for i, chunk in enumerate(self._split_list(sdrops, chunk_size)):
-                            for j, sdrop in enumerate(chunk):
-                                # only link drops in the last loop iteration
-                                if j % loop_iter == loop_iter - 1:
-                                    self._link_drops(slgn, tlgn, sdrop, tdrops[i], lk)
-                    elif (
-                        tlgn.group is not None
-                        and tlgn.group.is_loop
-                        and lpaw
-                        and slgn.h_level < tlgn.h_level
-                    ):
-                        loop_iter = tlgn.group.dop
-                        for i, chunk in enumerate(self._split_list(tdrops, chunk_size)):
-                            for j, tdrop in enumerate(chunk):
-                                # only link drops in the first loop iteration
-                                if j % loop_iter == 0:
-                                    self._link_drops(slgn, tlgn, sdrops[i], tdrop, lk)
-
-                    elif slgn.h_level >= tlgn.h_level:
-                        for i, chunk in enumerate(self._split_list(sdrops, chunk_size)):
-                            # distribute slgn evenly to tlgn
-                            for sdrop in chunk:
-                                self._link_drops(slgn, tlgn, sdrop, tdrops[i], lk)
-                    else:
-                        for i, chunk in enumerate(self._split_list(tdrops, chunk_size)):
-                            # distribute tlgn evenly to slgn
-                            for tdrop in chunk:
-                                self._link_drops(slgn, tlgn, sdrops[i], tdrop, lk)
-            else:  # slgn is not group, but tlgn is group
-                if tlgn.is_groupby:
-                    grpby_dict = collections.defaultdict(list)
-                    layer_index = tlgn.group_by_scatter_layers[1]
-                    for gdd in sdrops:
-                        src_ctx = gdd["iid"].split("-")
-                        if tlgn.group_keys is None:
-                            # the last bit of iid (current h id) is the local GrougBy key, i.e. inner most loop context id
-                            gby = src_ctx[-1]
-                            if (
-                                slgn.h_level - 2 == tlgn.h_level and tlgn.h_level > 0
-                            ):  # groupby itself is nested inside a scatter
-                                # group key consists of group context id + inner most loop context id
-                                gctx = "-".join(src_ctx[0:-2])
-                                gby = f"{gctx}-{gby}"
-                        else:
-                            # find the "group by" scatter level
-                            gbylist = []
-                            if slgn.group.is_groupby:  # a chain of group bys
-                                try:
-                                    src_ctx = gdd["iid"].split("$")[1].split("-")
-                                except IndexError as e:
-                                    raise GraphException(
-                                        "The group by hiearchy in the multi-key group by '{0}' is not specified for node '{1}'".format(
-                                            slgn.group.name, slgn.name
-                                        )
-                                    ) from e
-                            else:
-                                src_ctx.reverse()
-                            for lid in layer_index:
-                                gbylist.append(src_ctx[lid])
-                            gby = "-".join(gbylist)
-                        grpby_dict[gby].append(gdd)
-                    grp_keys = grpby_dict.keys()
-                    if len(grp_keys) != len(tdrops):
-                        # this happens when groupby itself is nested inside a scatter
-                        raise GraphException(
-                            "# of Group keys {0} != # of Group Drops {1} for LGN {2}".format(
-                                len(grp_keys), len(tdrops), tlgn.id
-                            )
-                        )
-                    grp_keys = sorted(grp_keys)
-                    for i, gk in enumerate(grp_keys):
-                        grpby_drop = tdrops[i]
-                        drop_list = grpby_dict[gk]
-                        for drp in drop_list:
-                            self._link_drops(slgn, tlgn, drp, grpby_drop, lk)
-                            # drp.addOutput(grpby_drop)
-                            # grpby_drop.addInput(drp)
-                elif tlgn.is_gather:
-                    self._unroll_gather_as_output(
-                        slgn, tlgn, sdrops, tdrops, chunk_size, lk
-                    )
-                elif tlgn.is_subgraph:
-                    pass
-                else:
-                    raise GraphException(
-                        "Unsupported target group {0}".format(tlgn.jd.category)
-                    )
-
-        for _, v in self._gather_cache.items():
-            input_list = v[1]
-            try:
-                output_drop = v[2][0]  # "peek" the first element of the output list
-            except IndexError:
-                continue  # the gather hasn't got output drops, just move on
-            llink = v[-1]
-            for data_drop in input_list:
-                # TODO merge this code into the function
-                # def _link_drops(self, slgn, tlgn, src_drop, tgt_drop, llink)
-                sname = slgn.getPortName(ports="outputPorts")
-                if llink.get("is_stream", False):
-                    logger.debug(
-                        "link stream connection %s to %s",
-                        data_drop["oid"],
-                        output_drop["oid"],
-                    )
-                    data_drop.addStreamingConsumer(output_drop, name=sname)
-                    output_drop.addStreamingInput(data_drop, name=sname)
-                else:
-                    data_drop.addConsumer(output_drop, name=sname)
-                    output_drop.addInput(data_drop, name=sname)
-
-        logger.info(
-            "Unroll progress - %d links done for session %s",
-            len(self._lg_links),
-            self._session_id,
-        )
+        wire(self)
 
         # clean up extra drops
         for lid, lgn in self._done_dict.items():
