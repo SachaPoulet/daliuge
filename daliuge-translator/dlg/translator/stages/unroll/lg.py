@@ -24,21 +24,15 @@ The DALiuGE resource manager uses the requested logical graphs, the available re
 the profiling information and turns it into the partitioned physical graph,
 which will then be deployed and monitored by the Physical Graph Manager
 """
-import copy
-
 import collections
 import datetime
 import logging
 import time
 from itertools import product
-import numpy as np
 
 from dlg.common import CategoryType, dropdict
 
-from dlg.translator.errors import (
-    GraphException,
-    GInvalidNode,
-)
+from dlg.translator.errors import GraphException
 from dlg.translator.stages.prepare.versions import (
     LG_APPREF,
     get_lg_ver_type,
@@ -54,6 +48,7 @@ from dlg.translator.stages.prepare.normalise.globals import extract_globals
 from dlg.translator.vocabulary import Categories
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.coordinate import InstanceId
+from dlg.translator.stages.unroll.instantiate import instantiate, lgn_to_pgn
 from dlg.translator.stages.unroll.constructs.base import validate_hierarchy
 from dlg.translator.stages.unroll.constructs.registry import get_handler_for_node
 
@@ -162,139 +157,11 @@ class LG:
         get_handler_for_node(tgt).validate_link(src, tgt)
         validate_hierarchy(src, tgt)
 
-    def get_child_lp_ctx(self, lgn, lpcxt, idx):
-        if lgn.is_loop:
-            if lpcxt is None:
-                return "{0}".format(idx)
-            else:
-                return "{0}-{1}".format(lpcxt, idx)
-        else:
-            return None
-
     def lgn_to_pgn(self, lgn, iid=InstanceId((0,)), lpcxt=None, recursive=True):
         """
-        convert a logical graph node to physical graph node(s)
-        without considering pg links. This is a recursive method, creating also
-        all child nodes required by constructs.
-
-        iid:    instance id (InstanceId)
-        lpcxt:  Loop context
+        See dlg.translator.stages.unroll.instantiate.lgn_to_pgn
         """
-        if lgn.is_group:
-            # group nodes are replaced with the input application of the
-            # construct
-            if not lgn.is_scatter:
-                non_inputs = []
-                grp_starts = []
-                grp_ends = []
-                for child in lgn.children:
-                    if len(child.inputs) == 0:
-                        non_inputs.append(child)
-                    if child.is_group_start:
-                        grp_starts.append(child)
-                    elif child.is_group_end:
-                        grp_ends.append(child)
-                if len(grp_starts) == 0:
-                    gs_list = non_inputs
-                else:
-                    gs_list = grp_starts
-                if lgn.is_loop:
-                    if len(grp_starts) == 0 or len(grp_ends) == 0:
-                        raise GInvalidNode(
-                            f"Loop {lgn.name} should have at least one Start "
-                            "Component and one End Data"
-                        )
-                    for ge in grp_ends:
-                        for gs in grp_starts:  # make an artificial circle
-                            lk = {}
-                            if gs not in ge.outputs:
-                                ge.add_output(gs)
-                            if ge not in gs.inputs:
-                                gs.add_input(ge)
-                            lk["from"] = ge.id
-                            lk["to"] = gs.id
-                            self._lg_links.append(lk)
-                            logger.debug("Loop constructed: %s", gs.inputs)
-                else:
-                    for (
-                        gs
-                    ) in (
-                        gs_list
-                    ):  # add artificial logical links to the "first" children
-                        lgn.add_input(gs)
-                        gs.add_output(lgn)
-                        lk = {}
-                        lk["from"] = lgn.id
-                        lk["to"] = gs.id
-                        self._lg_links.append(lk)
-
-            multikey_grpby = False
-            lgk = lgn.group_keys
-            shape = []
-            if lgk is not None and len(lgk) > 1:
-                multikey_grpby = True
-                # inner most scatter to outer most scatter
-                scatters = lgn.group_by_scatter_layers[2]
-                # inner most is also the slowest running index
-                shape = [x.dop for x in scatters]
-
-            for i in range(lgn.dop):
-                miid = iid.child(i)
-                if multikey_grpby:
-                    # set up more refined hierarchical context for group by with multiple keys
-                    # recover multl-dimension indexes from i
-                    grp_h = tuple(int(x) for x in np.unravel_index(i, shape))
-                    miid = miid.with_group_key(grp_h)
-
-                if not lgn.is_scatter and not lgn.is_loop:
-                    # make GroupBy and Gather drops
-                    src_drop = lgn.make_single_drop(miid)
-                    self._drop_dict[lgn.id].append(src_drop)
-                    if lgn.is_groupby:
-                        self._drop_dict["new_added"].append(src_drop["grp-data_drop"])
-                    elif lgn.is_gather:
-                        pass
-                        # self._drop_dict['new_added'].append(src_drop['gather-data_drop'])
-                if recursive:
-                    for child in lgn.children:
-                        self.lgn_to_pgn(
-                            child, miid, self.get_child_lp_ctx(lgn, lpcxt, i)
-                        )
-                else:
-                    for child in lgn.children:
-                        # Approach next 'set' of children
-                        c_copy = copy.deepcopy(child)
-                        c_copy.happy = True
-                        c_copy.loop_ctx = self.get_child_lp_ctx(lgn, lpcxt, i)
-                        c_copy.iid = miid
-                        self._start_list.append(c_copy)
-        elif lgn.is_mpi:
-            for i in range(lgn.dop):
-                if lgn.loop_ctx:
-                    lpcxt = lgn.loop_ctx
-                    iid = lgn.iid
-                miid = iid.child(i)
-                src_drop = lgn.make_single_drop(miid, loop_ctx=lpcxt, proc_index=i)
-                self._drop_dict[lgn.id].append(src_drop)
-        elif lgn.is_service:
-            # no action required, inputapp node aleady created and marked with "isService"
-            pass
-        elif lgn.is_subgraph and lgn.jd["isSubGraphApp"]:
-            if lgn.loop_ctx:
-                iid = lgn.iid
-            src_drop = lgn.make_single_drop(iid, loop_ctx=lpcxt)
-            if lgn.subgraph:
-                kwargs = {"subgraph": lgn.subgraph}
-                src_drop.update(kwargs)
-            self._drop_dict[lgn.id].append(src_drop)
-        else:
-            if lgn.loop_ctx or lgn.iid:
-                lpcxt = lgn.loop_ctx
-                iid = lgn.iid
-            src_drop = lgn.make_single_drop(iid, loop_ctx=lpcxt)
-            self._drop_dict[lgn.id].append(src_drop)
-            if lgn.is_start_listener:
-                self._drop_dict["new_added"].append(src_drop["listener_drop"])
+        lgn_to_pgn(self, lgn, iid, lpcxt, recursive)
 
     @staticmethod
     def _split_list(ls, n):
@@ -460,10 +327,7 @@ class LG:
         1. just create pgn anyway
         2. sort out the links
         """
-        # each pg node needs to be taggged with iid
-        # based purely on its h-level
-        for lgn in self._start_list:
-            self.lgn_to_pgn(lgn)
+        instantiate(self)
 
         logger.debug(
             "Unroll progress - lgn_to_pgn done %d for session %s",
