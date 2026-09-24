@@ -18,22 +18,6 @@ from dlg.translator.vocabulary import Categories
 
 class TestConstructHandlerDoP(unittest.TestCase):
 
-    def test_gather_input_defaults_missing_category_type_to_data(self):
-        source = SimpleNamespace(
-            id="source",
-            jd={},
-            is_groupby=False,
-            is_gather=False,
-        )
-        target = SimpleNamespace(
-            id="gather",
-            is_gather=True,
-        )
-
-        GatherHandler().validate_link(source, target)
-
-        self.assertEqual("Data", source.jd["categoryType"])
-
     def test_gather_rejects_non_data_input(self):
         source = SimpleNamespace(
             id="source",

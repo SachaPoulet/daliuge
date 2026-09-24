@@ -25,8 +25,6 @@ class GatherHandler:
                 )
 
         if target.is_gather:
-            if "categoryType" not in source.jd:
-                source.jd["categoryType"] = "Data"
             if not source.jd["categoryType"].lower() == "data" and not source.is_groupby:
                 raise GInvalidLink(
                     "Gather {0}'s input {1} should be either a GroupBy or Data. {2}".format(
