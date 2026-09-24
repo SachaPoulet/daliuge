@@ -158,14 +158,9 @@ class LG:
         self._reprodata = lg.get("reprodata", {})
 
     def validate_link(self, src, tgt):
-        source_validator = getattr(get_handler_for_node(src), "validate_link", None)
-        if source_validator is not None:
-            source_validator(src, tgt)
-        target_validator = getattr(get_handler_for_node(tgt), "validate_link", None)
-        if target_validator is not None:
-            target_validator(src, tgt)
-        if not (src.is_loop or tgt.is_loop):
-            validate_hierarchy(src, tgt)
+        get_handler_for_node(src).validate_link(src, tgt)
+        get_handler_for_node(tgt).validate_link(src, tgt)
+        validate_hierarchy(src, tgt)
 
     def get_child_lp_ctx(self, lgn, lpcxt, idx):
         if lgn.is_loop:

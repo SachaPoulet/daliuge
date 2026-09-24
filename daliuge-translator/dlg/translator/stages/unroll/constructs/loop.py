@@ -3,7 +3,7 @@ from typing import Any, Optional
 from dlg.translator.errors import GInvalidLink, GInvalidNode
 from dlg.translator.vocabulary import Categories
 
-from .base import GraphContext, validate_hierarchy
+from .base import GraphContext
 
 
 class LoopHandler:
@@ -17,8 +17,6 @@ class LoopHandler:
                     source.name, target.name
                 )
             )
-
-        validate_hierarchy(source, target)
 
     def degree_of_parallelism(
         self,
