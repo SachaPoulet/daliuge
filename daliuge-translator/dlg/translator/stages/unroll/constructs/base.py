@@ -2,6 +2,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Iterator, Optional, Protocol, Sequence
 
 from dlg.common import dropdict
+from dlg.translator.errors import GInvalidLink
 
 from ..coordinate import InstanceId
 from ..model import Edge, LogicalLink
@@ -61,6 +62,42 @@ class WiringContext(GraphContext, Protocol):
         ...
 
 
+def validate_hierarchy(source: "LGNode", target: "LGNode") -> None:
+    if source.h_related(target):
+        return
+
+    source_group = source.group
+    target_group = target.group
+    if source_group is not None and target_group is not None:
+        if source_group.is_loop and target_group.is_loop:
+            while source_group is not None and target_group is not None:
+                if not source_group.is_loop or not target_group.is_loop:
+                    break
+                if source_group.dop != target_group.dop:
+                    raise GInvalidLink(
+                        "{0} and {1} are not loop synchronised: {2} <> {3}".format(
+                            source_group.id,
+                            target_group.id,
+                            source_group.dop,
+                            target_group.dop,
+                        )
+                    )
+                source_group = source_group.group
+                target_group = target_group.group
+            return
+
+    raise GInvalidLink(
+        "{0} and {1} are not hierarchically related: {2}-({4}) and {3}-({5})".format(
+            source.id,
+            target.id,
+            source.group_hierarchy,
+            target.group_hierarchy,
+            source.name,
+            target.name,
+        )
+    )
+
+
 class ConstructHandler(Protocol):
     construct_type: str
     edge_keys: tuple[EdgeKey, ...]
@@ -98,7 +135,7 @@ class ConstructHandler(Protocol):
 
     def validate_link(
         self,
-        link: LogicalLink,
-        ctx: WiringContext,
+        source: "LGNode",
+        target: "LGNode",
     ) -> None:
         ...
