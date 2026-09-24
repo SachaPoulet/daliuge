@@ -29,6 +29,79 @@ from dlg.translator.stages.unroll.coordinate import InstanceId
 logger = logging.getLogger(f"dlg.{__name__}")
 
 
+def synthesise_links(lg):
+    """
+    Append the artificial links of every construct reachable from
+    lg._start_list to lg._lg_links.
+
+    These links are appended after LG.__init__ has processed the graph's own
+    links, so they never pass through validate_link, never get "is_stream"
+    stamped and never enter _loop_aware_set. They reach wiring as bare
+    {"from", "to"} dicts.
+
+    The walk visits a construct once per instance of its enclosing
+    construct, as lgn_to_pgn does, so a nested construct appends its links
+    more than once. Wiring does not deduplicate them, and the repeated links
+    show up as repeated consumers/inputs in the PGT; keep the walk as is
+    until that is fixed on purpose (migration map B9).
+    """
+    for lgn in lg._start_list:
+        _synthesise(lg, lgn)
+
+
+def _synthesise(lg, lgn):
+    if not lgn.is_group:
+        return
+    if not lgn.is_scatter:
+        non_inputs = []
+        grp_starts = []
+        grp_ends = []
+        for child in lgn.children:
+            if len(child.inputs) == 0:
+                non_inputs.append(child)
+            if child.is_group_start:
+                grp_starts.append(child)
+            elif child.is_group_end:
+                grp_ends.append(child)
+        if len(grp_starts) == 0:
+            gs_list = non_inputs
+        else:
+            gs_list = grp_starts
+        if lgn.is_loop:
+            if len(grp_starts) == 0 or len(grp_ends) == 0:
+                raise GInvalidNode(
+                    f"Loop {lgn.name} should have at least one Start "
+                    "Component and one End Data"
+                )
+            for ge in grp_ends:
+                for gs in grp_starts:  # make an artificial circle
+                    lk = {}
+                    if gs not in ge.outputs:
+                        ge.add_output(gs)
+                    if ge not in gs.inputs:
+                        gs.add_input(ge)
+                    lk["from"] = ge.id
+                    lk["to"] = gs.id
+                    lg._lg_links.append(lk)
+                    logger.debug("Loop constructed: %s", gs.inputs)
+        else:
+            for (
+                gs
+            ) in (
+                gs_list
+            ):  # add artificial logical links to the "first" children
+                lgn.add_input(gs)
+                gs.add_output(lgn)
+                lk = {}
+                lk["from"] = lgn.id
+                lk["to"] = gs.id
+                lg._lg_links.append(lk)
+
+    for _ in range(lgn.dop):
+        for child in lgn.children:
+            _synthesise(lg, child)
+
+
 def instantiate(lg):
     """
     Create the drops of every node reachable from lg._start_list into
@@ -58,53 +131,6 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
     lpcxt:  Loop context
     """
     if lgn.is_group:
-        # group nodes are replaced with the input application of the
-        # construct
-        if not lgn.is_scatter:
-            non_inputs = []
-            grp_starts = []
-            grp_ends = []
-            for child in lgn.children:
-                if len(child.inputs) == 0:
-                    non_inputs.append(child)
-                if child.is_group_start:
-                    grp_starts.append(child)
-                elif child.is_group_end:
-                    grp_ends.append(child)
-            if len(grp_starts) == 0:
-                gs_list = non_inputs
-            else:
-                gs_list = grp_starts
-            if lgn.is_loop:
-                if len(grp_starts) == 0 or len(grp_ends) == 0:
-                    raise GInvalidNode(
-                        f"Loop {lgn.name} should have at least one Start "
-                        "Component and one End Data"
-                    )
-                for ge in grp_ends:
-                    for gs in grp_starts:  # make an artificial circle
-                        lk = {}
-                        if gs not in ge.outputs:
-                            ge.add_output(gs)
-                        if ge not in gs.inputs:
-                            gs.add_input(ge)
-                        lk["from"] = ge.id
-                        lk["to"] = gs.id
-                        lg._lg_links.append(lk)
-                        logger.debug("Loop constructed: %s", gs.inputs)
-            else:
-                for (
-                    gs
-                ) in (
-                    gs_list
-                ):  # add artificial logical links to the "first" children
-                    lgn.add_input(gs)
-                    gs.add_output(lgn)
-                    lk = {}
-                    lk["from"] = lgn.id
-                    lk["to"] = gs.id
-                    lg._lg_links.append(lk)
-
         multikey_grpby = False
         lgk = lgn.group_keys
         shape = []

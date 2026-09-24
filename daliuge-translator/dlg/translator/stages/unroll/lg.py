@@ -48,7 +48,11 @@ from dlg.translator.stages.prepare.normalise.globals import extract_globals
 from dlg.translator.vocabulary import Categories
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.coordinate import InstanceId
-from dlg.translator.stages.unroll.instantiate import instantiate, lgn_to_pgn
+from dlg.translator.stages.unroll.instantiate import (
+    instantiate,
+    lgn_to_pgn,
+    synthesise_links,
+)
 from dlg.translator.stages.unroll.constructs.base import validate_hierarchy
 from dlg.translator.stages.unroll.constructs.registry import get_handler_for_node
 
@@ -327,6 +331,7 @@ class LG:
         1. just create pgn anyway
         2. sort out the links
         """
+        synthesise_links(self)
         instantiate(self)
 
         logger.debug(
