@@ -19,6 +19,9 @@
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston,
 #    MA 02111-1307  USA
 #
+# These passes were lifted out of LG.unroll_to_tpl and still work on LG's
+# own state, until the handler contexts replace it.
+# pylint: disable=protected-access
 import logging
 
 import numpy as np
