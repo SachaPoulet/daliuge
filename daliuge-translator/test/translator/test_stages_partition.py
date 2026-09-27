@@ -40,7 +40,12 @@ from dlg.translator.artefacts import (
     PhysicalGraphTemplatePartitioned,
 )
 from dlg.translator.stages.partition.stage import PartitionStage, PartitionOptions
+from dlg.common import path_utils
+from dlg.translator.stages.unroll.lg import LG
+from dlg.translator.stages.partition.pgt import PGT
 
+
+TEST_SSID = "test_pg_gen"
 
 def pgt_wire():
     # PhysicalArtefact's wire form always ends with a reprodata trailer
@@ -145,6 +150,69 @@ class TestPartitionStageStamp(unittest.TestCase):
         (passed_wire,), _ = mock_stamp.call_args
         self.assertIsNot(passed_wire, pgtp.drops)
 
+
+class TestPGGen(unittest.TestCase):
+    """
+    Test that the PhysicalGraph template constructor and supporting methods work.
+
+    Uses test/dropmake/pg_spec as test data
+
+    Note: This is a regression testing class. These tests are based on graphs that were
+    generated using the code they are testing. If the PGT (sub)class and it's methods
+    change in the future, test data may need to be re-generated (provided test
+    failures are caused by known-breaking changes, as opposed to legitimate bugs!).
+    """
+    lgnames = {
+        "HelloWorld_simple.graph": {"nodes": 2, "edges": 1},
+        "eagle_gather_empty_update.graph": {"nodes": 22, "edges": 24},
+        "eagle_gather_simple_update.graph": {"nodes": 42, "edges": 55},
+        "eagle_gather_update.graph": {"nodes": 29, "edges": 30},
+        "testLoop.graph": {"nodes": 11, "edges": 10},
+        "cont_img_mvp.graph": {"nodes": 144, "edges": 188},
+        "test_grpby_gather.graph": {"nodes": 15, "edges": 14},
+        "chiles_simple.graph": {"nodes": 22, "edges": 21},
+        "Plasma_test.graph": {"nodes": 6, "edges": 5},
+        "SharedMemoryTest_update.graph": {"nodes": 8, "edges": 7},
+        # "simpleMKN_update.graph", # Currently broken
+    }
+
+    def _create_pgt(self, lg_name):
+        fp = path_utils.get_lg_fpath('logical_graphs', lg_name)
+        lg = LG(fp, ssid=TEST_SSID)
+        drop_list = lg.unroll_to_tpl()
+        return PGT(drop_list)
+
+    def test_pgt_init(self):
+        """
+        Confirm that the PGT DAG correctly establishes the right number of nodes and edges
+        """
+
+        for lg_name, lg_expected in self.lgnames.items():
+            pgt = self._create_pgt(lg_name)
+            num_nodes = len(pgt.dag.nodes)
+            num_edges = len(pgt.dag.edges)
+            self.assertEqual(lg_expected['nodes'], num_nodes)
+            self.assertEqual(lg_expected['edges'], num_edges)
+
+    def test_pgt_to_json(self):
+        """
+        Verify that the expeceted output of the PGT to_gojs_json method is correct.
+
+        Note that the to_gojs_json is not _just_ producing the go_js representation; it
+        is also performing transformations on the PGT in the child classes.
+
+        This confirms that the number of nodes and edges is a) consistent with the
+        expected numbers, and b) is self-consistent between the drops and the networkx
+        graph that are used interchangeably in the PGT class.
+        """
+
+        for lg_name, pg_expected in self.lgnames.items():
+            pgt = self._create_pgt(lg_name)
+            pgt.to_gojs_json(visual=False, string_rep=False)
+            self.assertEqual(len(pgt.dag.edges), len(pgt.links))
+            self.assertEqual(len(pgt.dag.nodes), len(pgt.drops))
+            self.assertEqual(pg_expected['nodes'], len(pgt.drops))
+            self.assertEqual(pg_expected['edges'], len(pgt.dag.edges))
 
 if __name__ == "__main__":
     unittest.main()
