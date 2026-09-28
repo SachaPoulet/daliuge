@@ -20,35 +20,18 @@
 #    MA 02111-1307  USA
 
 import sys
-import unittest
 import json
 import pickle
 
 
 from dlg.translator.stages.unroll.lg import LG
-from dlg.translator.stages.partition.pgt import PGT, GPGTNoNeedMergeException
-from dlg.translator.stages.partition.pgtp import MetisPGTP, MySarkarPGTP
+from dlg.translator.stages.partition.pgt import PGT
+from dlg.translator.stages.partition.pgtp import MetisPGTP
 from dlg.common import path_utils
 
-"""
-python -m unittest test.dropmake.test_pg_gen
-"""
 TEST_SSID = 'test_pg_gen'
 
 
-class TestPGPartition(unittest.TestCase):
-    """
-    Test that the PhysicalGraph subclass partitioning methods work, and that there is
-    support for
-
-    Uses test.dropmake.__init__ as reference partition result test data.
-    Files in test/dropmake/pg_spec are not used as test data.
-
-    Note: This is a regression testing class. These tests are based on graphs that were
-    generated using the code they are testing. If the PGT (sub)class and it's methods
-    change in the future, test data may need to be re-generated (provided test
-    failures are caused by known-breaking changes, as opposed to legitimate bugs!).
-    """
 
 
 
