@@ -41,9 +41,9 @@ import unittest
 from collections import defaultdict
 
 from dlg.common import CategoryType
-from dlg.dropmake.definition_classes import Categories
-from dlg.dropmake.dm_utils import GInvalidNode
-from dlg.dropmake.lg_node import LGNode
+from dlg.translator.vocabulary import Categories
+from dlg.translator.errors import GInvalidNode
+from dlg.translator.stages.unroll.lg_node import LGNode
 
 
 def _make_node(jd):
