@@ -15,6 +15,14 @@ class MetisOptions:
     max_load_imb: int = 90
 
 
+@dataclass(frozen=True)
+class MySarkarOptions:
+    """Options consumed by the MySarkar partition algorithm."""
+
+    max_cpu: int = 8
+    max_mem: int = 1000
+
+
 class PartitionAlgorithm(Protocol):
     """Interface implemented by partition algorithm plugins."""
 
