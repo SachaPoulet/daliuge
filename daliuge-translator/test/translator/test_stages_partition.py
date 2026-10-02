@@ -40,7 +40,13 @@ from dlg.translator.artefacts import (
     PhysicalGraphTemplatePartitioned,
 )
 from dlg.translator.stages.partition.stage import PartitionStage, PartitionOptions
+from dlg.common import path_utils
+from dlg.translator.stages.unroll.lg import LG
+from dlg.translator.stages.partition.pgt import PGT
+from dlg.translator.stages.partition.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP
 
+
+TEST_SSID = "test_pg_gen"
 
 def pgt_wire():
     # PhysicalArtefact's wire form always ends with a reprodata trailer
@@ -144,6 +150,161 @@ class TestPartitionStageStamp(unittest.TestCase):
 
         (passed_wire,), _ = mock_stamp.call_args
         self.assertIsNot(passed_wire, pgtp.drops)
+
+
+class TestPGGen(unittest.TestCase):
+    """
+    Test that the PhysicalGraph template constructor and supporting methods work.
+
+    Uses test/dropmake/pg_spec as test data
+
+    Note: This is a regression testing class. These tests are based on graphs that were
+    generated using the code they are testing. If the PGT (sub)class and it's methods
+    change in the future, test data may need to be re-generated (provided test
+    failures are caused by known-breaking changes, as opposed to legitimate bugs!).
+    """
+    lgnames = {
+        "HelloWorld_simple.graph": {"nodes": 2, "edges": 1},
+        "eagle_gather_empty_update.graph": {"nodes": 22, "edges": 24},
+        "eagle_gather_simple_update.graph": {"nodes": 42, "edges": 55},
+        "eagle_gather_update.graph": {"nodes": 29, "edges": 30},
+        "testLoop.graph": {"nodes": 11, "edges": 10},
+        "cont_img_mvp.graph": {"nodes": 144, "edges": 188},
+        "test_grpby_gather.graph": {"nodes": 15, "edges": 14},
+        "chiles_simple.graph": {"nodes": 22, "edges": 21},
+        "Plasma_test.graph": {"nodes": 6, "edges": 5},
+        "SharedMemoryTest_update.graph": {"nodes": 8, "edges": 7},
+        # "simpleMKN_update.graph", # Currently broken
+    }
+
+    def _create_pgt(self, lg_name):
+        fp = path_utils.get_lg_fpath('logical_graphs', lg_name)
+        lg = LG(fp, ssid=TEST_SSID)
+        drop_list = lg.unroll_to_tpl()
+        return PGT(drop_list)
+
+    def test_pgt_init(self):
+        """
+        Confirm that the PGT DAG correctly establishes the right number of nodes and edges
+        """
+
+        for lg_name, lg_expected in self.lgnames.items():
+            pgt = self._create_pgt(lg_name)
+            num_nodes = len(pgt.dag.nodes)
+            num_edges = len(pgt.dag.edges)
+            self.assertEqual(lg_expected['nodes'], num_nodes)
+            self.assertEqual(lg_expected['edges'], num_edges)
+
+    def test_pgt_to_json(self):
+        """
+        Verify that the expeceted output of the PGT to_gojs_json method is correct.
+
+        Note that the to_gojs_json is not _just_ producing the go_js representation; it
+        is also performing transformations on the PGT in the child classes.
+
+        This confirms that the number of nodes and edges is a) consistent with the
+        expected numbers, and b) is self-consistent between the drops and the networkx
+        graph that are used interchangeably in the PGT class.
+        """
+
+        for lg_name, pg_expected in self.lgnames.items():
+            pgt = self._create_pgt(lg_name)
+            pgt.to_gojs_json(visual=False, string_rep=False)
+            self.assertEqual(len(pgt.dag.edges), len(pgt.links))
+            self.assertEqual(len(pgt.dag.nodes), len(pgt.drops))
+            self.assertEqual(pg_expected['nodes'], len(pgt.drops))
+            self.assertEqual(pg_expected['edges'], len(pgt.dag.edges))
+
+
+class TestPGPartitionRegression(unittest.TestCase):
+    SARKAR_PARTITION_RESULTS = {
+        "testLoop.graph": {
+            'algo': 'Edge Zero', 'min_exec_time': 30, 'total_data_movement': 50,
+            'exec_time': 80, 'num_parts': 0
+        },
+        "cont_img_mvp.graph": {
+            'algo': 'Edge Zero', 'min_exec_time': 144, 'total_data_movement': 932,
+            'exec_time': 444, 'num_parts': 0
+        },
+        "test_grpby_gather.graph": {
+            'algo': 'Edge Zero', 'min_exec_time': 16, 'total_data_movement': 70,
+            'exec_time': 51, 'num_parts': 0
+        },
+        "chiles_simple.graph": {
+            'algo': 'Edge Zero', 'min_exec_time': 45, 'total_data_movement': 1080,
+            'exec_time': 285, 'num_parts': 0
+        }
+    }
+
+    MINPARTS_RESULTS = {
+        "testLoop.graph": {
+            'algo': 'Lookahead', 'min_exec_time': 30, 'total_data_movement': 50,
+            'exec_time': 80, 'num_parts': 0
+        },
+        "cont_img_mvp.graph": {
+            'algo': 'Lookahead', 'min_exec_time': 144,
+            'total_data_movement': 932, 'exec_time': 444, 'num_parts': 0
+        },
+        "test_grpby_gather.graph": {
+            'algo': 'Lookahead', 'min_exec_time': 16,
+            'total_data_movement': 70, 'exec_time': 51, 'num_parts': 0
+        },
+        "chiles_simple.graph": {
+            'algo': 'Lookahead', 'min_exec_time': 45, 'total_data_movement': 1080,
+            'exec_time': 285, 'num_parts': 0
+        }
+    }
+
+    def setUp(self):
+        self.partitionMethodLGs = [
+            "testLoop.graph",
+            "cont_img_mvp.graph",
+            "test_grpby_gather.graph",
+            "chiles_simple.graph",
+            # "simpleMKN.graph", # Broken
+        ]
+
+    def test_metis_pgtp(self):
+        """
+        Confirm that basic Sarkar paritioning has not regressed
+        """
+        expected = {'algo': 'METIS_LB91',
+                    'min_exec_time': None,
+                    'total_data_movement': None, 'exec_time': None,
+                    'num_parts': 1}
+
+        for lg_names in self.partitionMethodLGs:
+            fp = path_utils.get_lg_fpath('logical_graphs', lg_names)
+            lg = LG(fp)
+            drop_list = lg.unroll_to_tpl()
+            pgtp = MetisPGTP(drop_list)
+            self.assertEqual(expected, pgtp.result())
+
+    def test_mysarkar_pgtp(self):
+        """
+        Confirm that basic Sarkar paritioning has not regressed
+        """
+
+        for lg_name in self.partitionMethodLGs:
+            fp = path_utils.get_lg_fpath('logical_graphs', lg_name)
+            lg = LG(fp)
+            drop_list = lg.unroll_to_tpl()
+            pgtp = MySarkarPGTP(drop_list)
+            self.assertEqual(
+                self.SARKAR_PARTITION_RESULTS[lg_name],
+                pgtp.result(),
+                f"Partition results do not match test case for: {lg_name}")
+
+    def test_minnumparts_pgtp(self):
+        tgt_deadline = [200, 300, 90, 80, 160]
+        for i, lg_name in enumerate(self.partitionMethodLGs):
+            fp = path_utils.get_lg_fpath('logical_graphs', lg_name)
+            lg = LG(fp)
+            drop_list = lg.unroll_to_tpl()
+            pgtp = MinNumPartsPGTP(drop_list, tgt_deadline[i])
+            self.assertEqual(self.MINPARTS_RESULTS[lg_name],
+                             pgtp.result(),
+                             f"Incorrect partition results for: {lg_name}")
 
 
 if __name__ == "__main__":
