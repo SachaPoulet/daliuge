@@ -23,6 +23,15 @@ class MySarkarOptions:
     max_mem: int = 1000
 
 
+@dataclass(frozen=True)
+class MinNumPartsOptions:
+    """Options consumed by the MinNumParts partition algorithm."""
+
+    deadline: int | None = None
+    max_cpu: int = 8
+    time_greedy: int = 50
+
+
 class PartitionAlgorithm(Protocol):
     """Interface implemented by partition algorithm plugins."""
 
