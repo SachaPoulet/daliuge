@@ -5,6 +5,11 @@ Registry for partition algorithm plugins.
 from typing import Union
 
 from .base import PartitionAlgorithm
+from .metis import MetisAlgorithm
+from .min_num_parts import MinNumPartsAlgorithm
+from .mysarkar import MySarkarAlgorithm
+from .none import NoneAlgorithm
+from .pso import PsoAlgorithm
 
 
 ALGO_NONE = 0
@@ -84,3 +89,10 @@ def known_algorithms() -> list[str]:
     """Return the supported wire-contract algorithm names."""
 
     return list(_ALGORITHM_CODES)
+
+
+register_algorithm(NoneAlgorithm())
+register_algorithm(MetisAlgorithm())
+register_algorithm(MySarkarAlgorithm())
+register_algorithm(MinNumPartsAlgorithm())
+register_algorithm(PsoAlgorithm())
