@@ -37,6 +37,8 @@ from dlg.translator.stages.partition.algorithms.registry import (
     ALGO_PSO,
     algorithm_code,
     algorithm_name,
+    build_options,
+    get_algorithm,
     known_algorithms as registry_known_algorithms,
 )
 
@@ -116,73 +118,15 @@ def partition(
         algo_params,
     )
 
-    # Read all possible values with defaults
-    # Not all algorithms use them, but makes the coding easier
-    # do_merge = num_islands > 1
-    could_merge = True
-    min_goal = _get_algo_param(algo_params, "min_goal", 0)
-    ptype = _get_algo_param(algo_params, "ptype", 0)
-    max_load_imb = _get_algo_param(algo_params, "max_load_imb", 90)
-    max_cpu = _get_algo_param(algo_params, "max_cpu", 8)
-    max_mem = _get_algo_param(algo_params, "max_mem", 1000)
-    time_greedy = _get_algo_param(algo_params, "time_greedy", 50)
-    deadline = _get_algo_param(algo_params, "deadline", None)
-    topk = _get_algo_param(algo_params, "topk", 30)
-    swarm_size = _get_algo_param(algo_params, "swarm_size", 40)
+    algorithm = get_algorithm(algo)
+    options = build_options(algo, algo_params)
 
-    max_dop = {"num_cpus": max_cpu, "mem_usage": max_mem}
-
-    if algo == ALGO_NONE:
-        pgt = PGT(pgt)
-
-    elif algo == ALGO_METIS:
-        ufactor = 100 - max_load_imb + 1
-        if ufactor <= 0:
-            ufactor = 1
-        pgt = MetisPGTP(
-            pgt,
-            num_partitions,
-            min_goal,
-            partition_label,
-            ptype,
-            ufactor,
-            merge_parts=could_merge,
-        )
-
-    elif algo == ALGO_MY_SARKAR:
-        pgt = MySarkarPGTP(
-            pgt,
-            num_partitions,
-            partition_label,
-            max_dop,
-            merge_parts=could_merge,
-        )
-
-    elif algo == ALGO_MIN_NUM_PARTS:
-        time_greedy = 1 - time_greedy / 100.0  # assuming between 1 to 100
-        pgt = MinNumPartsPGTP(
-            pgt,
-            deadline,
-            num_partitions,
-            partition_label,
-            max_cpu,
-            merge_parts=could_merge,
-            optimistic_factor=time_greedy,
-        )
-
-    elif algo == ALGO_PSO:
-        pgt = PSOPGTP(
-            pgt,
-            partition_label,
-            max_dop,
-            deadline=deadline,
-            topk=topk,
-            swarm_size=swarm_size,
-            merge_parts=could_merge,
-        )
-
-    else:
-        raise GraphException("Unknown partition algorithm: {0}".format(algo))
+    pgt = algorithm.partition(
+        pgt,
+        num_partitions=num_partitions,
+        partition_label=partition_label,
+        options=options,
+    )
 
     pgt.to_gojs_json(string_rep=False, visual=show_gojs)
     if not show_gojs:
