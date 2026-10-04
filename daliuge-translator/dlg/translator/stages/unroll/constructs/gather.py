@@ -9,6 +9,7 @@ from .base import GraphContext
 
 class GatherHandler:
     construct_type = Categories.GATHER
+    is_group_construct = True
     edge_keys = ()
 
     def degree_of_parallelism(

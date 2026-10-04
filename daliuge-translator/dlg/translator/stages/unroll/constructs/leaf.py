@@ -5,6 +5,7 @@ from .base import GraphContext
 
 class LeafHandler:
     construct_type = "leaf"
+    is_group_construct = False
     edge_keys = ()
 
     def degree_of_parallelism(

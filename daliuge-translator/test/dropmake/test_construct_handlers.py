@@ -3,12 +3,17 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from dlg.translator.errors import GInvalidNode
+from dlg.translator.stages.unroll.constructs.branch import BranchHandler
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
 from dlg.translator.stages.unroll.constructs.groupby import GroupByHandler
 from dlg.translator.stages.unroll.constructs.leaf import LeafHandler
 from dlg.translator.stages.unroll.constructs.loop import LoopHandler
 from dlg.translator.stages.unroll.constructs.mpi import MPIHandler
-from dlg.translator.stages.unroll.constructs.registry import get_handler_for_node
+from dlg.translator.stages.unroll.constructs.registry import (
+    get_handler_for_node,
+    is_construct,
+    register_handler,
+)
 from dlg.translator.stages.unroll.constructs.scatter import ScatterHandler
 from dlg.translator.stages.unroll.constructs.service import ServiceHandler
 from dlg.translator.stages.unroll.constructs.subgraph import SubgraphHandler
@@ -85,13 +90,7 @@ class TestConstructHandlerDoP(unittest.TestCase):
     def _group_node(category, **predicates):
         node = SimpleNamespace(
             is_group=True,
-            is_scatter=False,
-            is_gather=False,
-            is_groupby=False,
-            is_loop=False,
-            is_service=False,
-            is_subgraph=False,
-            is_mpi=False,
+            category=category,
             jd={"category": category},
         )
 
@@ -101,20 +100,28 @@ class TestConstructHandlerDoP(unittest.TestCase):
         return node
 
     def test_registry_dispatch(self):
-        scatter = self._group_node(Categories.SCATTER, is_scatter=True)
+        scatter = self._group_node(Categories.SCATTER)
+        branch = SimpleNamespace(
+            is_group=False,
+            category=Categories.BRANCH,
+            jd={"category": Categories.BRANCH},
+        )
         mpi = SimpleNamespace(
             is_group=False,
-            is_mpi=True,
+            category=Categories.MPI,
+            jd={"category": Categories.MPI},
         )
         leaf = SimpleNamespace(
             is_group=False,
-            is_mpi=False,
+            category="ordinary",
+            jd={"category": "ordinary"},
         )
 
         self.assertIsInstance(
             get_handler_for_node(scatter),
             ScatterHandler,
         )
+        self.assertIsInstance(get_handler_for_node(branch), BranchHandler)
         self.assertIsInstance(
             get_handler_for_node(mpi),
             MPIHandler,
@@ -124,26 +131,66 @@ class TestConstructHandlerDoP(unittest.TestCase):
             LeafHandler,
         )
 
+    def test_group_handler_registration_adds_group_dispatch(self):
+        handler = SimpleNamespace(
+            construct_type="TestGroupConstruct",
+            is_group_construct=True,
+            edge_keys=(),
+        )
+        register_handler(handler)
+        node = self._group_node(handler.construct_type)
+
+        self.assertIs(get_handler_for_node(node), handler)
+
     def test_registry_rejects_group_node_matching_no_construct(self):
-        for category in [Categories.MPI, Categories.SUBGRAPH]:
+        for category in [Categories.MPI, Categories.BRANCH]:
             with self.subTest(category=category):
                 with self.assertRaises(GInvalidNode):
                     get_handler_for_node(self._group_node(category))
 
     def test_registry_dispatch_prefers_construct_over_subgraph_flag(self):
-        node = self._group_node(
-            Categories.SCATTER,
-            is_scatter=True,
-            is_subgraph=True,
-        )
+        node = self._group_node(Categories.SCATTER)
+        node.jd["isSubGraphApp"] = True
 
         self.assertIsInstance(get_handler_for_node(node), ScatterHandler)
 
+    def test_registry_construct_checks_preserve_node_context(self):
+        scatter = self._group_node(Categories.SCATTER)
+        loop = self._group_node(Categories.LOOP)
+        non_group_scatter = SimpleNamespace(
+            is_group=False,
+            category=Categories.SCATTER,
+            jd={"category": Categories.SCATTER},
+        )
+        non_group_loop = SimpleNamespace(
+            is_group=False,
+            category=Categories.LOOP,
+            jd={"category": Categories.LOOP},
+        )
+        subgraph_flagged = SimpleNamespace(
+            is_group=False,
+            category=Categories.PYTHON_APP,
+            jd={"category": Categories.PYTHON_APP, "isSubGraphApp": True},
+        )
+        subgraph_disabled = SimpleNamespace(
+            is_group=True,
+            category=Categories.SUBGRAPH,
+            jd={"category": Categories.SUBGRAPH, "isSubGraphApp": False},
+        )
+
+        self.assertTrue(is_construct(scatter, Categories.SCATTER))
+        self.assertTrue(is_construct(loop, Categories.LOOP))
+        self.assertFalse(is_construct(non_group_scatter, Categories.SCATTER))
+        self.assertFalse(is_construct(non_group_loop, Categories.LOOP))
+        self.assertTrue(is_construct(subgraph_flagged, Categories.SUBGRAPH))
+        self.assertFalse(is_construct(subgraph_disabled, Categories.SUBGRAPH))
+
     def test_registry_rejects_group_node_without_category(self):
         node = self._group_node(Categories.SCATTER)
+        node.category = "Unknown"
         node.jd = {}
 
-        with self.assertRaises(KeyError):
+        with self.assertRaises(GInvalidNode):
             get_handler_for_node(node)
 
     def test_lgnode_dop_uses_handler_and_caches_result(self):

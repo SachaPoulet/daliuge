@@ -7,6 +7,7 @@ from .base import GraphContext
 
 class GroupByHandler:
     construct_type = Categories.GROUP_BY
+    is_group_construct = True
     edge_keys = ()
 
     def degree_of_parallelism(

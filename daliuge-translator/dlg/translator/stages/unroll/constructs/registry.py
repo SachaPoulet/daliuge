@@ -4,6 +4,7 @@ from dlg.translator.errors import GInvalidNode
 from dlg.translator.vocabulary import Categories
 
 from .base import ANY_CONSTRUCT, ConstructHandler, EdgeKey, HLevelRelation
+from .branch import BranchHandler
 from .gather import GatherHandler
 from .groupby import GroupByHandler
 from .leaf import LeafHandler
@@ -31,34 +32,45 @@ def get_handler(construct_type: str) -> ConstructHandler:
 
 def get_handler_for_node(node: Any) -> ConstructHandler:
     if node.is_group:
-        if node.is_scatter:
-            return get_handler(Categories.SCATTER)
+        category = node.category
+        handler = _handlers.get(category)
+        if handler is not None and handler.is_group_construct:
+            if (
+                category != Categories.SUBGRAPH
+                or "isSubGraphApp" not in node.jd
+                or node.jd["isSubGraphApp"]
+            ):
+                return handler
 
-        if node.is_gather:
-            return get_handler(Categories.GATHER)
-
-        if node.is_groupby:
-            return get_handler(Categories.GROUP_BY)
-
-        if node.is_loop:
-            return get_handler(Categories.LOOP)
-
-        if node.is_service:
-            return get_handler(Categories.SERVICE)
-
-        if node.is_subgraph:
+        if node.jd.get("isSubGraphApp"):
             return get_handler(Categories.SUBGRAPH)
 
         raise GInvalidNode(
             "Unrecognised (Group) Logical Graph Node: '{0}'".format(
-                node.jd["category"]
+                node.category
             )
         )
 
-    if node.is_mpi:
-        return get_handler(Categories.MPI)
+    handler = _handlers.get(node.category)
+    if handler is not None and not handler.is_group_construct:
+        return handler
 
     return get_handler(LeafHandler.construct_type)
+
+
+def is_construct(node: Any, construct_type: str) -> bool:
+    """Check construct identity while preserving node-specific classification rules."""
+    handler = _handlers.get(construct_type)
+    if handler is None or handler.construct_type != construct_type:
+        return False
+
+    if construct_type in (Categories.SCATTER, Categories.LOOP) and not node.is_group:
+        return False
+
+    if construct_type == Categories.SUBGRAPH and "isSubGraphApp" in node.jd:
+        return bool(node.jd["isSubGraphApp"])
+
+    return node.category == construct_type
 
 
 def get_edge_handler(
@@ -91,6 +103,7 @@ register_handler(GatherHandler())
 register_handler(GroupByHandler())
 register_handler(LoopHandler())
 register_handler(MPIHandler())
+register_handler(BranchHandler())
 register_handler(ServiceHandler())
 register_handler(SubgraphHandler())
 register_handler(LeafHandler())

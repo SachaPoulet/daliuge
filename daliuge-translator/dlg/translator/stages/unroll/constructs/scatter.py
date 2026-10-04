@@ -8,6 +8,7 @@ from .base import GraphContext
 
 class ScatterHandler:
     construct_type = Categories.SCATTER
+    is_group_construct = True
     edge_keys = ()
 
     def degree_of_parallelism(

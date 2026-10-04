@@ -7,6 +7,7 @@ from .base import GraphContext
 
 class ServiceHandler:
     construct_type = Categories.SERVICE
+    is_group_construct = True
     edge_keys = ()
 
     def degree_of_parallelism(

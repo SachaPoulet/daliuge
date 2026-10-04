@@ -8,6 +8,7 @@ from .base import GraphContext
 
 class LoopHandler:
     construct_type = Categories.LOOP
+    is_group_construct = True
     edge_keys = ()
 
     def degree_of_parallelism(

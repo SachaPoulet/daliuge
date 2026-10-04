@@ -63,6 +63,7 @@ class WiringContext(GraphContext, Protocol):
 
 class ConstructHandler(Protocol):
     construct_type: str
+    is_group_construct: bool
     edge_keys: tuple[EdgeKey, ...]
 
     def degree_of_parallelism(
