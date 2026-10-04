@@ -64,4 +64,4 @@ class PartitionAlgorithm(Protocol):
         options: Any,
     ) -> Any:
         """Create an algorithm-specific partitioned graph."""
-        ...
+        raise NotImplementedError

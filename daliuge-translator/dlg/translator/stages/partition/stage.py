@@ -88,19 +88,19 @@ def partition(
     if isinstance(algo, str):
         try:
             algo = algorithm_code(algo)
-        except KeyError:
+        except KeyError as exc:
             raise ValueError(
                 "Unknown partitioning algorithm: %s. Known algorithms are: %r"
                 % (algo, registry_known_algorithms())
-            )
+            ) from exc
 
     try:
         resolved_algo_name = algorithm_name(algo)
-    except KeyError:
+    except KeyError as exc:
         raise GraphException(
             "Unknown partition algorithm: %d. Known algorithms are: %r"
             % (algo, registry_known_algorithms())
-        )
+        ) from exc
 
     logger.info(
         "Running partitioning with algorithm=%s, %d partitions, "
