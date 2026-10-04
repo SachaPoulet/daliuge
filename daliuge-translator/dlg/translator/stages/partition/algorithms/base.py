@@ -7,6 +7,11 @@ from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
+class NoneOptions:
+    """Options for the no-partition algorithm."""
+
+
+@dataclass(frozen=True)
 class MetisOptions:
     """Options consumed by the METIS partition algorithm."""
 
