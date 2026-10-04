@@ -93,3 +93,31 @@ class PsoParameters:
             topk=_value_or_default(params, "topk", defaults.topk),
             swarm_size=_value_or_default(params, "swarm_size", defaults.swarm_size),
         )
+
+
+PartitionAlgorithmParameters = (
+    MetisParameters | MySarkarParameters | MinNumPartsParameters | PsoParameters
+)
+
+_PARAMETER_MODELS = {
+    "metis": MetisParameters,
+    "mysarkar": MySarkarParameters,
+    "min_num_parts": MinNumPartsParameters,
+    "pso": PsoParameters,
+}
+
+
+def parameters_for(
+    algo: str, params: Mapping[str, Any]
+) -> PartitionAlgorithmParameters | None:
+    """Build the typed parameter model selected by ``PartitionOptions``.
+
+    ``None`` denotes algorithms such as ``none`` that have no algorithm-specific
+    options. The current partition implementation still consumes the original
+    mapping; this interface is for the staged partition refactor.
+    """
+
+    parameter_model = _PARAMETER_MODELS.get(algo)
+    if parameter_model is None:
+        return None
+    return parameter_model.from_mapping(params)

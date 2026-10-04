@@ -1,4 +1,4 @@
-"""Tests for partition algorithm parameter models."""
+"""Tests for the typed algorithm-parameter interface on PartitionOptions."""
 
 import pytest
 
@@ -8,129 +8,98 @@ from dlg.translator.stages.partition.parameters import (
     MySarkarParameters,
     PsoParameters,
 )
+from dlg.translator.stages.partition.stage import PartitionOptions
 
 
 @pytest.mark.parametrize(
-    ("model", "expected"),
+    ("options", "expected"),
     [
-        (MetisParameters, MetisParameters(0, 0, 90)),
-        (MySarkarParameters, MySarkarParameters(8, 1000)),
-        (MinNumPartsParameters, MinNumPartsParameters(None, 8, 50)),
-        (PsoParameters, PsoParameters(8, 1000, None, 30, 40)),
+        (PartitionOptions(), MetisParameters()),
+        (
+            PartitionOptions(algo="mysarkar"),
+            MySarkarParameters(),
+        ),
+        (
+            PartitionOptions(algo="min_num_parts"),
+            MinNumPartsParameters(),
+        ),
+        (PartitionOptions(algo="pso"), PsoParameters()),
+        (PartitionOptions(algo="none"), None),
     ],
 )
-def test_from_mapping_uses_established_defaults(model, expected):
-    """Each model exposes the defaults previously held by ``partition``."""
+def test_partition_options_selects_the_matching_parameter_model(options, expected):
+    """PartitionOptions exposes the typed model needed by its algorithm."""
 
-    assert model.from_mapping({}) == expected
+    assert options.algorithm_parameters == expected
 
 
 @pytest.mark.parametrize(
-    ("model", "params", "expected"),
+    ("options", "expected"),
     [
         (
-            MetisParameters,
-            {"min_goal": 2, "ptype": 1, "max_load_imb": 75},
+            PartitionOptions(
+                algo="metis",
+                algo_params={"min_goal": 2, "ptype": 1, "max_load_imb": 75},
+            ),
             MetisParameters(2, 1, 75),
         ),
         (
-            MySarkarParameters,
-            {"max_cpu": 16, "max_mem": 4096},
+            PartitionOptions(
+                algo="mysarkar",
+                algo_params={"max_cpu": 16, "max_mem": 4096},
+            ),
             MySarkarParameters(16, 4096),
         ),
         (
-            MinNumPartsParameters,
-            {"deadline": 120, "max_cpu": 12, "time_greedy": 25},
+            PartitionOptions(
+                algo="min_num_parts",
+                algo_params={"deadline": 120, "max_cpu": 12, "time_greedy": 25},
+            ),
             MinNumPartsParameters(120, 12, 25),
         ),
         (
-            PsoParameters,
-            {
-                "max_cpu": 16,
-                "max_mem": 4096,
-                "deadline": 120,
-                "topk": 12,
-                "swarm_size": 20,
-            },
-            PsoParameters(16, 4096, 120, 12, 20),
+            PartitionOptions(
+                algo="pso",
+                algo_params={
+                    "max_cpu": 0,
+                    "max_mem": 0,
+                    "deadline": 45,
+                    "topk": 0,
+                    "swarm_size": 0,
+                },
+            ),
+            PsoParameters(0, 0, 45, 0, 0),
         ),
     ],
 )
-def test_from_mapping_applies_explicit_values(model, params, expected):
-    """Each model reads only the values its algorithm uses."""
-
-    assert model.from_mapping(params) == expected
-
-
-@pytest.mark.parametrize(
-    ("model", "params"),
-    [
-        (MetisParameters, {"min_goal": None, "ptype": None, "max_load_imb": None}),
-        (MySarkarParameters, {"max_cpu": None, "max_mem": None}),
-        (
-            MinNumPartsParameters,
-            {"deadline": None, "max_cpu": None, "time_greedy": None},
-        ),
-        (
-            PsoParameters,
-            {
-                "max_cpu": None,
-                "max_mem": None,
-                "deadline": None,
-                "topk": None,
-                "swarm_size": None,
-            },
-        ),
-    ],
-)
-def test_from_mapping_treats_none_like_a_missing_value(model, params):
-    """Explicit None keeps the same fallback semantics as the old helper."""
-
-    assert model.from_mapping(params) == model()
-
-
-@pytest.mark.parametrize(
-    ("model", "params", "expected"),
-    [
-        (MetisParameters, {"min_goal": 0, "ptype": 0, "max_load_imb": 0}, MetisParameters(0, 0, 0)),
-        (MySarkarParameters, {"max_cpu": 0, "max_mem": 0}, MySarkarParameters(0, 0)),
-        (
-            MinNumPartsParameters,
-            {"deadline": 0, "max_cpu": 0, "time_greedy": 0},
-            MinNumPartsParameters(0, 0, 0),
-        ),
-        (
-            PsoParameters,
-            {"max_cpu": 0, "max_mem": 0, "deadline": 0, "topk": 0, "swarm_size": 0},
-            PsoParameters(0, 0, 0, 0, 0),
-        ),
-    ],
-)
-def test_from_mapping_preserves_zero_values(model, params, expected):
-    """Zero is an explicit value, not a request to fall back to a default."""
-
-    assert model.from_mapping(params) == expected
-
-
-@pytest.mark.parametrize(
-    ("model", "params", "expected"),
-    [
-        (MetisParameters, {"min_goal": 3, "unused": "value"}, MetisParameters(3, 0, 90)),
-        (MySarkarParameters, {"max_mem": 2048, "unused": "value"}, MySarkarParameters(8, 2048)),
-        (
-            MinNumPartsParameters,
-            {"time_greedy": 10, "unused": "value"},
-            MinNumPartsParameters(None, 8, 10),
-        ),
-        (PsoParameters, {"topk": 5, "unused": "value"}, PsoParameters(8, 1000, None, 5, 40)),
-    ],
-)
-def test_from_mapping_ignores_unknown_keys_without_mutating_input(
-    model, params, expected
+def test_partition_options_passes_explicit_values_to_the_parameter_model(
+    options, expected
 ):
-    """Compatibility requires unrelated keys to be ignored and input untouched."""
+    """The interface preserves explicit values, including zero."""
 
-    original = dict(params)
+    assert options.algorithm_parameters == expected
 
-    assert model.from_mapping(params) == expected
-    assert params == original
+
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        (
+            PartitionOptions(
+                algo="metis",
+                algo_params={"min_goal": None, "ptype": None, "max_load_imb": None},
+            ),
+            MetisParameters(),
+        ),
+        (
+            PartitionOptions(
+                algo="pso",
+                algo_params={"max_cpu": None, "max_mem": None, "topk": None},
+            ),
+            PsoParameters(),
+        ),
+    ],
+)
+def test_partition_options_preserves_none_fallback(options, expected):
+    """None still means use the algorithm's established default."""
+
+    assert options.algorithm_parameters == expected
