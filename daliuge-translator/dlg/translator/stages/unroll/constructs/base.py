@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 from enum import Enum
 from typing import TYPE_CHECKING, Iterator, Optional, Protocol, Sequence
 
 from dlg.common import dropdict
 
 from ..coordinate import InstanceId
-from ..model import Edge, LogicalLink
 
 if TYPE_CHECKING:
-    from ..lg_node import LGNode
+    from ..model import Edge, LGNode, LogicalLink
 
 
 ANY_CONSTRUCT = "*"

@@ -73,7 +73,8 @@ class TestConstructHandlerDoP(unittest.TestCase):
 
     def test_gather_dop(self):
         input_node = SimpleNamespace(
-            is_groupby=True,
+            category=Categories.GROUP_BY,
+            jd={"category": Categories.GROUP_BY},
             dop=8,
         )
         gather = SimpleNamespace(

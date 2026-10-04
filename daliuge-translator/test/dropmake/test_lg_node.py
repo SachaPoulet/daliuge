@@ -41,9 +41,10 @@ import unittest
 from collections import defaultdict
 
 from dlg.common import CategoryType
-from dlg.dropmake.definition_classes import Categories
-from dlg.dropmake.dm_utils import GInvalidNode
-from dlg.dropmake.lg_node import LGNode
+from dlg.translator.errors import GInvalidNode
+from dlg.translator.stages.unroll.lg_node import LGNode
+from dlg.translator.stages.unroll.model import LGNode as ModelLGNode
+from dlg.translator.vocabulary import Categories
 
 
 def _make_node(jd):
@@ -109,6 +110,97 @@ class TestCategoryTypeInference(unittest.TestCase):
             }
         )
         self.assertEqual(node.jd["categoryType"], CategoryType.CONSTRUCT)
+
+
+class TestLGNodeModelSplit(unittest.TestCase):
+    def test_model_node_constructs_without_unroll_subclass(self):
+        node = ModelLGNode(
+            {
+                "id": "core-node",
+                "name": "core-node",
+                "category": Categories.FILE,
+                "categoryType": CategoryType.DATA,
+                "fields": [],
+            },
+            group_q=defaultdict(list),
+            done_dict={},
+            ssid="test_model",
+        )
+
+        self.assertEqual("core-node", node.id)
+        self.assertEqual({}, node.input_ports)
+        self.assertEqual({}, node.output_ports)
+
+    def test_unroll_lgnode_inherits_model_behavior(self):
+        node = _make_node(
+            {
+                "id": "model-node",
+                "name": "model-node",
+                "category": Categories.FILE,
+                "categoryType": CategoryType.DATA,
+            }
+        )
+        target = _make_node(
+            {
+                "id": "target",
+                "name": "target",
+                "category": Categories.PYTHON_APP,
+                "categoryType": CategoryType.APPLICATION,
+            }
+        )
+
+        self.assertIsInstance(node, ModelLGNode)
+        self.assertEqual("model-node", node.name)
+        self.assertTrue(node.is_start)
+        self.assertTrue(node.is_dag_root)
+        node.add_output(target)
+        target.add_input(node)
+        self.assertEqual([target], node.outputs)
+        self.assertEqual([node], target.inputs)
+
+    def test_structural_predicates_tolerate_missing_category(self):
+        node = ModelLGNode(
+            {
+                "id": "missing-category",
+                "name": "missing-category",
+                "category": Categories.FILE,
+                "categoryType": CategoryType.DATA,
+                "fields": [],
+            },
+            group_q=defaultdict(list),
+            done_dict={},
+            ssid="test_model",
+        )
+        del node.jd["category"]
+
+        self.assertTrue(node.is_dag_root)
+
+        node.add_input(object())
+        self.assertFalse(node.is_start_listener)
+
+    def test_model_add_child_uses_registry_handler(self):
+        parent = _make_node(
+            {
+                "id": "parent",
+                "name": "parent",
+                "category": Categories.SCATTER,
+                "categoryType": CategoryType.CONSTRUCT,
+                "isGroup": True,
+            }
+        )
+        child = _make_node(
+            {
+                "id": "child",
+                "name": "child",
+                "category": Categories.LOOP,
+                "categoryType": CategoryType.CONSTRUCT,
+                "isGroup": True,
+            }
+        )
+
+        parent.add_child(child)
+
+        self.assertEqual([child], parent.children)
 
 
 if __name__ == "__main__":

@@ -53,6 +53,7 @@ from dlg.translator.stages.prepare.normalise.fields import convert_fields
 from dlg.translator.stages.prepare.normalise.subgraphs import convert_subgraphs
 from dlg.translator.stages.prepare.normalise.globals import extract_globals
 from dlg.translator.vocabulary import Categories
+from dlg.translator.stages.unroll.constructs.registry import is_construct
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.coordinate import InstanceId
 
@@ -157,8 +158,9 @@ class LG:
         self._reprodata = lg.get("reprodata", {})
 
     def validate_link(self, src, tgt):
-        # print("validate_link()", src.id, src.is_scatter(), tgt.id, tgt.is_scatter())
-        if src.is_scatter or tgt.is_scatter:
+        if is_construct(src, Categories.SCATTER) or is_construct(
+            tgt, Categories.SCATTER
+        ):
             prompt = "Remember to specify Input App Type for the Scatter construct!"
             raise GInvalidLink(
                 "Scatter construct {0} or {1} cannot be linked. {2}".format(
@@ -166,12 +168,12 @@ class LG:
                 )
             )
 
-        if src.is_loop or tgt.is_loop:
+        if is_construct(src, Categories.LOOP) or is_construct(tgt, Categories.LOOP):
             raise GInvalidLink(
                 "Loop construct {0} or {1} cannot be linked".format(src.name, tgt.name)
             )
 
-        if src.is_gather:
+        if is_construct(src, Categories.GATHER):
             if not (
                 tgt.jd["categoryType"] in ["app", "application", "Application"]
                 and tgt.is_group_start
@@ -183,7 +185,7 @@ class LG:
                     )
                 )
             # raise GInvalidLink("Gather {0} cannot be the input".format(src.id))
-        if tgt.is_groupby:
+        if is_construct(tgt, Categories.GROUP_BY):
             if src.is_group:
                 raise GInvalidLink(
                     "GroupBy {0} input must not be a group {1}".format(tgt.id, src.id)
@@ -200,15 +202,19 @@ class LG:
                         tgt.id, src.id
                     )
                 )
-        elif tgt.is_gather:
-            if not src.jd["categoryType"].lower() == "data" and not src.is_groupby:
+        elif is_construct(tgt, Categories.GATHER):
+            if not src.jd["categoryType"].lower() == "data" and not is_construct(
+                src, Categories.GROUP_BY
+            ):
                 raise GInvalidLink(
                     "Gather {0}'s input {1} should be either a GroupBy or Data. {2}".format(
                         tgt.id, src.id, src.jd
                     )
                 )
 
-        if src.is_groupby and not tgt.is_gather:
+        if is_construct(src, Categories.GROUP_BY) and not is_construct(
+            tgt, Categories.GATHER
+        ):
             raise GInvalidLink(
                 "Output {1} from GroupBy {0} must be Gather, otherwise embbed {1} inside GroupBy {0}".format(
                     src.id, tgt.id
@@ -218,12 +224,16 @@ class LG:
         if not src.h_related(tgt):
             src_group = src.group
             tgt_group = tgt.group
-            if src_group.is_loop and tgt_group.is_loop:
+            if is_construct(src_group, Categories.LOOP) and is_construct(
+                tgt_group, Categories.LOOP
+            ):
                 valid_loop_link = True
                 while True:
                     if src_group is None or tgt_group is None:
                         break
-                    if src_group.is_loop and tgt_group.is_loop:
+                    if is_construct(src_group, Categories.LOOP) and is_construct(
+                        tgt_group, Categories.LOOP
+                    ):
                         if src_group.dop != tgt_group.dop:
                             valid_loop_link = False
                             break
@@ -251,7 +261,7 @@ class LG:
                 )
 
     def get_child_lp_ctx(self, lgn, lpcxt, idx):
-        if lgn.is_loop:
+        if is_construct(lgn, Categories.LOOP):
             if lpcxt is None:
                 return "{0}".format(idx)
             else:
@@ -271,7 +281,7 @@ class LG:
         if lgn.is_group:
             # group nodes are replaced with the input application of the
             # construct
-            if not lgn.is_scatter:
+            if not is_construct(lgn, Categories.SCATTER):
                 non_inputs = []
                 grp_starts = []
                 grp_ends = []
@@ -286,7 +296,7 @@ class LG:
                     gs_list = non_inputs
                 else:
                     gs_list = grp_starts
-                if lgn.is_loop:
+                if is_construct(lgn, Categories.LOOP):
                     if len(grp_starts) == 0 or len(grp_ends) == 0:
                         raise GInvalidNode(
                             f"Loop {lgn.name} should have at least one Start "
@@ -334,13 +344,15 @@ class LG:
                     grp_h = tuple(int(x) for x in np.unravel_index(i, shape))
                     miid = miid.with_group_key(grp_h)
 
-                if not lgn.is_scatter and not lgn.is_loop:
+                if not is_construct(lgn, Categories.SCATTER) and not is_construct(
+                    lgn, Categories.LOOP
+                ):
                     # make GroupBy and Gather drops
                     src_drop = lgn.make_single_drop(miid)
                     self._drop_dict[lgn.id].append(src_drop)
-                    if lgn.is_groupby:
+                    if is_construct(lgn, Categories.GROUP_BY):
                         self._drop_dict["new_added"].append(src_drop["grp-data_drop"])
-                    elif lgn.is_gather:
+                    elif is_construct(lgn, Categories.GATHER):
                         pass
                         # self._drop_dict['new_added'].append(src_drop['gather-data_drop'])
                 if recursive:
@@ -356,7 +368,7 @@ class LG:
                         c_copy.loop_ctx = self.get_child_lp_ctx(lgn, lpcxt, i)
                         c_copy.iid = miid
                         self._start_list.append(c_copy)
-        elif lgn.is_mpi:
+        elif is_construct(lgn, Categories.MPI):
             for i in range(lgn.dop):
                 if lgn.loop_ctx:
                     lpcxt = lgn.loop_ctx
@@ -364,10 +376,10 @@ class LG:
                 miid = iid.child(i)
                 src_drop = lgn.make_single_drop(miid, loop_ctx=lpcxt, proc_index=i)
                 self._drop_dict[lgn.id].append(src_drop)
-        elif lgn.is_service:
+        elif is_construct(lgn, Categories.SERVICE):
             # no action required, inputapp node aleady created and marked with "isService"
             pass
-        elif lgn.is_subgraph and lgn.jd["isSubGraphApp"]:
+        elif is_construct(lgn, Categories.SUBGRAPH) and lgn.jd["isSubGraphApp"]:
             if lgn.loop_ctx:
                 iid = lgn.iid
             src_drop = lgn.make_single_drop(iid, loop_ctx=lpcxt)
@@ -409,9 +421,9 @@ class LG:
         Assumption:
         s or t cannot be Scatter as Scatter does not convert into DROPs
         """
-        if t.is_gather:
+        if is_construct(t, Categories.GATHER):
             ret = t.gather_width
-        elif t.is_groupby:
+        elif is_construct(t, Categories.GROUP_BY):
             ret = t.groupby_width
         else:
             ret = s.dop_diff(t)
@@ -442,15 +454,15 @@ class LG:
     ):
         """ """
         sdrop = None
-        if slgn.is_gather:
+        if is_construct(slgn, Categories.GATHER):
             # sdrop = src_drop['gather-data_drop']
             pass
-        elif slgn.is_groupby:
+        elif is_construct(slgn, Categories.GROUP_BY):
             sdrop = src_drop["grp-data_drop"]
         else:
             sdrop = src_drop
 
-        if tlgn.is_gather:
+        if is_construct(tlgn, Categories.GATHER):
             gather_oid = tgt_drop["oid"]
             if gather_oid not in self._gather_cache:
                 # [self, input_list, output_list]
@@ -509,7 +521,7 @@ class LG:
                 bc = src_drop["command"]
                 bc.add_output_param(tlgn.id, tgt_drop["oid"])
         else:
-            if slgn.is_gather:  # don't really add them
+            if is_construct(slgn, Categories.GATHER):  # don't really add them
                 gather_oid = src_drop["oid"]
                 if gather_oid not in self._gather_cache:
                     # [self, input_list, output_list]
@@ -572,7 +584,7 @@ class LG:
                 # 1. GroupBy's "natural" output must be a Scatter (i.e. group)
                 # 2. Scatter "naturally" does not have output
                 if (
-                    slgn.is_gather and tlgn.gid != sid
+                    is_construct(slgn, Categories.GATHER) and tlgn.gid != sid
                 ):  # not the artifical link between gather and its own start child
                     # gather iteration case, tgt must be a Group-Start Component
                     # this is a way to manually sequentialise a Scatter that has a high DoP
@@ -598,7 +610,9 @@ class LG:
                                 tdrops[j].addInput(gddrop, name=tname)
                                 j += 1
 
-                elif slgn.is_subgraph or tlgn.is_subgraph:
+                elif is_construct(slgn, Categories.SUBGRAPH) or is_construct(
+                    tlgn, Categories.SUBGRAPH
+                ):
                     pass
                 else:
                     if len(sdrops) != len(tdrops):
@@ -618,7 +632,7 @@ class LG:
                     continue
                 if (
                     (slgn.group is not None)
-                    and slgn.group.is_loop
+                    and is_construct(slgn.group, Categories.LOOP)
                     and slgn.gid == tlgn.gid
                     and slgn.is_group_end
                     and tlgn.is_group_start
@@ -647,9 +661,9 @@ class LG:
                                 )
                 elif (
                     slgn.group is not None
-                    and slgn.group.is_loop
+                    and is_construct(slgn.group, Categories.LOOP)
                     and tlgn.group is not None
-                    and tlgn.group.is_loop
+                    and is_construct(tlgn.group, Categories.LOOP)
                     and (not slgn.h_related(tlgn))
                 ):
                     # stepwise locking for links between two Loops
@@ -660,7 +674,7 @@ class LG:
                     lpaw = ("%s-%s" % (sid, tid)) in self._loop_aware_set
                     if (
                         slgn.group is not None
-                        and slgn.group.is_loop
+                        and is_construct(slgn.group, Categories.LOOP)
                         and lpaw
                         and slgn.h_level > tlgn.h_level
                     ):
@@ -672,7 +686,7 @@ class LG:
                                     self._link_drops(slgn, tlgn, sdrop, tdrops[i], lk)
                     elif (
                         tlgn.group is not None
-                        and tlgn.group.is_loop
+                        and is_construct(tlgn.group, Categories.LOOP)
                         and lpaw
                         and slgn.h_level < tlgn.h_level
                     ):
@@ -694,7 +708,7 @@ class LG:
                             for tdrop in chunk:
                                 self._link_drops(slgn, tlgn, sdrops[i], tdrop, lk)
             else:  # slgn is not group, but tlgn is group
-                if tlgn.is_groupby:
+                if is_construct(tlgn, Categories.GROUP_BY):
                     grpby_dict = collections.defaultdict(list)
                     layer_index = tlgn.group_by_scatter_layers[1]
                     for gdd in sdrops:
@@ -711,7 +725,7 @@ class LG:
                         else:
                             # find the "group by" scatter level
                             gbylist = []
-                            if slgn.group.is_groupby:  # a chain of group bys
+                            if is_construct(slgn.group, Categories.GROUP_BY):  # a chain of group bys
                                 try:
                                     src_ctx = gdd["iid"].split("$")[1].split("-")
                                 except IndexError as e:
@@ -742,17 +756,17 @@ class LG:
                             self._link_drops(slgn, tlgn, drp, grpby_drop, lk)
                             # drp.addOutput(grpby_drop)
                             # grpby_drop.addInput(drp)
-                elif tlgn.is_gather:
+                elif is_construct(tlgn, Categories.GATHER):
                     self._unroll_gather_as_output(
                         slgn, tlgn, sdrops, tdrops, chunk_size, lk
                     )
-                elif tlgn.is_service:
+                elif is_construct(tlgn, Categories.SERVICE):
                     # Only the service node's inputApplication will be translated
                     # to the physical graph as a node of type SERVICE_APP instead of APP
                     # per compute instance
                     tlgn["categoryType"] = "Application"
                     tlgn["category"] = "DALiuGEApp"
-                elif tlgn.is_subgraph:
+                elif is_construct(tlgn, Categories.SUBGRAPH):
                     pass
                 else:
                     raise GraphException(
@@ -796,13 +810,13 @@ class LG:
                 for sl_drop in self._drop_dict[lid]:
                     if "listener_drop" in sl_drop:
                         del sl_drop["listener_drop"]
-            elif lgn.is_groupby:
+            elif is_construct(lgn, Categories.GROUP_BY):
                 for sl_drop in self._drop_dict[lid]:
                     if "grp-data_drop" in sl_drop:
                         del sl_drop["grp-data_drop"]
-            elif lgn.is_gather:
+            elif is_construct(lgn, Categories.GATHER):
                 del self._drop_dict[lid]
-            elif lgn.is_subgraph:
+            elif is_construct(lgn, Categories.SUBGRAPH):
                 # Remove the SubGraph construct drop
                 if lgn.jd["isSubGraphConstruct"]:
                     del self._drop_dict[lid]

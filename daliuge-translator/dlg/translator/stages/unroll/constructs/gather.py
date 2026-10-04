@@ -26,7 +26,9 @@ class GatherHandler:
                 "Gather '{0}' does not have input!".format(node.id)
             ) from error
 
-        if input_node.is_groupby:
+        from .registry import is_construct
+
+        if is_construct(input_node, Categories.GROUP_BY):
             input_dop = input_node.dop
         else:
             input_dop = node.dop_diff(input_node)
