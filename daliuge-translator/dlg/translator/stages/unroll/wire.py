@@ -28,6 +28,11 @@ from functools import partial
 from itertools import product
 
 from dlg.translator.errors import GraphException
+from dlg.translator.stages.unroll.link import (
+    LinkContext,
+    _is_stream_link,
+    link_drops,
+)
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -44,7 +49,8 @@ def wire(lg):
     # becomes known when a link out of the Gather is wired, so the inputs
     # are held here and spliced after every link has been wired.
     gathers = {}
-    link = partial(_link_or_defer, lg, gathers)
+    context = LinkContext(lg._session_id, lg._drop_dict["new_added"])
+    link = partial(_link_or_defer, context, gathers)
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
         tid = lk["to"]  # target key
@@ -79,8 +85,7 @@ def wire(lg):
                         continue
                     j_end = min((i + 2) * slgn.gather_width, tlgn.group.dop * (i + 1))
                     while j < j_end:
-                        # TODO merge this code into the function
-                        # def _link_drops(self, slgn, tlgn, src_drop, tgt_drop, llink)
+                        # TODO merge this code into link_drops.
                         tname = tlgn.getPortName(ports="inputPorts")
                         # Go through the gather's inputs
                         for gddrop in ga_inputs:
@@ -253,8 +258,7 @@ def wire(lg):
             continue  # the gather hasn't got output drops, just move on
         llink = v[-1]
         for data_drop in input_list:
-            # TODO merge this code into the function
-            # def _link_drops(self, slgn, tlgn, src_drop, tgt_drop, llink)
+            # TODO merge this code into link_drops.
             sname = slgn.getPortName(ports="outputPorts")
             if llink.get("is_stream", False):
                 logger.debug(
@@ -275,10 +279,10 @@ def wire(lg):
     )
 
 
-def _link_or_defer(lg, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
+def _link_or_defer(context, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
     """
-    lg._link_drops, except that links into or out of a Gather are held in
-    gathers instead of wired; see wire().
+    link_drops, except that links into or out of a Gather are held in gathers
+    instead of wired; see wire().
     """
     if tlgn.is_gather:
         if slgn.is_groupby:
@@ -300,7 +304,7 @@ def _link_or_defer(lg, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
     t_type = tlgn.jd["categoryType"]
     if (
         slgn.is_gather
-        and not lg._is_stream_link(s_type, t_type)
+        and not _is_stream_link(s_type, t_type)
         and s_type not in ["Application", "Control"]
     ):
         gather_oid = src_drop["oid"]
@@ -312,7 +316,7 @@ def _link_or_defer(lg, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
             bc.add_input_param(slgn.id, src_drop["oid"])
         return
 
-    lg._link_drops(slgn, tlgn, src_drop, tgt_drop, llink)
+    link_drops(context, slgn, tlgn, src_drop, tgt_drop, llink)
 
 
 def _split_list(ls, n):
