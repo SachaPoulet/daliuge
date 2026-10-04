@@ -90,9 +90,6 @@ class LGNode:
 
         done_dict[self.id] = self
         self.subgraph = jd["subgraph"] if "subgraph" in jd else None
-        self.happy = False
-        self.loop_ctx = None
-        self.iid = None
         self.input_ports = self.getPortName(ports="inputPorts", index=-1)
         self.output_ports = self.getPortName(ports="outputPorts", index=-1)
 
