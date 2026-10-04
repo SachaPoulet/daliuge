@@ -40,6 +40,12 @@ from dlg.translator.artefacts import (
     PhysicalGraphTemplatePartitioned,
 )
 from dlg.translator.stages.partition.stage import PartitionStage, PartitionOptions
+from dlg.translator.stages.partition.algorithms.registry import (
+    algorithm_code,
+    algorithm_name,
+    get_algorithm,
+    known_algorithms,
+)
 from dlg.common import path_utils
 from dlg.translator.stages.unroll.lg import LG
 from dlg.translator.stages.partition.pgt import PGT
@@ -61,6 +67,39 @@ def pgtp_drops():
     # bare drop list as returned by pg_generator.partition() -- no
     # reprodata trailer, that's added back by PartitionStage.run() itself.
     return [{"oid": "a", "node": "#0"}, {"oid": "b", "node": "#1"}]
+
+
+class TestPartitionAlgorithmRegistry(unittest.TestCase):
+    ALGORITHMS = {
+        "none": 0,
+        "metis": 1,
+        "mysarkar": 2,
+        "min_num_parts": 3,
+        "pso": 4,
+    }
+
+    def test_known_algorithm_wire_names_are_stable(self):
+        self.assertEqual(
+            known_algorithms(),
+            list(self.ALGORITHMS),
+        )
+
+    def test_algorithm_names_map_to_stable_codes(self):
+        for name, code in self.ALGORITHMS.items():
+            self.assertEqual(algorithm_code(name), code)
+
+    def test_algorithm_codes_map_to_stable_names(self):
+        for name, code in self.ALGORITHMS.items():
+            self.assertEqual(algorithm_name(code), name)
+
+    def test_lookup_by_name_and_code_returns_same_plugin(self):
+        for name, code in self.ALGORITHMS.items():
+            by_name = get_algorithm(name)
+            by_code = get_algorithm(code)
+
+            self.assertIs(by_name, by_code)
+            self.assertEqual(by_name.name, name)
+            self.assertEqual(by_name.code, code)
 
 
 class TestPartitionStageRun(unittest.TestCase):
