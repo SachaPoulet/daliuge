@@ -2,7 +2,8 @@
 Registry for partition algorithm plugins.
 """
 
-from typing import Union
+from dataclasses import fields
+from typing import Any, Mapping, Optional, Union
 
 from .base import PartitionAlgorithm
 from .metis import MetisAlgorithm
@@ -83,6 +84,38 @@ def algorithm_code(identifier: Union[str, int]) -> int:
         return identifier
 
     return _ALGORITHM_CODES[identifier]
+
+
+def build_options(
+    identifier: Union[str, int],
+    params: Optional[Mapping[str, Any]] = None,
+) -> Any:
+    """Validate parameters and build options for the selected algorithm."""
+
+    algorithm = get_algorithm(identifier)
+    values = {} if params is None else dict(params)
+
+    allowed = {
+        option_field.name
+        for option_field in fields(algorithm.options_type)
+    }
+
+    unknown = sorted(set(values) - allowed)
+
+    if unknown:
+        raise ValueError(
+            "Unknown parameters for partition algorithm %s: %s"
+            % (algorithm.name, ", ".join(unknown))
+        )
+
+    # Preserve the legacy behaviour where an explicit None uses the default.
+    values = {
+        name: value
+        for name, value in values.items()
+        if value is not None
+    }
+
+    return algorithm.options_type(**values)
 
 
 def known_algorithms() -> list[str]:
