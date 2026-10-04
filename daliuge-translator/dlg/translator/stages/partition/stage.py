@@ -29,27 +29,18 @@ from dlg.translator.artefacts import PhysicalGraphTemplate, PhysicalGraphTemplat
 from dlg.common.reproducibility.reproducibility import init_pgt_partition_repro_data
 from dlg.translator.stages.partition.pgt import PGT
 from dlg.translator.stages.partition.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
+from dlg.translator.stages.partition.algorithms.registry import (
+    ALGO_NONE,
+    ALGO_METIS,
+    ALGO_MY_SARKAR,
+    ALGO_MIN_NUM_PARTS,
+    ALGO_PSO,
+    algorithm_code,
+    algorithm_name,
+    known_algorithms as registry_known_algorithms,
+)
 
 logger = logging.getLogger(f"dlg.{__name__}")
-
-ALGO_NONE = 0
-ALGO_METIS = 1
-ALGO_MY_SARKAR = 2
-ALGO_MIN_NUM_PARTS = 3
-ALGO_PSO = 4
-
-_known_algos = {
-    "none": ALGO_NONE,
-    "metis": ALGO_METIS,
-    "mysarkar": ALGO_MY_SARKAR,
-    "min_num_parts": ALGO_MIN_NUM_PARTS,
-    "pso": ALGO_PSO,
-    ALGO_NONE: "none",
-    ALGO_METIS: "metis",
-    ALGO_MY_SARKAR: "mysarkar",
-    ALGO_MIN_NUM_PARTS: "min_num_parts",
-    ALGO_PSO: "pso",
-}
 
 
 @dataclass(frozen=True)
@@ -100,23 +91,26 @@ def partition(
     """Partitions a Physical Graph Template"""
 
     if isinstance(algo, str):
-        if algo not in _known_algos:
+        try:
+            algo = algorithm_code(algo)
+        except KeyError:
             raise ValueError(
                 "Unknown partitioning algorithm: %s. Known algorithms are: %r"
-                % (algo, _known_algos.keys())
+                % (algo, registry_known_algorithms())
             )
-        algo = _known_algos[algo]
 
-    if algo not in _known_algos:
+    try:
+        resolved_algo_name = algorithm_name(algo)
+    except KeyError:
         raise GraphException(
-            "Unknown partition algorithm: %d. Known algorithm are: %r"
-            % (algo, _known_algos.keys())
+            "Unknown partition algorithm: %d. Known algorithms are: %r"
+            % (algo, registry_known_algorithms())
         )
 
     logger.info(
         "Running partitioning with algorithm=%s, %d partitions, "
         "%d islands, and parameters=%r",
-        _known_algos[algo],
+        resolved_algo_name,
         num_partitions,
         num_islands,
         algo_params,
@@ -210,4 +204,4 @@ def _get_algo_param(algo_params, param_name, default):
 
 
 def known_algorithms():
-    return [x for x in _known_algos.keys() if isinstance(x, str)]
+    return registry_known_algorithms()
