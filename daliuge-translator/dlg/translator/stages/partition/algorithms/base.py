@@ -32,6 +32,17 @@ class MinNumPartsOptions:
     time_greedy: int = 50
 
 
+@dataclass(frozen=True)
+class PsoOptions:
+    """Options consumed by the PSO partition algorithm."""
+
+    max_cpu: int = 8
+    max_mem: int = 1000
+    deadline: int | None = None
+    topk: int = 30
+    swarm_size: int = 40
+
+
 class PartitionAlgorithm(Protocol):
     """Interface implemented by partition algorithm plugins."""
 
