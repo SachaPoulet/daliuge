@@ -27,14 +27,7 @@ from copy import deepcopy
 from dlg.translator.errors import GraphException
 from dlg.translator.artefacts import PhysicalGraphTemplate, PhysicalGraphTemplatePartitioned
 from dlg.common.reproducibility.reproducibility import init_pgt_partition_repro_data
-from dlg.translator.stages.partition.pgt import PGT
-from dlg.translator.stages.partition.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
 from dlg.translator.stages.partition.algorithms.registry import (
-    ALGO_NONE,
-    ALGO_METIS,
-    ALGO_MY_SARKAR,
-    ALGO_MIN_NUM_PARTS,
-    ALGO_PSO,
     algorithm_code,
     algorithm_name,
     build_options,
@@ -137,14 +130,6 @@ def partition(
             tpl_nodes_len=num_partitions + num_islands,
         )
     return pgt
-
-
-def _get_algo_param(algo_params, param_name, default):
-    """
-    Make sure that default is set even if value has been passed as None.
-    """
-    param = algo_params.get(param_name)
-    return param if param is not None else default
 
 
 def known_algorithms():
