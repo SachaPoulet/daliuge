@@ -33,13 +33,17 @@ wrapped in the right envelope type.
 Mirrors the pattern established in test_stages_unroll.py (issue #40).
 """
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from dlg.translator.artefacts import (
     PhysicalGraphTemplate,
     PhysicalGraphTemplatePartitioned,
 )
-from dlg.translator.stages.partition.stage import PartitionStage, PartitionOptions
+from dlg.translator.stages.partition.stage import (
+    PartitionStage,
+    PartitionOptions,
+    partition,
+)
 from dlg.translator.stages.partition.algorithms.registry import (
     algorithm_code,
     algorithm_name,
@@ -155,6 +159,63 @@ class TestPartitionAlgorithmOptions(unittest.TestCase):
     def test_none_algorithm_rejects_options(self):
         with self.assertRaises(ValueError):
             build_options("none", {"max_cpu": 8})
+
+
+class TestPartitionPluginDispatch(unittest.TestCase):
+    def test_partition_delegates_to_registered_plugin_by_name(self):
+        algorithm = get_algorithm("none")
+        graph = MagicMock()
+        graph.to_pg_spec.return_value = [{"oid": "result"}]
+        source = [{"oid": "a"}]
+
+        with patch.object(
+            algorithm,
+            "partition",
+            return_value=graph,
+        ) as mock_partition:
+            result = partition(source, "none")
+
+        mock_partition.assert_called_once()
+        args, kwargs = mock_partition.call_args
+        self.assertEqual(args[0], source)
+        self.assertEqual(kwargs["num_partitions"], 1)
+        self.assertEqual(kwargs["partition_label"], "partition")
+
+        graph.to_gojs_json.assert_called_once_with(
+            string_rep=False,
+            visual=False,
+        )
+        graph.to_pg_spec.assert_called_once_with(
+            [],
+            ret_str=False,
+            num_islands=1,
+            tpl_nodes_len=2,
+        )
+        self.assertEqual(result, [{"oid": "result"}])
+
+    def test_partition_accepts_numeric_algorithm_code(self):
+        algorithm = get_algorithm(0)
+        graph = MagicMock()
+        source = [{"oid": "a"}]
+
+        with patch.object(
+            algorithm,
+            "partition",
+            return_value=graph,
+        ) as mock_partition:
+            result = partition(source, 0, show_gojs=True)
+
+        mock_partition.assert_called_once()
+        self.assertIs(result, graph)
+        graph.to_gojs_json.assert_called_once_with(
+            string_rep=False,
+            visual=True,
+        )
+        graph.to_pg_spec.assert_not_called()
+
+    def test_partition_rejects_options_for_wrong_plugin(self):
+        with self.assertRaises(ValueError):
+            partition([], "metis", topk=5)
 
 
 class TestPartitionStageRun(unittest.TestCase):
