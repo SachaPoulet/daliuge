@@ -43,6 +43,7 @@ from dlg.translator.stages.partition.stage import PartitionStage, PartitionOptio
 from dlg.translator.stages.partition.algorithms.registry import (
     algorithm_code,
     algorithm_name,
+    build_options,
     get_algorithm,
     known_algorithms,
 )
@@ -100,6 +101,60 @@ class TestPartitionAlgorithmRegistry(unittest.TestCase):
             self.assertIs(by_name, by_code)
             self.assertEqual(by_name.name, name)
             self.assertEqual(by_name.code, code)
+
+
+class TestPartitionAlgorithmOptions(unittest.TestCase):
+    def test_metis_accepts_metis_options(self):
+        options = build_options(
+            "metis",
+            {
+                "min_goal": 2,
+                "ptype": 1,
+                "max_load_imb": 75,
+            },
+        )
+
+        self.assertEqual(options.min_goal, 2)
+        self.assertEqual(options.ptype, 1)
+        self.assertEqual(options.max_load_imb, 75)
+
+    def test_pso_accepts_pso_options(self):
+        options = build_options(
+            "pso",
+            {
+                "max_cpu": 4,
+                "max_mem": 512,
+                "deadline": 100,
+                "topk": 12,
+                "swarm_size": 20,
+            },
+        )
+
+        self.assertEqual(options.max_cpu, 4)
+        self.assertEqual(options.max_mem, 512)
+        self.assertEqual(options.deadline, 100)
+        self.assertEqual(options.topk, 12)
+        self.assertEqual(options.swarm_size, 20)
+
+    def test_explicit_none_uses_default_value(self):
+        options = build_options(
+            "pso",
+            {
+                "topk": None,
+                "swarm_size": None,
+            },
+        )
+
+        self.assertEqual(options.topk, 30)
+        self.assertEqual(options.swarm_size, 40)
+
+    def test_rejects_option_for_wrong_algorithm(self):
+        with self.assertRaises(ValueError):
+            build_options("metis", {"topk": 5})
+
+    def test_none_algorithm_rejects_options(self):
+        with self.assertRaises(ValueError):
+            build_options("none", {"max_cpu": 8})
 
 
 class TestPartitionStageRun(unittest.TestCase):
