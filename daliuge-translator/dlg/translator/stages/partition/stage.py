@@ -27,6 +27,10 @@ from copy import deepcopy
 from dlg.translator.errors import GraphException
 from dlg.translator.artefacts import PhysicalGraphTemplate, PhysicalGraphTemplatePartitioned
 from dlg.common.reproducibility.reproducibility import init_pgt_partition_repro_data
+from dlg.translator.stages.partition.parameters import (
+    PartitionAlgorithmParameters,
+    parameters_for,
+)
 from dlg.translator.stages.partition.pgt import PGT
 from dlg.translator.stages.partition.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
 
@@ -59,6 +63,12 @@ class PartitionOptions:
     num_islands: int = 1
     partition_label: str = "partition"
     algo_params: dict = field(default_factory=dict)
+
+    @property
+    def algorithm_parameters(self) -> PartitionAlgorithmParameters | None:
+        """Return the typed parameters selected by this partition option set."""
+
+        return parameters_for(self.algo, self.algo_params)
 
 
 class PartitionStage:
