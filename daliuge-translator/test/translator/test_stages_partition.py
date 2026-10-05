@@ -42,8 +42,10 @@ from dlg.translator.artefacts import (
 from dlg.translator.stages.partition.stage import (
     PartitionStage,
     PartitionOptions,
+    logger as partition_logger,
     partition,
 )
+from dlg.translator.stages.partition.algorithms.base import MetisOptions
 from dlg.translator.stages.partition.algorithms.registry import (
     algorithm_code,
     algorithm_name,
@@ -213,9 +215,48 @@ class TestPartitionPluginDispatch(unittest.TestCase):
         )
         graph.to_pg_spec.assert_not_called()
 
-    def test_partition_rejects_options_for_wrong_plugin(self):
+    def test_partition_drops_unused_params_with_warning(self):
+        # Mirrors the daliuge-engine callers: a param belonging to another
+        # algorithm (apps/subgraph.py), a nested algo_params key
+        # (deploy/create_dlg_job.py) and a misspelt keyword
+        # (deploy/start_helm_cluster.py).
+        algorithm = get_algorithm("metis")
+        engine_params = {
+            "max_load_imb": 100,
+            "max_cpu": 8,
+            "algo_params": {"ptype": 1},
+            "num_partitons": 1,
+        }
+
+        with patch.object(
+            algorithm,
+            "partition",
+            return_value=MagicMock(),
+        ) as mock_partition, self.assertLogs(
+            partition_logger, "WARNING"
+        ) as logs:
+            partition([], "metis", show_gojs=True, **engine_params)
+
+        _, kwargs = mock_partition.call_args
+        self.assertEqual(kwargs["options"], MetisOptions(max_load_imb=100))
+        self.assertIn("algo_params, max_cpu, num_partitons", logs.output[0])
+
+    def test_partition_drops_none_params_without_warning(self):
+        algorithm = get_algorithm("metis")
+
+        with patch.object(
+            algorithm,
+            "partition",
+            return_value=MagicMock(),
+        ) as mock_partition, self.assertNoLogs(partition_logger, "WARNING"):
+            partition([], "metis", show_gojs=True, topk=None)
+
+        _, kwargs = mock_partition.call_args
+        self.assertEqual(kwargs["options"], MetisOptions())
+
+    def test_strict_partition_rejects_options_for_wrong_plugin(self):
         with self.assertRaises(ValueError):
-            partition([], "metis", topk=5)
+            partition([], "metis", strict=True, topk=5)
 
 
 class TestPartitionStageRun(unittest.TestCase):
@@ -233,6 +274,7 @@ class TestPartitionStageRun(unittest.TestCase):
         self.assertEqual(kwargs["num_partitions"], 1)
         self.assertEqual(kwargs["num_islands"], 1)
         self.assertEqual(kwargs["partition_label"], "partition")
+        self.assertIs(kwargs["strict"], True)
 
         self.assertIsInstance(result, PhysicalGraphTemplatePartitioned)
         self.assertEqual(result.drops, pgtp_drops())

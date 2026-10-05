@@ -38,6 +38,7 @@ from dlg.translator.stages.partition.algorithms.registry import (
     build_options,
     get_algorithm,
     known_algorithms as registry_known_algorithms,
+    option_names,
 )
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -76,6 +77,7 @@ class PartitionStage:
                 num_partitions=self._opts.num_partitions,
                 num_islands=self._opts.num_islands,
                 partition_label=self._opts.partition_label,
+                strict=True,
                 **self._opts.algo_params
             ),
             reprodata=deepcopy(pgt.reprodata)
@@ -93,6 +95,8 @@ def partition(
     num_islands=1,
     partition_label="partition",
     show_gojs=False,
+    *,
+    strict=False,
     **algo_params,
 ):
     """Partitions a Physical Graph Template"""
@@ -124,6 +128,8 @@ def partition(
     )
 
     algorithm = get_algorithm(algo)
+    if not strict:
+        algo_params = _drop_unused_params(resolved_algo_name, algo_params)
     options = build_options(algo, algo_params)
 
     pgt = algorithm.partition(
@@ -142,6 +148,31 @@ def partition(
             tpl_nodes_len=num_partitions + num_islands,
         )
     return pgt
+
+
+def _drop_unused_params(algo_name, algo_params):
+    """
+    Keep only the parameters the algorithm consumes, warning about the rest.
+
+    Explicit None values mean "use the default", so they are dropped silently.
+    """
+    allowed = option_names(algo_name)
+    ignored = sorted(
+        name
+        for name, value in algo_params.items()
+        if name not in allowed and value is not None
+    )
+    if ignored:
+        logger.warning(
+            "Ignoring parameters not used by partition algorithm %s: %s",
+            algo_name,
+            ", ".join(ignored),
+        )
+    return {
+        name: value
+        for name, value in algo_params.items()
+        if name in allowed
+    }
 
 
 def known_algorithms():

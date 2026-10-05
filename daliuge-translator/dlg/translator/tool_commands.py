@@ -164,6 +164,7 @@ def partition(pgt, opts):
         num_partitions=opts.partitions,
         num_islands=opts.islands,
         partition_label="partition",
+        strict=True,
         **algo_params
     )
     logger.info("PG spec is calculated!")

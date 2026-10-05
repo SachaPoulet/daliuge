@@ -86,6 +86,15 @@ def algorithm_code(identifier: Union[str, int]) -> int:
     return _ALGORITHM_CODES[identifier]
 
 
+def option_names(identifier: Union[str, int]) -> set[str]:
+    """Return the parameter names consumed by the selected algorithm."""
+
+    return {
+        option_field.name
+        for option_field in fields(get_algorithm(identifier).options_type)
+    }
+
+
 def build_options(
     identifier: Union[str, int],
     params: Optional[Mapping[str, Any]] = None,
@@ -95,10 +104,7 @@ def build_options(
     algorithm = get_algorithm(identifier)
     values = {} if params is None else dict(params)
 
-    allowed = {
-        option_field.name
-        for option_field in fields(algorithm.options_type)
-    }
+    allowed = option_names(identifier)
 
     unknown = sorted(set(values) - allowed)
 
