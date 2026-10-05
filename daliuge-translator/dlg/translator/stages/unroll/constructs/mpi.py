@@ -7,6 +7,7 @@ from .base import GraphContext
 
 class MPIHandler:
     construct_type = Categories.MPI
+    is_group_construct = False
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:

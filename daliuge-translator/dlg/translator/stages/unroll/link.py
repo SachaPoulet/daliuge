@@ -25,6 +25,7 @@ import logging
 
 from dlg.common import CategoryType, dropdict
 
+from dlg.translator.stages.unroll.constructs.registry import is_construct
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.vocabulary import Categories
 
@@ -59,9 +60,9 @@ def link_drops(
     llink: dict,
 ):
     """Wire two physical DROPs that are not deferred Gather links."""
-    if slgn.is_gather:
+    if is_construct(slgn, Categories.GATHER):
         sdrop = None
-    elif slgn.is_groupby:
+    elif is_construct(slgn, Categories.GROUP_BY):
         sdrop = src_drop["grp-data_drop"]
     else:
         sdrop = src_drop

@@ -8,10 +8,13 @@ from .base import GraphContext
 
 class GroupByHandler:
     construct_type = Categories.GROUP_BY
+    is_group_construct = True
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
-        if target.is_groupby:
+        from .registry import is_construct
+
+        if is_construct(target, Categories.GROUP_BY):
             if source.is_group:
                 raise GInvalidLink(
                     "GroupBy {0} input must not be a group {1}".format(
@@ -31,7 +34,9 @@ class GroupByHandler:
                     )
                 )
 
-        if source.is_groupby and not target.is_gather:
+        if is_construct(source, Categories.GROUP_BY) and not is_construct(
+            target, Categories.GATHER
+        ):
             raise GInvalidLink(
                 "Output {1} from GroupBy {0} must be Gather, otherwise embbed {1} inside GroupBy {0}".format(
                     source.id, target.id

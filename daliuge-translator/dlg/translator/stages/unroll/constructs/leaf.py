@@ -5,6 +5,7 @@ from .base import GraphContext
 
 class LeafHandler:
     construct_type = "leaf"
+    is_group_construct = False
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:

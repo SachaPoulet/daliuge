@@ -45,12 +45,11 @@ class TestLinkDrops(unittest.TestCase):
 
     def test_stream_link_creates_and_records_a_bridge_drop(self):
         source = SimpleNamespace(
-            is_gather=False,
-            is_groupby=False,
+            category=Categories.PYTHON_APP,
             jd={"categoryType": Categories.PYTHON_APP},
         )
         target = SimpleNamespace(
-            is_gather=False,
+            category=Categories.DALIUGE_APP,
             jd={"categoryType": Categories.DALIUGE_APP},
         )
         source_drop = FakeDrop(oid="source")
@@ -75,13 +74,12 @@ class TestLinkDrops(unittest.TestCase):
 
     def test_data_link_uses_the_declared_ports(self):
         source = SimpleNamespace(
-            is_gather=False,
-            is_groupby=False,
+            category=Categories.FILE,
             jd={"categoryType": CategoryType.DATA},
             getPortName=Mock(return_value="source-output"),
         )
         target = SimpleNamespace(
-            is_gather=False,
+            category=Categories.FILE,
             jd={"categoryType": CategoryType.DATA},
             getPortName=Mock(return_value="target-input"),
         )

@@ -28,6 +28,7 @@ from functools import partial
 from itertools import product
 
 from dlg.translator.errors import GraphException
+from dlg.translator.stages.unroll.constructs.registry import is_construct
 from dlg.translator.stages.unroll.link import (
     LinkContext,
     _is_stream_link,
@@ -65,7 +66,7 @@ def wire(lg):
             # 1. GroupBy's "natural" output must be a Scatter (i.e. group)
             # 2. Scatter "naturally" does not have output
             if (
-                slgn.is_gather and tlgn.gid != sid
+                is_construct(slgn, Categories.GATHER) and tlgn.gid != sid
             ):  # not the artifical link between gather and its own start child
                 # gather iteration case, tgt must be a Group-Start Component
                 # this is a way to manually sequentialise a Scatter that has a high DoP
@@ -95,7 +96,9 @@ def wire(lg):
                             tdrops[j].addInput(gddrop, name=tname)
                             j += 1
 
-            elif slgn.is_subgraph or tlgn.is_subgraph:
+            elif is_construct(slgn, Categories.SUBGRAPH) or is_construct(
+                tlgn, Categories.SUBGRAPH
+            ):
                 pass
             else:
                 if len(sdrops) != len(tdrops):
@@ -115,7 +118,7 @@ def wire(lg):
                 continue
             if (
                 (slgn.group is not None)
-                and slgn.group.is_loop
+                and is_construct(slgn.group, Categories.LOOP)
                 and slgn.gid == tlgn.gid
                 and slgn.is_group_end
                 and tlgn.is_group_start
@@ -144,9 +147,9 @@ def wire(lg):
                             )
             elif (
                 slgn.group is not None
-                and slgn.group.is_loop
+                and is_construct(slgn.group, Categories.LOOP)
                 and tlgn.group is not None
-                and tlgn.group.is_loop
+                and is_construct(tlgn.group, Categories.LOOP)
                 and (not slgn.h_related(tlgn))
             ):
                 # stepwise locking for links between two Loops
@@ -157,7 +160,7 @@ def wire(lg):
                 lpaw = ("%s-%s" % (sid, tid)) in lg._loop_aware_set
                 if (
                     slgn.group is not None
-                    and slgn.group.is_loop
+                    and is_construct(slgn.group, Categories.LOOP)
                     and lpaw
                     and slgn.h_level > tlgn.h_level
                 ):
@@ -169,7 +172,7 @@ def wire(lg):
                                 link(slgn, tlgn, sdrop, tdrops[i], lk)
                 elif (
                     tlgn.group is not None
-                    and tlgn.group.is_loop
+                    and is_construct(tlgn.group, Categories.LOOP)
                     and lpaw
                     and slgn.h_level < tlgn.h_level
                 ):
@@ -191,7 +194,7 @@ def wire(lg):
                         for tdrop in chunk:
                             link(slgn, tlgn, sdrops[i], tdrop, lk)
         else:  # slgn is not group, but tlgn is group
-            if tlgn.is_groupby:
+            if is_construct(tlgn, Categories.GROUP_BY):
                 grpby_dict = collections.defaultdict(list)
                 layer_index = tlgn.group_by_scatter_layers[1]
                 for gdd in sdrops:
@@ -208,7 +211,9 @@ def wire(lg):
                     else:
                         # find the "group by" scatter level
                         gbylist = []
-                        if slgn.group.is_groupby:  # a chain of group bys
+                        if is_construct(
+                            slgn.group, Categories.GROUP_BY
+                        ):  # a chain of group bys
                             try:
                                 src_ctx = gdd["iid"].split("$")[1].split("-")
                             except IndexError as e:
@@ -239,11 +244,11 @@ def wire(lg):
                         link(slgn, tlgn, drp, grpby_drop, lk)
                         # drp.addOutput(grpby_drop)
                         # grpby_drop.addInput(drp)
-            elif tlgn.is_gather:
+            elif is_construct(tlgn, Categories.GATHER):
                 _unroll_gather_as_output(
                     link, slgn, tlgn, sdrops, tdrops, chunk_size, lk
                 )
-            elif tlgn.is_subgraph:
+            elif is_construct(tlgn, Categories.SUBGRAPH):
                 pass
             else:
                 raise GraphException(
@@ -284,10 +289,10 @@ def _link_or_defer(context, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
     link_drops, except that links into or out of a Gather are held in gathers
     instead of wired; see wire().
     """
-    if tlgn.is_gather:
-        if slgn.is_groupby:
+    if is_construct(tlgn, Categories.GATHER):
+        if is_construct(slgn, Categories.GROUP_BY):
             sdrop = src_drop["grp-data_drop"]
-        elif slgn.is_gather:
+        elif is_construct(slgn, Categories.GATHER):
             sdrop = None
         else:
             sdrop = src_drop
@@ -303,7 +308,7 @@ def _link_or_defer(context, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
     s_type = slgn.jd["categoryType"]
     t_type = tlgn.jd["categoryType"]
     if (
-        slgn.is_gather
+        is_construct(slgn, Categories.GATHER)
         and not _is_stream_link(s_type, t_type)
         and s_type not in ["Application", "Control"]
     ):
@@ -345,9 +350,9 @@ def _get_chunk_size(s, t):
     Assumption:
     s or t cannot be Scatter as Scatter does not convert into DROPs
     """
-    if t.is_gather:
+    if is_construct(t, Categories.GATHER):
         ret = t.gather_width
-    elif t.is_groupby:
+    elif is_construct(t, Categories.GROUP_BY):
         ret = t.groupby_width
     else:
         ret = s.dop_diff(t)
