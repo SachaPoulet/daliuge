@@ -154,6 +154,40 @@ class TestPartitionAlgorithmOptions(unittest.TestCase):
         self.assertEqual(options.topk, 30)
         self.assertEqual(options.swarm_size, 40)
 
+    def test_explicit_none_for_other_algorithm_is_not_rejected(self):
+        options = build_options(
+            "metis",
+            {
+                "max_load_imb": 75,
+                "topk": None,
+            },
+        )
+
+        self.assertEqual(options, MetisOptions(max_load_imb=75))
+
+    def test_all_none_legacy_params_build_defaults_for_every_algorithm(self):
+        # The shape of the REST AlgoParams model: every key, all None.
+        all_none = dict.fromkeys(
+            [
+                "min_goal",
+                "ptype",
+                "max_load_imb",
+                "max_cpu",
+                "max_mem",
+                "time_greedy",
+                "deadline",
+                "topk",
+                "swarm_size",
+            ]
+        )
+
+        for name in known_algorithms():
+            with self.subTest(algorithm=name):
+                self.assertEqual(
+                    build_options(name, all_none),
+                    get_algorithm(name).options_type(),
+                )
+
     def test_rejects_option_for_wrong_algorithm(self):
         with self.assertRaises(ValueError):
             build_options("metis", {"topk": 5})

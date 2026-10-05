@@ -102,7 +102,13 @@ def build_options(
     """Validate parameters and build options for the selected algorithm."""
 
     algorithm = get_algorithm(identifier)
-    values = {} if params is None else dict(params)
+
+    # Preserve the legacy behaviour where an explicit None uses the default.
+    values = {
+        name: value
+        for name, value in (params or {}).items()
+        if value is not None
+    }
 
     allowed = option_names(identifier)
 
@@ -113,13 +119,6 @@ def build_options(
             "Unknown parameters for partition algorithm %s: %s"
             % (algorithm.name, ", ".join(unknown))
         )
-
-    # Preserve the legacy behaviour where an explicit None uses the default.
-    values = {
-        name: value
-        for name, value in values.items()
-        if value is not None
-    }
 
     return algorithm.options_type(**values)
 
