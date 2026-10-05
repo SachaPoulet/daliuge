@@ -23,10 +23,15 @@
 import logging
 from dataclasses import dataclass, field
 from copy import deepcopy
+from typing import Optional
 
 from dlg.translator.errors import GraphException
 from dlg.translator.artefacts import PhysicalGraphTemplate, PhysicalGraphTemplatePartitioned
 from dlg.common.reproducibility.reproducibility import init_pgt_partition_repro_data
+from dlg.translator.stages.partition.parameters import (
+    PartitionAlgorithmParameters,
+    parameters_for,
+)
 from dlg.translator.stages.partition.algorithms.registry import (
     algorithm_code,
     algorithm_name,
@@ -45,6 +50,13 @@ class PartitionOptions:
     num_islands: int = 1
     partition_label: str = "partition"
     algo_params: dict = field(default_factory=dict)
+
+    @property
+    def algorithm_parameters(
+        self,
+    ) -> Optional[PartitionAlgorithmParameters]:
+        """Return the typed parameters selected by this partition option set."""
+        return parameters_for(self.algo, self.algo_params)
 
 
 class PartitionStage:

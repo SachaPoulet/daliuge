@@ -29,8 +29,6 @@ import datetime
 import logging
 import time
 
-from dlg.common import CategoryType, dropdict
-
 from dlg.translator.errors import GraphException
 from dlg.translator.stages.prepare.versions import (
     LG_APPREF,
@@ -162,112 +160,6 @@ class LG:
         See dlg.translator.stages.unroll.instantiate.lgn_to_pgn
         """
         lgn_to_pgn(self, lgn, iid, lpcxt)
-
-    def _is_stream_link(self, s_type, t_type):
-        return s_type in [
-            Categories.COMPONENT,
-            Categories.DYNLIB_APP,
-            Categories.DYNLIB_PROC_APP,
-            Categories.PYTHON_APP,
-            Categories.DALIUGE_APP
-        ] and t_type in [
-            Categories.COMPONENT,
-            Categories.DYNLIB_APP,
-            Categories.DYNLIB_PROC_APP,
-            Categories.PYTHON_APP,
-            Categories.DALIUGE_APP
-        ]
-
-    def _link_drops(
-        self,
-        slgn: LGNode,
-        tlgn: LGNode,
-        src_drop: dropdict,
-        tgt_drop: dropdict,
-        llink: dict,
-    ):
-        """ """
-        sdrop = None
-        if slgn.is_gather:
-            # sdrop = src_drop['gather-data_drop']
-            pass
-        elif slgn.is_groupby:
-            sdrop = src_drop["grp-data_drop"]
-        else:
-            sdrop = src_drop
-
-        tdrop = tgt_drop
-        s_type = slgn.jd["categoryType"]
-        t_type = tlgn.jd["categoryType"]
-
-        if self._is_stream_link(s_type, t_type):
-            # 1. create a null_drop in the middle
-            # 2. link sdrop to null_drop
-            # 3. link tdrop to null_drop as a streamingConsumer
-
-            dropSpec_null = dropdict(
-                {
-                    "oid": "{0}-{1}-stream".format(
-                        sdrop["oid"],
-                        tdrop["oid"].replace(self._session_id, ""),
-                    ),
-                    "categoryType": CategoryType.DATA,
-                    "dropclass": "dlg.data.drops.data_base.NullDROP",
-                    "name": "StreamNull",
-                    "weight": 0,
-                }
-            )
-            sdrop.addOutput(dropSpec_null, name="stream")
-            dropSpec_null.addProducer(sdrop, name="stream")
-            dropSpec_null.addStreamingConsumer(tdrop, name="stream")
-            tdrop.addStreamingInput(dropSpec_null, name="stream")
-            self._drop_dict["new_added"].append(dropSpec_null)
-
-        elif s_type in ["Application", "Control"]:
-            logger.debug("Getting source and traget port names and IDs of %s and %s", slgn.name, tlgn.name)
-            sname = slgn.getPortName("outputPorts", index=-1)
-            tname = tlgn.getPortName("inputPorts", index=-1)
-
-            # sname is dictionary of all output ports on the sDROP.
-
-            output_portname = sname[llink["fromPort"]]
-            input_portname = tname[llink["toPort"]]
-            sdrop.addOutput(tdrop, name=output_portname)
-            tdrop.addProducer(sdrop, name=input_portname)
-
-            if "port_map" not in tdrop:
-                tdrop["port_map"] = {input_portname: output_portname}
-            else:
-                tdrop["port_map"][input_portname] = output_portname
-
-            if Categories.BASH_SHELL_APP == s_type:
-                bc = src_drop["command"]
-                bc.add_output_param(tlgn.id, tgt_drop["oid"])
-        else:
-            # there should be only one port, get the name
-            # ^ TODO This comment is no longer true, need to address
-            portId = llink["fromPort"] if "fromPort" in llink else None
-            sname = slgn.getPortName("outputPorts", portId=portId)
-            # could be multiple ports, need to identify
-            portId = llink["toPort"] if "toPort" in llink else None
-            tname = tlgn.getPortName("inputPorts", portId=portId)
-            logger.debug("Found port names: IN: %s, OUT: %s", sname, tname)
-
-            if llink.get("is_stream", False):
-                logger.debug(
-                    "link stream connection %s to %s",
-                    sdrop["oid"],
-                    tdrop["oid"],
-                )
-                sdrop.addStreamingConsumer(tdrop, name=sname)
-                tdrop.addStreamingInput(sdrop, name=tname)
-
-            else:
-                sdrop.addConsumer(tdrop, name=sname)
-                tdrop.addInput(sdrop, name=tname)
-            if Categories.BASH_SHELL_APP == t_type:
-                bc = tgt_drop["command"]
-                bc.add_input_param(slgn.id, src_drop["oid"])
 
     def unroll_to_tpl(self):
         """
