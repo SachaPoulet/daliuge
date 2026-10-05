@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 from enum import Enum
 from typing import TYPE_CHECKING, Iterator, Optional, Protocol, Sequence
 
 from dlg.common import dropdict
 from dlg.translator.errors import GInvalidLink
+from dlg.translator.vocabulary import Categories
 
 from ..coordinate import InstanceId
-from ..model import Edge, LogicalLink
 
 if TYPE_CHECKING:
-    from ..lg_node import LGNode
+    from ..model import Edge, LGNode, LogicalLink
 
 
 ANY_CONSTRUCT = "*"
@@ -69,9 +71,15 @@ def validate_hierarchy(source: "LGNode", target: "LGNode") -> None:
     source_group = source.group
     target_group = target.group
     if source_group is not None and target_group is not None:
-        if source_group.is_loop and target_group.is_loop:
+        from .registry import is_construct
+
+        if is_construct(source_group, Categories.LOOP) and is_construct(
+            target_group, Categories.LOOP
+        ):
             while source_group is not None and target_group is not None:
-                if not source_group.is_loop or not target_group.is_loop:
+                if not is_construct(
+                    source_group, Categories.LOOP
+                ) or not is_construct(target_group, Categories.LOOP):
                     break
                 if source_group.dop != target_group.dop:
                     raise GInvalidLink(
@@ -100,6 +108,7 @@ def validate_hierarchy(source: "LGNode", target: "LGNode") -> None:
 
 class ConstructHandler(Protocol):
     construct_type: str
+    is_group_construct: bool
     edge_keys: tuple[EdgeKey, ...]
 
     def degree_of_parallelism(

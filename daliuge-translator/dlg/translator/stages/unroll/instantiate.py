@@ -27,7 +27,9 @@ import logging
 import numpy as np
 
 from dlg.translator.errors import GInvalidNode
+from dlg.translator.stages.unroll.constructs.registry import is_construct
 from dlg.translator.stages.unroll.coordinate import InstanceId
+from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -55,7 +57,7 @@ def synthesise_links(lg):
 def _synthesise(lg, lgn):
     if not lgn.is_group:
         return
-    if not lgn.is_scatter:
+    if not is_construct(lgn, Categories.SCATTER):
         non_inputs = []
         grp_starts = []
         grp_ends = []
@@ -70,7 +72,7 @@ def _synthesise(lg, lgn):
             gs_list = non_inputs
         else:
             gs_list = grp_starts
-        if lgn.is_loop:
+        if is_construct(lgn, Categories.LOOP):
             if len(grp_starts) == 0 or len(grp_ends) == 0:
                 raise GInvalidNode(
                     f"Loop {lgn.name} should have at least one Start "
@@ -115,7 +117,7 @@ def instantiate(lg):
 
 
 def get_child_lp_ctx(lgn, lpcxt, idx):
-    if lgn.is_loop:
+    if is_construct(lgn, Categories.LOOP):
         if lpcxt is None:
             return "{0}".format(idx)
         else:
@@ -152,26 +154,30 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
                 grp_h = tuple(int(x) for x in np.unravel_index(i, shape))
                 miid = miid.with_group_key(grp_h)
 
-            if not lgn.is_scatter and not lgn.is_loop:
+            if not is_construct(lgn, Categories.SCATTER) and not is_construct(
+                lgn, Categories.LOOP
+            ):
                 # make GroupBy and Gather drops
                 src_drop = lgn.make_single_drop(miid)
                 lg._drop_dict[lgn.id].append(src_drop)
-                if lgn.is_groupby:
+                if is_construct(lgn, Categories.GROUP_BY):
                     lg._drop_dict["new_added"].append(src_drop["grp-data_drop"])
-                elif lgn.is_gather:
+                elif is_construct(lgn, Categories.GATHER):
                     pass
                     # lg._drop_dict['new_added'].append(src_drop['gather-data_drop'])
             for child in lgn.children:
                 lgn_to_pgn(lg, child, miid, get_child_lp_ctx(lgn, lpcxt, i))
-    elif lgn.is_mpi:
+    elif is_construct(lgn, Categories.MPI):
         for i in range(lgn.dop):
             miid = iid.child(i)
             src_drop = lgn.make_single_drop(miid, loop_ctx=lpcxt, proc_index=i)
             lg._drop_dict[lgn.id].append(src_drop)
-    elif lgn.is_service:
+    elif is_construct(lgn, Categories.SERVICE):
         # no action required, inputapp node aleady created and marked with "isService"
         pass
-    elif lgn.is_subgraph and lgn.jd["isSubGraphApp"]:
+    elif is_construct(lgn, Categories.SUBGRAPH) and lgn.jd.get(
+        "isSubGraphApp", False
+    ):
         src_drop = lgn.make_single_drop(iid, loop_ctx=lpcxt)
         if lgn.subgraph:
             kwargs = {"subgraph": lgn.subgraph}

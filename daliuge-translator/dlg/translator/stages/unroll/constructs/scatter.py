@@ -9,10 +9,15 @@ from .base import GraphContext
 
 class ScatterHandler:
     construct_type = Categories.SCATTER
+    is_group_construct = True
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
-        if source.is_scatter or target.is_scatter:
+        from .registry import is_construct
+
+        if is_construct(source, Categories.SCATTER) or is_construct(
+            target, Categories.SCATTER
+        ):
             prompt = "Remember to specify Input App Type for the Scatter construct!"
             raise GInvalidLink(
                 "Scatter construct {0} or {1} cannot be linked. {2}".format(

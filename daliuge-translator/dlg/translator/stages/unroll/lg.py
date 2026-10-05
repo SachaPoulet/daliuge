@@ -43,6 +43,7 @@ from dlg.translator.stages.prepare.normalise.fields import convert_fields
 from dlg.translator.stages.prepare.normalise.subgraphs import convert_subgraphs
 from dlg.translator.stages.prepare.normalise.globals import extract_globals
 from dlg.translator.vocabulary import Categories
+from dlg.translator.stages.unroll.constructs.registry import is_construct
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.stages.unroll.instantiate import (
@@ -188,13 +189,13 @@ class LG:
                 for sl_drop in self._drop_dict[lid]:
                     if "listener_drop" in sl_drop:
                         del sl_drop["listener_drop"]
-            elif lgn.is_groupby:
+            elif is_construct(lgn, Categories.GROUP_BY):
                 for sl_drop in self._drop_dict[lid]:
                     if "grp-data_drop" in sl_drop:
                         del sl_drop["grp-data_drop"]
-            elif lgn.is_gather:
+            elif is_construct(lgn, Categories.GATHER):
                 del self._drop_dict[lid]
-            elif lgn.is_subgraph:
+            elif is_construct(lgn, Categories.SUBGRAPH):
                 # Remove the SubGraph construct drop
                 if lgn.jd["isSubGraphConstruct"]:
                     del self._drop_dict[lid]
