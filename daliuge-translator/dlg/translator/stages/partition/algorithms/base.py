@@ -48,6 +48,11 @@ class PsoOptions:
     swarm_size: int = 40
 
 
+AlgorithmOptions = (
+    NoneOptions | MetisOptions | MySarkarOptions | MinNumPartsOptions | PsoOptions
+)
+
+
 class PartitionAlgorithm(Protocol):
     """Interface implemented by partition algorithm plugins."""
 
