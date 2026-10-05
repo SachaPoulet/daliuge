@@ -12,7 +12,11 @@ class LoopHandler:
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
-        if source.is_loop or target.is_loop:
+        from .registry import is_construct
+
+        if is_construct(source, Categories.LOOP) or is_construct(
+            target, Categories.LOOP
+        ):
             raise GInvalidLink(
                 "Loop construct {0} or {1} cannot be linked".format(
                     source.name, target.name

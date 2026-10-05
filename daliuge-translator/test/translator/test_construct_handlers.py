@@ -26,13 +26,16 @@ class TestConstructHandlerDoP(unittest.TestCase):
     def test_gather_rejects_non_data_input(self):
         source = SimpleNamespace(
             id="source",
-            jd={"categoryType": "Application"},
-            is_groupby=False,
-            is_gather=False,
+            category=Categories.PYTHON_APP,
+            jd={
+                "category": Categories.PYTHON_APP,
+                "categoryType": "Application",
+            },
         )
         target = SimpleNamespace(
             id="gather",
-            is_gather=True,
+            category=Categories.GATHER,
+            jd={"category": Categories.GATHER},
         )
 
         with self.assertRaises(GInvalidLink):

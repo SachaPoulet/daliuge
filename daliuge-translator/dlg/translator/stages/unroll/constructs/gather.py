@@ -13,7 +13,9 @@ class GatherHandler:
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
-        if source.is_gather:
+        from .registry import is_construct
+
+        if is_construct(source, Categories.GATHER):
             if not (
                 target.jd["categoryType"] in ["app", "application", "Application"]
                 and target.is_group_start
@@ -25,8 +27,11 @@ class GatherHandler:
                     )
                 )
 
-        if target.is_gather:
-            if not source.jd["categoryType"].lower() == "data" and not source.is_groupby:
+        if is_construct(target, Categories.GATHER):
+            if (
+                source.jd["categoryType"].lower() != "data"
+                and not is_construct(source, Categories.GROUP_BY)
+            ):
                 raise GInvalidLink(
                     "Gather {0}'s input {1} should be either a GroupBy or Data. {2}".format(
                         target.id, source.id, source.jd
