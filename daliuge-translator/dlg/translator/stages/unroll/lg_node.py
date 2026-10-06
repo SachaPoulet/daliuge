@@ -576,9 +576,7 @@ class LGNode(LGNodeModel):
             drop_spec = self._create_groupby_drops(drop_spec)
         elif self.category == Categories.GATHER:
             drop_spec = self._create_gather_drops(drop_spec)
-        elif is_construct(self, Categories.SERVICE) or is_construct(
-            self, Categories.BRANCH
-        ):
+        elif is_construct(self, Categories.BRANCH):
             kwargs["categoryType"] = "Application"
             self.jd["categoryType"] = "Application"
             drop_spec = self._create_app_drop(drop_spec)
