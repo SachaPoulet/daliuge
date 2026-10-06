@@ -4,6 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Iterator, Optional, Protocol, Sequence
 
 from dlg.common import dropdict
+from dlg.translator.errors import GraphException
 from dlg.translator.errors import GInvalidLink
 from dlg.translator.vocabulary import Categories
 
@@ -62,6 +63,28 @@ class WiringContext(GraphContext, Protocol):
         size: int,
     ) -> Iterator[Sequence[dropdict]]:
         ...
+
+
+def resolve_aligned_edges(
+    link: "LogicalLink",
+    sources: Sequence[dropdict],
+    targets: Sequence[dropdict],
+) -> list["Edge"]:
+    """Pair corresponding drops for a one-to-one construct boundary."""
+    if len(sources) != len(targets):
+        raise GraphException(
+            "For within-group links, # {2} Group Inputs {0} must be the same as "
+            "# {3} of Component Outputs {1}".format(
+                link.source.id,
+                link.target.id,
+                len(sources),
+                len(targets),
+            )
+        )
+
+    from ..model import Edge
+
+    return [Edge(link, source, target) for source, target in zip(sources, targets)]
 
 
 def validate_hierarchy(source: "LGNode", target: "LGNode") -> None:
