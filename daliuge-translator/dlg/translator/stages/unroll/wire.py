@@ -28,15 +28,33 @@ from functools import partial
 from itertools import product
 
 from dlg.translator.errors import GraphException
-from dlg.translator.stages.unroll.constructs.registry import is_construct
+from dlg.translator.stages.unroll.constructs.registry import get_handler, is_construct
 from dlg.translator.stages.unroll.link import (
     LinkContext,
     _is_stream_link,
     link_drops,
 )
+from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
+
+
+class _WireContext(LinkContext):
+    """Expose the resolver context while retaining the legacy link state."""
+
+    def __init__(self, lg):
+        super().__init__(lg._session_id, lg._drop_dict["new_added"])
+        self._nodes = lg._done_dict
+
+    def node(self, node_id):
+        return self._nodes[node_id]
+
+    def chunk_size(self, source, target):
+        return _get_chunk_size(source, target)
+
+    def split(self, drops, size):
+        return _split_list(drops, size)
 
 
 def wire(lg):
@@ -50,7 +68,7 @@ def wire(lg):
     # becomes known when a link out of the Gather is wired, so the inputs
     # are held here and spliced after every link has been wired.
     gathers = {}
-    context = LinkContext(lg._session_id, lg._drop_dict["new_added"])
+    context = _WireContext(lg)
     link = partial(_link_or_defer, context, gathers)
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
@@ -101,13 +119,25 @@ def wire(lg):
             ):
                 pass
             else:
-                if len(sdrops) != len(tdrops):
-                    err_info = "For within-group links, # {2} Group Inputs {0} must be the same as # {3} of Component Outputs {1}".format(
-                        slgn.id, tlgn.id, len(sdrops), len(tdrops)
-                    )
-                    raise GraphException(err_info)
-                for i, sdrop in enumerate(sdrops):
-                    link(slgn, tlgn, sdrop, tdrops[i], lk)
+                # Matrix row 5 assigns this within-group fallback to Scatter.
+                # Its source may be GroupBy or Gather; link() still creates
+                # the physical connections through the common path.
+                logical_link = LogicalLink(
+                    source=slgn,
+                    target=tlgn,
+                    source_port=lk.get("fromPort"),
+                    target_port=lk.get("toPort"),
+                    is_stream=lk.get("is_stream", False),
+                    loop_aware=("%s-%s" % (sid, tid)) in lg._loop_aware_set,
+                )
+                edges = get_handler(Categories.SCATTER).resolve_edges(
+                    logical_link,
+                    sdrops,
+                    tdrops,
+                    context,
+                )
+                for edge in edges:
+                    link(slgn, tlgn, edge.source, edge.target, lk)
         elif slgn.is_group and tlgn.is_group:
             # slgn must be GroupBy and tlgn must be Gather
             _unroll_gather_as_output(
