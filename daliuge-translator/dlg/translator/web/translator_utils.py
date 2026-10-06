@@ -1,4 +1,5 @@
 import os
+from dataclasses import fields
 import logging
 import importlib.resources
 from urllib.parse import urlparse
@@ -14,6 +15,7 @@ from dlg.common.reproducibility.reproducibility import (
 from dlg.translator.stages.prepare.loader import load_lg
 from dlg.translator.stages.unroll.stage import unroll
 from dlg.translator.stages.partition.stage import partition
+from dlg.translator.stages.partition.algorithms.registry import get_algorithm
 from dlg.restutils import RestClientException
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -83,11 +85,25 @@ def prepare_lgt(filename, rmode: str):
     return init_lg_repro_data(init_lgt_repro_data(load_lg(filename), rmode))
 
 
-def filter_dict_to_algo_params(input_dict: dict):
+def filter_dict_to_algo_params(input_dict: dict, algorithm=None):
+    """Filter legacy web parameters to those consumed by the algorithm."""
+    allowed = None
+
+    if algorithm is not None:
+        allowed = {
+            option_field.name
+            for option_field in fields(
+                get_algorithm(algorithm).options_type
+            )
+        }
+
     algo_params = {}
     for name, _ in ALGO_PARAMS:
-        if name in input_dict:
+        if name in input_dict and (
+            allowed is None or name in allowed
+        ):
             algo_params[name] = input_dict.get(name)
+
     return algo_params
 
 
@@ -159,7 +175,10 @@ def unroll_and_partition_with_params(
         algorithm_parameters = {}
     app = "dlg.apps.simple.SleepApp" if test else None
     pgt = init_pgt_unroll_repro_data(unroll(lgt, app=app))
-    algo_params = filter_dict_to_algo_params(algorithm_parameters)
+    algo_params = filter_dict_to_algo_params(
+        algorithm_parameters,
+        algorithm,
+    )
     reprodata = pgt.pop()
     # Partition the PGT
     pgt = partition(

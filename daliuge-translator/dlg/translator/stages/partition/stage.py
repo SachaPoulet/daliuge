@@ -27,33 +27,17 @@ from copy import deepcopy
 from dlg.translator.errors import GraphException
 from dlg.translator.artefacts import PhysicalGraphTemplate, PhysicalGraphTemplatePartitioned
 from dlg.common.reproducibility.reproducibility import init_pgt_partition_repro_data
-from dlg.translator.stages.partition.parameters import (
-    PartitionAlgorithmParameters,
-    parameters_for,
+from dlg.translator.stages.partition.algorithms.base import AlgorithmOptions
+from dlg.translator.stages.partition.algorithms.registry import (
+    algorithm_code,
+    algorithm_name,
+    build_options,
+    get_algorithm,
+    known_algorithms as registry_known_algorithms,
+    option_names,
 )
-from dlg.translator.stages.partition.pgt import PGT
-from dlg.translator.stages.partition.pgtp import MetisPGTP, MySarkarPGTP, MinNumPartsPGTP, PSOPGTP
 
 logger = logging.getLogger(f"dlg.{__name__}")
-
-ALGO_NONE = 0
-ALGO_METIS = 1
-ALGO_MY_SARKAR = 2
-ALGO_MIN_NUM_PARTS = 3
-ALGO_PSO = 4
-
-_known_algos = {
-    "none": ALGO_NONE,
-    "metis": ALGO_METIS,
-    "mysarkar": ALGO_MY_SARKAR,
-    "min_num_parts": ALGO_MIN_NUM_PARTS,
-    "pso": ALGO_PSO,
-    ALGO_NONE: "none",
-    ALGO_METIS: "metis",
-    ALGO_MY_SARKAR: "mysarkar",
-    ALGO_MIN_NUM_PARTS: "min_num_parts",
-    ALGO_PSO: "pso",
-}
 
 
 @dataclass(frozen=True)
@@ -65,10 +49,9 @@ class PartitionOptions:
     algo_params: dict = field(default_factory=dict)
 
     @property
-    def algorithm_parameters(self) -> PartitionAlgorithmParameters | None:
-        """Return the typed parameters selected by this partition option set."""
-
-        return parameters_for(self.algo, self.algo_params)
+    def algorithm_parameters(self) -> AlgorithmOptions:
+        """Return the typed options selected by this partition option set."""
+        return build_options(self.algo, self.algo_params)
 
 
 class PartitionStage:
@@ -88,6 +71,7 @@ class PartitionStage:
                 num_partitions=self._opts.num_partitions,
                 num_islands=self._opts.num_islands,
                 partition_label=self._opts.partition_label,
+                strict=True,
                 **self._opts.algo_params
             ),
             reprodata=deepcopy(pgt.reprodata)
@@ -105,100 +89,49 @@ def partition(
     num_islands=1,
     partition_label="partition",
     show_gojs=False,
+    *,
+    strict=False,
     **algo_params,
 ):
     """Partitions a Physical Graph Template"""
 
     if isinstance(algo, str):
-        if algo not in _known_algos:
+        try:
+            algo = algorithm_code(algo)
+        except KeyError as exc:
             raise ValueError(
                 "Unknown partitioning algorithm: %s. Known algorithms are: %r"
-                % (algo, _known_algos.keys())
-            )
-        algo = _known_algos[algo]
+                % (algo, registry_known_algorithms())
+            ) from exc
 
-    if algo not in _known_algos:
+    try:
+        resolved_algo_name = algorithm_name(algo)
+    except KeyError as exc:
         raise GraphException(
-            "Unknown partition algorithm: %d. Known algorithm are: %r"
-            % (algo, _known_algos.keys())
-        )
+            "Unknown partition algorithm: %d. Known algorithms are: %r"
+            % (algo, registry_known_algorithms())
+        ) from exc
 
     logger.info(
         "Running partitioning with algorithm=%s, %d partitions, "
         "%d islands, and parameters=%r",
-        _known_algos[algo],
+        resolved_algo_name,
         num_partitions,
         num_islands,
         algo_params,
     )
 
-    # Read all possible values with defaults
-    # Not all algorithms use them, but makes the coding easier
-    # do_merge = num_islands > 1
-    could_merge = True
-    min_goal = _get_algo_param(algo_params, "min_goal", 0)
-    ptype = _get_algo_param(algo_params, "ptype", 0)
-    max_load_imb = _get_algo_param(algo_params, "max_load_imb", 90)
-    max_cpu = _get_algo_param(algo_params, "max_cpu", 8)
-    max_mem = _get_algo_param(algo_params, "max_mem", 1000)
-    time_greedy = _get_algo_param(algo_params, "time_greedy", 50)
-    deadline = _get_algo_param(algo_params, "deadline", None)
-    topk = _get_algo_param(algo_params, "topk", 30)
-    swarm_size = _get_algo_param(algo_params, "swarm_size", 40)
+    algorithm = get_algorithm(algo)
+    if not strict:
+        algo_params = _drop_unused_params(resolved_algo_name, algo_params)
+    options = build_options(algo, algo_params)
 
-    max_dop = {"num_cpus": max_cpu, "mem_usage": max_mem}
-
-    if algo == ALGO_NONE:
-        pgt = PGT(pgt)
-
-    elif algo == ALGO_METIS:
-        ufactor = 100 - max_load_imb + 1
-        if ufactor <= 0:
-            ufactor = 1
-        pgt = MetisPGTP(
-            pgt,
-            num_partitions,
-            min_goal,
-            partition_label,
-            ptype,
-            ufactor,
-            merge_parts=could_merge,
-        )
-
-    elif algo == ALGO_MY_SARKAR:
-        pgt = MySarkarPGTP(
-            pgt,
-            num_partitions,
-            partition_label,
-            max_dop,
-            merge_parts=could_merge,
-        )
-
-    elif algo == ALGO_MIN_NUM_PARTS:
-        time_greedy = 1 - time_greedy / 100.0  # assuming between 1 to 100
-        pgt = MinNumPartsPGTP(
-            pgt,
-            deadline,
-            num_partitions,
-            partition_label,
-            max_cpu,
-            merge_parts=could_merge,
-            optimistic_factor=time_greedy,
-        )
-
-    elif algo == ALGO_PSO:
-        pgt = PSOPGTP(
-            pgt,
-            partition_label,
-            max_dop,
-            deadline=deadline,
-            topk=topk,
-            swarm_size=swarm_size,
-            merge_parts=could_merge,
-        )
-
-    else:
-        raise GraphException("Unknown partition algorithm: {0}".format(algo))
+    pgt = algorithm.partition(
+        pgt,
+        num_partitions=num_partitions,
+        partition_label=partition_label,
+        options=options,
+    )
 
     pgt.to_gojs_json(string_rep=False, visual=show_gojs)
     if not show_gojs:
@@ -211,13 +144,30 @@ def partition(
     return pgt
 
 
-def _get_algo_param(algo_params, param_name, default):
+def _drop_unused_params(algo_name, algo_params):
     """
-    Make sure that default is set even if value has been passed as None.
+    Keep only the parameters the algorithm consumes, warning about the rest.
+
+    Explicit None values mean "use the default", so they are dropped silently.
     """
-    param = algo_params.get(param_name)
-    return param if param is not None else default
+    allowed = option_names(algo_name)
+    ignored = sorted(
+        name
+        for name, value in algo_params.items()
+        if name not in allowed and value is not None
+    )
+    if ignored:
+        logger.warning(
+            "Ignoring parameters not used by partition algorithm %s: %s",
+            algo_name,
+            ", ".join(ignored),
+        )
+    return {
+        name: value
+        for name, value in algo_params.items()
+        if name in allowed
+    }
 
 
 def known_algorithms():
-    return [x for x in _known_algos.keys() if isinstance(x, str)]
+    return registry_known_algorithms()

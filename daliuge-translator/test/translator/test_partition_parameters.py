@@ -2,11 +2,12 @@
 
 import pytest
 
-from dlg.translator.stages.partition.parameters import (
-    MetisParameters,
-    MinNumPartsParameters,
-    MySarkarParameters,
-    PsoParameters,
+from dlg.translator.stages.partition.algorithms.base import (
+    MetisOptions,
+    MinNumPartsOptions,
+    MySarkarOptions,
+    NoneOptions,
+    PsoOptions,
 )
 from dlg.translator.stages.partition.stage import PartitionOptions
 
@@ -14,17 +15,17 @@ from dlg.translator.stages.partition.stage import PartitionOptions
 @pytest.mark.parametrize(
     ("options", "expected"),
     [
-        (PartitionOptions(), MetisParameters()),
+        (PartitionOptions(), MetisOptions()),
         (
             PartitionOptions(algo="mysarkar"),
-            MySarkarParameters(),
+            MySarkarOptions(),
         ),
         (
             PartitionOptions(algo="min_num_parts"),
-            MinNumPartsParameters(),
+            MinNumPartsOptions(),
         ),
-        (PartitionOptions(algo="pso"), PsoParameters()),
-        (PartitionOptions(algo="none"), None),
+        (PartitionOptions(algo="pso"), PsoOptions()),
+        (PartitionOptions(algo="none"), NoneOptions()),
     ],
 )
 def test_partition_options_selects_the_matching_parameter_model(options, expected):
@@ -41,21 +42,21 @@ def test_partition_options_selects_the_matching_parameter_model(options, expecte
                 algo="metis",
                 algo_params={"min_goal": 2, "ptype": 1, "max_load_imb": 75},
             ),
-            MetisParameters(2, 1, 75),
+            MetisOptions(2, 1, 75),
         ),
         (
             PartitionOptions(
                 algo="mysarkar",
                 algo_params={"max_cpu": 16, "max_mem": 4096},
             ),
-            MySarkarParameters(16, 4096),
+            MySarkarOptions(16, 4096),
         ),
         (
             PartitionOptions(
                 algo="min_num_parts",
                 algo_params={"deadline": 120, "max_cpu": 12, "time_greedy": 25},
             ),
-            MinNumPartsParameters(120, 12, 25),
+            MinNumPartsOptions(120, 12, 25),
         ),
         (
             PartitionOptions(
@@ -68,7 +69,7 @@ def test_partition_options_selects_the_matching_parameter_model(options, expecte
                     "swarm_size": 0,
                 },
             ),
-            PsoParameters(0, 0, 45, 0, 0),
+            PsoOptions(0, 0, 45, 0, 0),
         ),
     ],
 )
@@ -88,14 +89,14 @@ def test_partition_options_passes_explicit_values_to_the_parameter_model(
                 algo="metis",
                 algo_params={"min_goal": None, "ptype": None, "max_load_imb": None},
             ),
-            MetisParameters(),
+            MetisOptions(),
         ),
         (
             PartitionOptions(
                 algo="pso",
                 algo_params={"max_cpu": None, "max_mem": None, "topk": None},
             ),
-            PsoParameters(),
+            PsoOptions(),
         ),
     ],
 )
