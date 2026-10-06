@@ -1,8 +1,10 @@
 from typing import Any, Optional
 
+from dlg.common import CategoryType, dropdict
 from dlg.translator.vocabulary import Categories
 
-from .base import GraphContext
+from ..coordinate import InstanceId
+from .base import GraphContext, InstantiationContext
 
 
 class ServiceHandler:
@@ -21,3 +23,32 @@ class ServiceHandler:
         del node, ctx
 
         return 1
+
+    def instantiate(
+        self,
+        node: Any,
+        coord: InstanceId,
+        ctx: InstantiationContext,
+    ) -> list[dropdict]:
+        del ctx
+
+        # Preserve the legacy no-op path for a non-group Service node.
+        if not node.is_group:
+            return []
+
+        # Preserve the working Service behaviour from LGNode.make_single_drop:
+        # Service constructs instantiate as Application DROPs.
+        node.jd["categoryType"] = CategoryType.APPLICATION
+
+        was_data = node.is_data
+        was_app = node.is_app
+        node.is_data = False
+        node.is_app = True
+
+        try:
+            drop = node.make_single_drop(coord)
+        finally:
+            node.is_data = was_data
+            node.is_app = was_app
+
+        return [drop]
