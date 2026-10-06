@@ -18,6 +18,7 @@ from dlg.translator.stages.unroll.constructs.scatter import ScatterHandler
 from dlg.translator.stages.unroll.constructs.service import ServiceHandler
 from dlg.translator.stages.unroll.constructs.subgraph import SubgraphHandler
 from dlg.translator.stages.unroll.lg_node import LGNode
+from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
 
 
@@ -228,6 +229,115 @@ class TestConstructHandlerDoP(unittest.TestCase):
 
             get_handler.assert_called_once_with(node)
             handler.degree_of_parallelism.assert_called_once_with(node)
+
+
+class TestLeafEdgeResolution(unittest.TestCase):
+    class FakeWiringContext:
+        def __init__(self, chunk_size):
+            self._chunk_size = chunk_size
+
+        def chunk_size(self, source, target):
+            del source, target
+            return self._chunk_size
+
+        @staticmethod
+        def split(drops, size):
+            for index in range(0, len(drops), size):
+                yield drops[index:index + size]
+
+    @staticmethod
+    def _node(name, h_level, is_start_node=False):
+        return SimpleNamespace(
+            name=name,
+            h_level=h_level,
+            is_start_node=is_start_node,
+        )
+
+    def test_leaf_start_node_produces_no_edges(self):
+        source = self._node("start", 0, is_start_node=True)
+        target = self._node("target", 0)
+        link = LogicalLink(source, target)
+
+        edges = LeafHandler().resolve_edges(
+            link,
+            [{"oid": "source"}],
+            [{"oid": "target"}],
+            self.FakeWiringContext(1),
+        )
+
+        self.assertEqual([], edges)
+
+    def test_leaf_source_higher_or_equal_distributes_sources_to_targets(self):
+        source = self._node("source", 2)
+        target = self._node("target", 1)
+        link = LogicalLink(source, target)
+
+        sources = [
+            {"oid": "s0"},
+            {"oid": "s1"},
+            {"oid": "s2"},
+            {"oid": "s3"},
+        ]
+        targets = [
+            {"oid": "t0"},
+            {"oid": "t1"},
+        ]
+
+        edges = LeafHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.FakeWiringContext(2),
+        )
+
+        self.assertEqual(
+            [
+                ("s0", "t0"),
+                ("s1", "t0"),
+                ("s2", "t1"),
+                ("s3", "t1"),
+            ],
+            [
+                (edge.source["oid"], edge.target["oid"])
+                for edge in edges
+            ],
+        )
+
+    def test_leaf_target_higher_distributes_targets_to_sources(self):
+        source = self._node("source", 1)
+        target = self._node("target", 2)
+        link = LogicalLink(source, target)
+
+        sources = [
+            {"oid": "s0"},
+            {"oid": "s1"},
+        ]
+        targets = [
+            {"oid": "t0"},
+            {"oid": "t1"},
+            {"oid": "t2"},
+            {"oid": "t3"},
+        ]
+
+        edges = LeafHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.FakeWiringContext(2),
+        )
+
+        self.assertEqual(
+            [
+                ("s0", "t0"),
+                ("s0", "t1"),
+                ("s1", "t2"),
+                ("s1", "t3"),
+            ],
+            [
+                (edge.source["oid"], edge.target["oid"])
+                for edge in edges
+            ],
+        )
 
 
 if __name__ == "__main__":
