@@ -28,7 +28,11 @@ from functools import partial
 from itertools import product
 
 from dlg.translator.errors import GraphException
-from dlg.translator.stages.unroll.constructs.registry import is_construct
+from dlg.translator.stages.unroll.constructs.registry import (
+    get_handler,
+    is_construct,
+)
+from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.stages.unroll.link import (
     LinkContext,
     _is_stream_link,
@@ -37,6 +41,25 @@ from dlg.translator.stages.unroll.link import (
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
+
+
+class _HandlerWiringContext:
+    """Adapter exposing legacy LG state through the handler wiring interface."""
+
+    def __init__(self, lg):
+        self._lg = lg
+        self.session_id = lg._session_id
+
+    def node(self, node_id):
+        return self._lg._done_dict[node_id]
+
+    @staticmethod
+    def chunk_size(source, target):
+        return _get_chunk_size(source, target)
+
+    @staticmethod
+    def split(drops, size):
+        return _split_list(drops, size)
 
 
 def wire(lg):
@@ -51,6 +74,7 @@ def wire(lg):
     # are held here and spliced after every link has been wired.
     gathers = {}
     context = LinkContext(lg._session_id, lg._drop_dict["new_added"])
+    handler_context = _HandlerWiringContext(lg)
     link = partial(_link_or_defer, context, gathers)
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
@@ -115,6 +139,16 @@ def wire(lg):
             )
         elif not slgn.is_group and (not tlgn.is_group):
             if slgn.is_start_node:
+                _resolve_leaf_edges(
+                    handler_context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                    loop_aware=False,
+                )
                 continue
             if (
                 (slgn.group is not None)
@@ -183,16 +217,17 @@ def wire(lg):
                             if j % loop_iter == 0:
                                 link(slgn, tlgn, sdrops[i], tdrop, lk)
 
-                elif slgn.h_level >= tlgn.h_level:
-                    for i, chunk in enumerate(_split_list(sdrops, chunk_size)):
-                        # distribute slgn evenly to tlgn
-                        for sdrop in chunk:
-                            link(slgn, tlgn, sdrop, tdrops[i], lk)
                 else:
-                    for i, chunk in enumerate(_split_list(tdrops, chunk_size)):
-                        # distribute tlgn evenly to slgn
-                        for tdrop in chunk:
-                            link(slgn, tlgn, sdrops[i], tdrop, lk)
+                    _resolve_leaf_edges(
+                        handler_context,
+                        link,
+                        slgn,
+                        tlgn,
+                        sdrops,
+                        tdrops,
+                        lk,
+                        loop_aware=lpaw,
+                    )
         else:  # slgn is not group, but tlgn is group
             if is_construct(tlgn, Categories.GROUP_BY):
                 grpby_dict = collections.defaultdict(list)
@@ -282,6 +317,45 @@ def wire(lg):
         len(lg._lg_links),
         lg._session_id,
     )
+
+
+def _resolve_leaf_edges(
+    context,
+    link,
+    source,
+    target,
+    source_drops,
+    target_drops,
+    legacy_link,
+    loop_aware,
+):
+    """Resolve plain leaf edges through the registered LeafHandler."""
+
+    logical_link = LogicalLink(
+        source=source,
+        target=target,
+        source_port=legacy_link.get("fromPort"),
+        target_port=legacy_link.get("toPort"),
+        is_stream=legacy_link.get("is_stream", False),
+        loop_aware=loop_aware,
+    )
+
+    handler = get_handler("leaf")
+    edges = handler.resolve_edges(
+        logical_link,
+        source_drops,
+        target_drops,
+        context,
+    )
+
+    for edge in edges:
+        link(
+            source,
+            target,
+            edge.source,
+            edge.target,
+            legacy_link,
+        )
 
 
 def _link_or_defer(context, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
