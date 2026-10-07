@@ -1,8 +1,10 @@
 import unittest
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock, patch
 
-from dlg.translator.errors import GInvalidLink, GInvalidNode
+from dlg.common import dropdict
+from dlg.translator.errors import GInvalidLink, GInvalidNode, GraphException
 from dlg.translator.stages.unroll.constructs.branch import BranchHandler
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
 from dlg.translator.stages.unroll.constructs.groupby import GroupByHandler
@@ -18,7 +20,173 @@ from dlg.translator.stages.unroll.constructs.scatter import ScatterHandler
 from dlg.translator.stages.unroll.constructs.service import ServiceHandler
 from dlg.translator.stages.unroll.constructs.subgraph import SubgraphHandler
 from dlg.translator.stages.unroll.lg_node import LGNode
+from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
+
+
+class TestGroupByHandlerResolveEdges(unittest.TestCase):
+    """Test the GroupBy edge pairing for IID-derived keys and error cases"""
+
+    class UnusedWiringContext:
+        session_id = "test"
+
+        @staticmethod
+        def node(node_id):
+            raise AssertionError(f"Unexpected node lookup: {node_id}")
+
+        @staticmethod
+        def chunk_size(source, target):
+            del source, target
+            raise AssertionError("GroupBy edge resolution should not chunk drops")
+
+        @staticmethod
+        def split(drops, size):
+            del drops, size
+            raise AssertionError("GroupBy edge resolution should not split drops")
+
+    @staticmethod
+    def _node(category, **attributes):
+        node = SimpleNamespace(
+            id=attributes.pop("id", category),
+            name=attributes.pop("name", category),
+            category=category,
+            is_group=category
+            in (Categories.GROUP_BY, Categories.SCATTER, Categories.LOOP),
+            jd={"category": category},
+            group=None,
+            h_level=0,
+        )
+        for name, value in attributes.items():
+            setattr(node, name, value)
+        return cast(LGNode, node)
+
+    def _resolve(self, source_iids, target_count, **target_attributes):
+        source_group = target_attributes.pop("source_group", None)
+        source = self._node(
+            Categories.PYTHON_APP,
+            h_level=target_attributes.pop("source_h_level", 0),
+        )
+        source.group = source_group
+        target = self._node(
+            Categories.GROUP_BY,
+            h_level=target_attributes.pop("target_h_level", 0),
+            group_keys=target_attributes.pop("group_keys", None),
+            group_by_scatter_layers=target_attributes.pop(
+                "group_by_scatter_layers", (target_count, [], [])
+            ),
+        )
+        link = LogicalLink(source=source, target=target)
+        sources = [dropdict({"iid": iid}) for iid in source_iids]
+        targets = [
+            dropdict({"target": index}) for index in range(target_count)
+        ]
+        edges = GroupByHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.UnusedWiringContext(),
+        )
+        return source, target, sources, targets, edges
+
+    def test_buckets_source_drops_and_sorts_group_keys(self):
+        _, _, sources, targets, edges = self._resolve(
+            ["2-1", "0-1", "0-2"],
+            2,
+        )
+
+        self.assertEqual(
+            [
+                (sources[0], targets[0]),
+                (sources[1], targets[0]),
+                (sources[2], targets[1]),
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+
+    def test_includes_outer_group_context_for_nested_scatter(self):
+        _, _, sources, targets, edges = self._resolve(
+            ["4-2-1", "5-2-1"],
+            2,
+            source_h_level=3,
+            target_h_level=1,
+        )
+
+        self.assertEqual(
+            [(sources[0], targets[0]), (sources[1], targets[1])],
+            [(edge.source, edge.target) for edge in edges],
+        )
+
+    def test_multi_key_groupby_reverses_iid_context(self):
+        _, _, sources, targets, edges = self._resolve(
+            ["0-1", "1-0"],
+            2,
+            group_keys=("first", "second"),
+            group_by_scatter_layers=(2, [0], []),
+            source_group=self._node(Categories.SCATTER),
+        )
+
+        self.assertEqual(
+            [
+                (sources[1], targets[0]),
+                (sources[0], targets[1]),
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+
+    def test_chained_multi_key_groupby_reads_group_key_after_dollar(self):
+        source = self._node(Categories.PYTHON_APP)
+        source.group = self._node(
+            Categories.GROUP_BY,
+            name="outer-groupby",
+        )
+        target = self._node(
+            Categories.GROUP_BY,
+            group_keys=("first", "second"),
+            group_by_scatter_layers=(2, [0, 1], []),
+        )
+        link = LogicalLink(source=source, target=target)
+        sources = [
+            dropdict({"iid": "0-1$2-3"}),
+            dropdict({"iid": "0-1$1-3"}),
+        ]
+        targets = [dropdict({"target": 0}), dropdict({"target": 1})]
+
+        edges = GroupByHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.UnusedWiringContext(),
+        )
+
+        self.assertEqual(
+            [
+                (sources[1], targets[0]),
+                (sources[0], targets[1]),
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+
+    def test_chained_multi_key_groupby_requires_dollar_context(self):
+        source = self._node(Categories.PYTHON_APP)
+        source.group = self._node(Categories.GROUP_BY)
+        target = self._node(
+            Categories.GROUP_BY,
+            group_keys=("first", "second"),
+            group_by_scatter_layers=(1, [0], []),
+        )
+        link = LogicalLink(source=source, target=target)
+
+        with self.assertRaisesRegex(GraphException, "hiearchy.*not specified"):
+            GroupByHandler().resolve_edges(
+                link,
+                [dropdict({"iid": "0-1"})],
+                [dropdict({"target": 0})],
+                self.UnusedWiringContext(),
+            )
+
+    def test_rejects_mismatch_between_group_keys_and_target_drops(self):
+        with self.assertRaisesRegex(GraphException, "# of Group keys 2 != # of Group Drops 1"):
+            self._resolve(["0-1", "0-2"], 1)
 
 
 class TestConstructHandlerDoP(unittest.TestCase):
