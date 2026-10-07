@@ -22,11 +22,13 @@
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from dlg.common import CategoryType
+from dlg.translator.stages.unroll.constructs.registry import get_handler
 from dlg.translator.stages.unroll.lg import LG
 from dlg.translator.stages.unroll.link import LinkContext, link_drops
+from dlg.translator.stages.unroll.wire import wire
 from dlg.translator.vocabulary import Categories
 
 
@@ -103,6 +105,62 @@ class TestLinkDrops(unittest.TestCase):
     def test_lg_no_longer_owns_the_link_helpers(self):
         self.assertFalse(hasattr(LG, "_is_stream_link"))
         self.assertFalse(hasattr(LG, "_link_drops"))
+
+    def test_within_group_pairing_uses_scatter_handler_then_common_linker(self):
+        source = SimpleNamespace(
+            id="group",
+            name="group",
+            category=Categories.GROUP_BY,
+            is_group=True,
+            group=None,
+            dop_diff=Mock(return_value=1),
+            jd={"category": Categories.GROUP_BY},
+        )
+        target = SimpleNamespace(
+            id="component",
+            name="component",
+            category="Component",
+            is_group=False,
+            group=None,
+            gid="group",
+            jd={"category": "Component"},
+        )
+        source_drops = [FakeDrop(oid="source-0"), FakeDrop(oid="source-1")]
+        target_drops = [FakeDrop(oid="target-0"), FakeDrop(oid="target-1")]
+        logical_link = {"from": source.id, "to": target.id}
+        lg = SimpleNamespace(
+            _session_id="session",
+            _drop_dict={
+                "new_added": [],
+                source.id: source_drops,
+                target.id: target_drops,
+            },
+            _done_dict={source.id: source, target.id: target},
+            _lg_links=[logical_link],
+            _loop_aware_set=set(),
+        )
+
+        with (
+            patch(
+                "dlg.translator.stages.unroll.wire.get_handler",
+                side_effect=get_handler,
+            ) as handler_lookup,
+            patch("dlg.translator.stages.unroll.wire._link_or_defer") as common_linker,
+        ):
+            wire(lg)
+
+        handler_lookup.assert_called_once_with(Categories.SCATTER)
+        self.assertEqual(
+            list(zip(source_drops, target_drops)),
+            [call.args[4:6] for call in common_linker.call_args_list],
+        )
+        context = common_linker.call_args_list[0].args[0]
+        self.assertIs(context.node(source.id), source)
+        self.assertEqual(1, context.chunk_size(source, target))
+        self.assertEqual(
+            [[source_drops[0]], [source_drops[1]]],
+            list(context.split(source_drops, 1)),
+        )
 
 
 if __name__ == "__main__":

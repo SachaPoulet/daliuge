@@ -26,6 +26,41 @@ from dlg.translator.vocabulary import Categories
 
 class TestConstructHandlerDoP(unittest.TestCase):
 
+    def test_scatter_resolves_aligned_boundary_edges(self):
+        source = SimpleNamespace(id="group", name="group")
+        target = SimpleNamespace(id="component", name="component")
+        link = LogicalLink(source, target)
+        sources = [{"oid": "source-0"}, {"oid": "source-1"}]
+        targets = [{"oid": "target-0"}, {"oid": "target-1"}]
+
+        edges = ScatterHandler().resolve_edges(link, sources, targets, None)
+
+        self.assertEqual(
+            [
+                (source_drop, target_drop)
+                for source_drop, target_drop in zip(sources, targets)
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+        self.assertTrue(all(edge.link is link for edge in edges))
+
+    def test_scatter_boundary_edge_resolution_preserves_length_error(self):
+        link = LogicalLink(
+            SimpleNamespace(id="group"),
+            SimpleNamespace(id="component"),
+        )
+
+        with self.assertRaisesRegex(
+            GraphException,
+            r"# 1 Group Inputs group must be the same as # 2 of Component Outputs component",
+        ):
+            ScatterHandler().resolve_edges(
+                link,
+                [{"oid": "source"}],
+                [{"oid": "target-0"}, {"oid": "target-1"}],
+                None,
+            )
+
     def test_gather_rejects_non_data_input(self):
         source = SimpleNamespace(
             id="source",

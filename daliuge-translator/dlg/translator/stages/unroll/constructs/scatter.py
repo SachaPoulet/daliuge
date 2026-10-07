@@ -1,10 +1,13 @@
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
-from dlg.translator.errors import GInvalidLink
-from dlg.translator.errors import GInvalidNode
+from dlg.common import dropdict
+from dlg.translator.errors import GInvalidLink, GInvalidNode, GraphException
 from dlg.translator.vocabulary import Categories
 
-from .base import GraphContext
+from .base import GraphContext, WiringContext
+
+if TYPE_CHECKING:
+    from ..model import Edge, LogicalLink
 
 
 class ScatterHandler:
@@ -45,3 +48,33 @@ class ScatterHandler:
             "One of 'num_of_copies', 'num_of_splits', "
             "'Number of copies' is required."
         )
+
+    def resolve_edges(
+        self,
+        link: "LogicalLink",
+        sources: Sequence[dropdict],
+        targets: Sequence[dropdict],
+        ctx: WiringContext,
+    ) -> list["Edge"]:
+        """Resolve the matrix's one-to-one within-group fallback.
+
+        Scatter creates no placeholder DROP. GroupBy or Gather may supply the
+        source DROPs at this boundary. Each source pairs with one target, and
+        ``link_drops`` performs the physical wiring.
+        """
+        del ctx
+
+        from ..model import Edge
+
+        if len(sources) != len(targets):
+            raise GraphException(
+                "For within-group links, # {2} Group Inputs {0} must be the same as "
+                "# {3} of Component Outputs {1}".format(
+                    link.source.id,
+                    link.target.id,
+                    len(sources),
+                    len(targets),
+                )
+            )
+
+        return [Edge(link, source, target) for source, target in zip(sources, targets)]
