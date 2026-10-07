@@ -231,6 +231,39 @@ class TestConstructHandlerDoP(unittest.TestCase):
             handler.degree_of_parallelism.assert_called_once_with(node)
 
 
+class TestSubgraphEdgeResolution(unittest.TestCase):
+
+    def test_subgraph_edges_are_noop(self):
+        subgraph = SimpleNamespace(name="subgraph")
+        leaf = SimpleNamespace(name="leaf")
+
+        handler = SubgraphHandler()
+
+        with self.subTest(direction="subgraph-source"):
+            link = LogicalLink(subgraph, leaf)
+            self.assertEqual(
+                [],
+                handler.resolve_edges(
+                    link,
+                    [{"oid": "source"}],
+                    [{"oid": "target"}],
+                    Mock(),
+                ),
+            )
+
+        with self.subTest(direction="subgraph-target"):
+            link = LogicalLink(leaf, subgraph)
+            self.assertEqual(
+                [],
+                handler.resolve_edges(
+                    link,
+                    [{"oid": "source"}],
+                    [{"oid": "target"}],
+                    Mock(),
+                ),
+            )
+
+
 class TestLeafEdgeResolution(unittest.TestCase):
     class FakeWiringContext:
         def __init__(self, chunk_size):
