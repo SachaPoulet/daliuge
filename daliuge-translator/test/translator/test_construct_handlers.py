@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from dlg.translator.errors import GInvalidLink, GInvalidNode
+from dlg.translator.errors import GInvalidLink, GInvalidNode, GraphException
 from dlg.translator.stages.unroll.constructs.branch import BranchHandler
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
 from dlg.translator.stages.unroll.constructs.groupby import GroupByHandler
@@ -229,6 +229,93 @@ class TestConstructHandlerDoP(unittest.TestCase):
 
             get_handler.assert_called_once_with(node)
             handler.degree_of_parallelism.assert_called_once_with(node)
+
+
+class TestGatherEdgeResolution(unittest.TestCase):
+    class FakeWiringContext:
+        def __init__(self, chunk_size):
+            self._chunk_size = chunk_size
+
+        def chunk_size(self, source, target):
+            del source, target
+            return self._chunk_size
+
+        @staticmethod
+        def split(drops, size):
+            for index in range(0, len(drops), size):
+                yield drops[index:index + size]
+
+    @staticmethod
+    def _node(node_id, h_level):
+        return SimpleNamespace(
+            id=node_id,
+            h_level=h_level,
+        )
+
+    def test_gather_groups_source_drops_by_chunk_size(self):
+        source = self._node("source", 2)
+        target = self._node("gather", 1)
+        link = LogicalLink(source, target)
+
+        sources = [
+            {"oid": "s0"},
+            {"oid": "s1"},
+            {"oid": "s2"},
+            {"oid": "s3"},
+        ]
+        targets = [
+            {"oid": "g0"},
+            {"oid": "g1"},
+        ]
+
+        edges = GatherHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.FakeWiringContext(2),
+        )
+
+        self.assertEqual(
+            [
+                ("s0", "g0"),
+                ("s1", "g0"),
+                ("s2", "g1"),
+                ("s3", "g1"),
+            ],
+            [
+                (edge.source["oid"], edge.target["oid"])
+                for edge in edges
+            ],
+        )
+
+    def test_gather_accepts_equal_h_level(self):
+        source = self._node("source", 1)
+        target = self._node("gather", 1)
+        link = LogicalLink(source, target)
+
+        edges = GatherHandler().resolve_edges(
+            link,
+            [{"oid": "s0"}],
+            [{"oid": "g0"}],
+            self.FakeWiringContext(1),
+        )
+
+        self.assertEqual(1, len(edges))
+        self.assertEqual("s0", edges[0].source["oid"])
+        self.assertEqual("g0", edges[0].target["oid"])
+
+    def test_gather_rejects_target_with_higher_level(self):
+        source = self._node("source", 1)
+        target = self._node("gather", 2)
+        link = LogicalLink(source, target)
+
+        with self.assertRaises(GraphException):
+            GatherHandler().resolve_edges(
+                link,
+                [{"oid": "s0"}],
+                [{"oid": "g0"}],
+                self.FakeWiringContext(1),
+            )
 
 
 class TestLeafEdgeResolution(unittest.TestCase):
