@@ -254,7 +254,7 @@ class TestServiceHandlerInstantiation(unittest.TestCase):
             node.jd["categoryType"],
         )
         self.assertFalse(node.is_data)
-        self.assertFalse(node.is_app)
+        self.assertTrue(node.is_app)
         node.make_single_drop.assert_called_once_with(coord)
 
     def test_non_group_service_instantiation_is_noop(self):

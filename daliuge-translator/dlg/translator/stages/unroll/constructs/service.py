@@ -38,17 +38,10 @@ class ServiceHandler:
 
         # Preserve the working Service behaviour from LGNode.make_single_drop:
         # Service constructs instantiate as Application DROPs.
+        # The flags route make_single_drop to _create_app_drop, whose dropclass
+        # setter leaves is_app=True as the legacy branch did.
         node.jd["categoryType"] = CategoryType.APPLICATION
-
-        was_data = node.is_data
-        was_app = node.is_app
         node.is_data = False
         node.is_app = True
 
-        try:
-            drop = node.make_single_drop(coord)
-        finally:
-            node.is_data = was_data
-            node.is_app = was_app
-
-        return [drop]
+        return [node.make_single_drop(coord)]
