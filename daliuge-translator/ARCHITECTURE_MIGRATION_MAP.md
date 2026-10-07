@@ -89,7 +89,7 @@ Every handler file draws from four current locations. This is the table to work 
 
 | Handler | `degree_of_parallelism` | `instantiate` | `synthesise_links` | `resolve_edges` | `validate_*` |
 |---------|------------------------|---------------|--------------------|-----------------|--------------|
-| **scatter.py** | [lg_node.py:619-629](dlg/dropmake/lg_node.py#L619) (incl. the `4` default) | none — Scatter emits no DROP; loop body at [lg.py:327-359](dlg/dropmake/lg.py#L327) | none | within-group len-equality link [lg.py:604-611](dlg/dropmake/lg.py#L604) | [lg.py:158-165](dlg/dropmake/lg.py#L158) |
+| **scatter.py** | [lg_node.py:619-629](dlg/dropmake/lg_node.py#L619) (incl. the `4` default) | none — Scatter emits no DROP; loop body at [lg.py:327-359](dlg/dropmake/lg.py#L327) | none | within-group len-equality link [lg.py:604-611](dlg/dropmake/lg.py#L604) — no Scatter ever reaches it, see §3.4 row 5 | [lg.py:158-165](dlg/dropmake/lg.py#L158) |
 | **gather.py** | [lg_node.py:630-641](dlg/dropmake/lg_node.py#L630) + `gather_width` [:510-525](dlg/dropmake/lg_node.py#L510) | `_create_gather_drops` [lg_node.py:814-848](dlg/dropmake/lg_node.py#L814) | group-start artificial links [lg.py:302-315](dlg/dropmake/lg.py#L302) | sequentialisation [lg.py:577-601](dlg/dropmake/lg.py#L577); as target [lg.py:743-746](dlg/dropmake/lg.py#L743) via `_unroll_gather_as_output` [:396-407](dlg/dropmake/lg.py#L396); **cache drain [lg.py:761-782](dlg/dropmake/lg.py#L761) DELETE** | [lg.py:171-182](dlg/dropmake/lg.py#L171), [:200-209](dlg/dropmake/lg.py#L200) |
 | **loop.py** | [lg_node.py:644-651](dlg/dropmake/lg_node.py#L644) — **and add the missing fallback**, §7 B4 | none — Loop emits no DROP | iteration circle [lg.py:287-301](dlg/dropmake/lg.py#L287) | end→start relink [lg.py:620-645](dlg/dropmake/lg.py#L620); cross-loop stepwise lock [lg.py:646-655](dlg/dropmake/lg.py#L646); `loop_aware` first/last iteration [lg.py:657-682](dlg/dropmake/lg.py#L657) | [lg.py:166-170](dlg/dropmake/lg.py#L166), [:218-232](dlg/dropmake/lg.py#L218) |
 | **groupby.py** | [lg_node.py:642-643](dlg/dropmake/lg_node.py#L642) + `groupby_width` [:526-543](dlg/dropmake/lg_node.py#L526) + `group_by_scatter_layers` [:544-611](dlg/dropmake/lg_node.py#L544) + `group_keys` [:489-509](dlg/dropmake/lg_node.py#L489) | `_create_groupby_drops` [lg_node.py:779-813](dlg/dropmake/lg_node.py#L779); multikey shape [lg.py:317-325](dlg/dropmake/lg.py#L317) | group-start links [lg.py:302-315](dlg/dropmake/lg.py#L302) | key bucketing [lg.py:693-742](dlg/dropmake/lg.py#L693) — **the `iid` parsing here is what `coordinate.py` replaces**; GroupBy→Gather [lg.py:612-616](dlg/dropmake/lg.py#L612) | [lg.py:183-199](dlg/dropmake/lg.py#L183), [:210-217](dlg/dropmake/lg.py#L210) |
@@ -132,7 +132,7 @@ nothing states it. Written out, top to bottom:
 | 2 | 563-573 | per-link preamble: resolve `slgn`/`tlgn`/`sdrops`/`tdrops`/`chunk_size` | `wire.py` dispatcher |
 | 3 | 577-601 | `src group`, `tgt leaf`, `src is_gather`, `tgt.gid != sid` | `gather.py` |
 | 4 | 602-603 | `src group`, `tgt leaf`, either is subgraph | `subgraph.py` |
-| 5 | 604-611 | `src group`, `tgt leaf`, else — requires `len(sdrops) == len(tdrops)` | `scatter.py` |
+| 5 | 604-611 | `src group`, `tgt leaf`, else — requires `len(sdrops) == len(tdrops)` | `scatter.py` — **misassigned, see note below** |
 | 6 | 612-616 | `src group`, `tgt group` — GroupBy→Gather only | `groupby.py` → `gather.py` |
 | 7 | 618-619 | both leaf, `src.is_start_node` → skip | `wire.py` |
 | 8 | 620-645 | both leaf, same loop gid, `src.is_group_end`, `tgt.is_group_start` | `loop.py` |
@@ -149,6 +149,18 @@ nothing states it. Written out, top to bottom:
 | 19 | 761-782 | gather cache drain | **DELETE** — two-pass removes the need; **contains a bug, §7 B3** |
 | 20 | 786-806 | scaffolding cleanup | per-handler `finalise()` |
 | 21 | 812-816 | flatten `_drop_dict` → list | `stage.py` |
+
+**Row 5 is not Scatter's.** The links that reach it are the group → first-child artificial
+links that `lgn_to_pgn` makes for every group *except* Scatter
+([lg.py:273](dlg/dropmake/lg.py#L273), `if not lgn.is_scatter`; the links themselves at
+[:302-315](dlg/dropmake/lg.py#L302)), which the handler table above already credits to
+`gather.py` and `groupby.py` under `synthesise_links`. The branch's own comment says the same:
+"Scatter 'naturally' does not have output". A Scatter source could not pass the guard anyway,
+since it emits no DROP and `len(sdrops) == 0`. Corpus, 2026-10-08: 27 calls, 26 from a Gather
+and 1 from a GroupBy, none from a Scatter. P4-3's Scatter PR (GitHub #96, issue #74) followed
+this row and routes the branch to `ScatterHandler.resolve_edges`; it is behaviour-preserving
+and was accepted as is (2026-10-08). Routing by source construct (GroupBy and Gather each resolving their own
+group-start links) is the alternative, not scheduled.
 
 Rows 3, 8-11 and 14 carry essentially all the semantic weight. Land them one per PR, corpus
 run between each (proposal §6 Phase 4).
@@ -474,3 +486,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | 2026-09-24 | Claude (Opus 5.5) | **B9 added** — nested constructs append their artificial links once per enclosing instance, and the duplicates reach the PGT as repeated `consumers`/`inputs`/`ports` entries (257 of 338 synthesised links, 17 corpus graphs). Found during P4-2; kept there for byte parity. No issue yet |
 | 2026-09-24 | Claude (Opus 5.5) | **B10-B13 added, B3 updated**, all from P4-2. B10: Gather output validation reads `src.inputs[0]` before the input link exists when links are listed in the other order — bare `IndexError`. B11 (suspected): the Gather drain splices inputs onto the first output DROP only. B12: the drain's `is_stream` comes from whichever link created the entry. B13: the sequentialisation branch, fixed in P4-2, still bypasses `_link_drops` and may re-use inputs. B3: the leaked `slgn` measured as always a Gather with port name `None`, so no drift is expected |
 | 2026-10-08 | Claude (Opus 5.5) | **B13 deferred to GitHub #98.** P4-3's Gather PR (#94, issue #76) moved group→Gather and leaf→Gather onto `GatherHandler.resolve_edges` but left the sequentialisation branch inline, because the cache it reads survived P4-2. #98 tracks the branch and carries the B11/B12 decisions with it |
+| 2026-10-08 | Claude (Opus 5.5) | **§3.4 row 5 marked misassigned.** The within-group len-equality branch is reached only by the GroupBy/Gather group-start artificial links, which `lgn_to_pgn` makes for every group except Scatter; corpus 26 Gather + 1 GroupBy, 0 Scatter. The P4-3 Scatter PR (#96, issue #74) followed the row and is kept, being behaviour-preserving. Note added under the matrix; the handler table's `scatter.py` `resolve_edges` cell points at it |
