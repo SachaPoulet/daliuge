@@ -117,7 +117,15 @@ def wire(lg):
             elif is_construct(slgn, Categories.SUBGRAPH) or is_construct(
                 tlgn, Categories.SUBGRAPH
             ):
-                pass
+                _resolve_subgraph_edges(
+                    context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                )
             else:
                 # Matrix row 5 assigns this within-group fallback to Scatter.
                 # Its source may be GroupBy or Gather; link() still creates
@@ -302,7 +310,15 @@ def wire(lg):
                     lk,
                 )
             elif is_construct(tlgn, Categories.SUBGRAPH):
-                pass
+                _resolve_subgraph_edges(
+                    context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                )
             else:
                 raise GraphException(
                     "Unsupported target group {0}".format(tlgn.jd.category)
@@ -357,6 +373,43 @@ def _resolve_gather_edges(
     )
 
     handler = get_handler(Categories.GATHER)
+    edges = handler.resolve_edges(
+        logical_link,
+        source_drops,
+        target_drops,
+        context,
+    )
+
+    for edge in edges:
+        link(
+            source,
+            target,
+            edge.source,
+            edge.target,
+            legacy_link,
+        )
+
+
+def _resolve_subgraph_edges(
+    context,
+    link,
+    source,
+    target,
+    source_drops,
+    target_drops,
+    legacy_link,
+):
+    """Resolve Subgraph edges through the registered SubgraphHandler."""
+
+    logical_link = LogicalLink(
+        source=source,
+        target=target,
+        source_port=legacy_link.get("fromPort"),
+        target_port=legacy_link.get("toPort"),
+        is_stream=legacy_link.get("is_stream", False),
+    )
+
+    handler = get_handler(Categories.SUBGRAPH)
     edges = handler.resolve_edges(
         logical_link,
         source_drops,
