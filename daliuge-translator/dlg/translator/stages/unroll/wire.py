@@ -123,7 +123,15 @@ def wire(lg):
             elif is_construct(slgn, Categories.SUBGRAPH) or is_construct(
                 tlgn, Categories.SUBGRAPH
             ):
-                pass
+                _resolve_subgraph_edges(
+                    handler_context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                )
             else:
                 if len(sdrops) != len(tdrops):
                     err_info = "For within-group links, # {2} Group Inputs {0} must be the same as # {3} of Component Outputs {1}".format(
@@ -284,7 +292,15 @@ def wire(lg):
                     link, slgn, tlgn, sdrops, tdrops, chunk_size, lk
                 )
             elif is_construct(tlgn, Categories.SUBGRAPH):
-                pass
+                _resolve_subgraph_edges(
+                    handler_context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                )
             else:
                 raise GraphException(
                     "Unsupported target group {0}".format(tlgn.jd.category)
@@ -317,6 +333,43 @@ def wire(lg):
         len(lg._lg_links),
         lg._session_id,
     )
+
+
+def _resolve_subgraph_edges(
+    context,
+    link,
+    source,
+    target,
+    source_drops,
+    target_drops,
+    legacy_link,
+):
+    """Resolve Subgraph edges through the registered SubgraphHandler."""
+
+    logical_link = LogicalLink(
+        source=source,
+        target=target,
+        source_port=legacy_link.get("fromPort"),
+        target_port=legacy_link.get("toPort"),
+        is_stream=legacy_link.get("is_stream", False),
+    )
+
+    handler = get_handler(Categories.SUBGRAPH)
+    edges = handler.resolve_edges(
+        logical_link,
+        source_drops,
+        target_drops,
+        context,
+    )
+
+    for edge in edges:
+        link(
+            source,
+            target,
+            edge.source,
+            edge.target,
+            legacy_link,
+        )
 
 
 def _resolve_leaf_edges(
