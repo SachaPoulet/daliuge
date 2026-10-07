@@ -2,7 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from dlg.translator.errors import GInvalidLink, GInvalidNode
+from dlg.common import CategoryType
+from dlg.translator.errors import GInvalidLink, GInvalidNode, GraphException
 from dlg.translator.stages.unroll.constructs.branch import BranchHandler
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
 from dlg.translator.stages.unroll.constructs.groupby import GroupByHandler
@@ -17,12 +18,48 @@ from dlg.translator.stages.unroll.constructs.registry import (
 from dlg.translator.stages.unroll.constructs.scatter import ScatterHandler
 from dlg.translator.stages.unroll.constructs.service import ServiceHandler
 from dlg.translator.stages.unroll.constructs.subgraph import SubgraphHandler
+from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
 
 
 class TestConstructHandlerDoP(unittest.TestCase):
+
+    def test_scatter_resolves_aligned_boundary_edges(self):
+        source = SimpleNamespace(id="group", name="group")
+        target = SimpleNamespace(id="component", name="component")
+        link = LogicalLink(source, target)
+        sources = [{"oid": "source-0"}, {"oid": "source-1"}]
+        targets = [{"oid": "target-0"}, {"oid": "target-1"}]
+
+        edges = ScatterHandler().resolve_edges(link, sources, targets, None)
+
+        self.assertEqual(
+            [
+                (source_drop, target_drop)
+                for source_drop, target_drop in zip(sources, targets)
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+        self.assertTrue(all(edge.link is link for edge in edges))
+
+    def test_scatter_boundary_edge_resolution_preserves_length_error(self):
+        link = LogicalLink(
+            SimpleNamespace(id="group"),
+            SimpleNamespace(id="component"),
+        )
+
+        with self.assertRaisesRegex(
+            GraphException,
+            r"# 1 Group Inputs group must be the same as # 2 of Component Outputs component",
+        ):
+            ScatterHandler().resolve_edges(
+                link,
+                [{"oid": "source"}],
+                [{"oid": "target-0"}, {"oid": "target-1"}],
+                None,
+            )
 
     def test_gather_rejects_non_data_input(self):
         source = SimpleNamespace(
@@ -261,6 +298,131 @@ class TestSubgraphEdgeResolution(unittest.TestCase):
                     [{"oid": "target"}],
                     Mock(),
                 ),
+            )
+
+
+class TestServiceHandlerInstantiation(unittest.TestCase):
+
+    def test_service_instantiation_creates_application_drop(self):
+        coord = InstanceId((0,))
+        drop = {"oid": "service-drop"}
+
+        node = Mock()
+        node.is_group = True
+        node.is_data = False
+        node.is_app = False
+        node.jd = {"categoryType": "Construct"}
+        node.make_single_drop.return_value = drop
+
+        result = ServiceHandler().instantiate(node, coord, None)
+
+        self.assertEqual([drop], result)
+        self.assertEqual(
+            CategoryType.APPLICATION,
+            node.jd["categoryType"],
+        )
+        self.assertFalse(node.is_data)
+        self.assertTrue(node.is_app)
+        node.make_single_drop.assert_called_once_with(coord)
+
+    def test_non_group_service_instantiation_is_noop(self):
+        node = Mock()
+        node.is_group = False
+
+        result = ServiceHandler().instantiate(
+            node,
+            InstanceId((0,)),
+            None,
+        )
+
+        self.assertEqual([], result)
+        node.make_single_drop.assert_not_called()
+
+
+class TestGatherEdgeResolution(unittest.TestCase):
+    class FakeWiringContext:
+        def __init__(self, chunk_size):
+            self._chunk_size = chunk_size
+
+        def chunk_size(self, source, target):
+            del source, target
+            return self._chunk_size
+
+        @staticmethod
+        def split(drops, size):
+            for index in range(0, len(drops), size):
+                yield drops[index:index + size]
+
+    @staticmethod
+    def _node(node_id, h_level):
+        return SimpleNamespace(
+            id=node_id,
+            h_level=h_level,
+        )
+
+    def test_gather_groups_source_drops_by_chunk_size(self):
+        source = self._node("source", 2)
+        target = self._node("gather", 1)
+        link = LogicalLink(source, target)
+
+        sources = [
+            {"oid": "s0"},
+            {"oid": "s1"},
+            {"oid": "s2"},
+            {"oid": "s3"},
+        ]
+        targets = [
+            {"oid": "g0"},
+            {"oid": "g1"},
+        ]
+
+        edges = GatherHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.FakeWiringContext(2),
+        )
+
+        self.assertEqual(
+            [
+                ("s0", "g0"),
+                ("s1", "g0"),
+                ("s2", "g1"),
+                ("s3", "g1"),
+            ],
+            [
+                (edge.source["oid"], edge.target["oid"])
+                for edge in edges
+            ],
+        )
+
+    def test_gather_accepts_equal_h_level(self):
+        source = self._node("source", 1)
+        target = self._node("gather", 1)
+        link = LogicalLink(source, target)
+
+        edges = GatherHandler().resolve_edges(
+            link,
+            [{"oid": "s0"}],
+            [{"oid": "g0"}],
+            self.FakeWiringContext(1),
+        )
+
+        self.assertEqual(1, len(edges))
+        self.assertEqual("s0", edges[0].source["oid"])
+        self.assertEqual("g0", edges[0].target["oid"])
+
+    def test_gather_rejects_target_with_higher_level(self):
+        source = self._node("source", 1)
+        target = self._node("gather", 2)
+        link = LogicalLink(source, target)
+
+        with self.assertRaises(GraphException):
+            GatherHandler().resolve_edges(
+                link,
+                [{"oid": "s0"}],
+                [{"oid": "g0"}],
+                self.FakeWiringContext(1),
             )
 
 
