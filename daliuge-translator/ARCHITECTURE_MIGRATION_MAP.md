@@ -453,6 +453,11 @@ are wired by hand, so they get no stream NullDROP, no `port_map` and no `BASH_SH
 parameters; and the inherited `while` walks the Gather's inputs again when there are fewer of
 them than `gather_width`, pairing the same inputs with further targets. Whether that re-use is
 intended is unknown. Belongs with `GatherHandler.resolve_edges` (P4-3).
+**Deferred from P4-3's Gather PR (GitHub #94, issue #76) to its own issue, GitHub #98.** The
+branch reads the Gather cache, which P4-2 moved into `wire()` rather than deleting, so #94 left
+it inline (now `stages/unroll/wire.py`) and routed only group→Gather and leaf→Gather through
+the handler. #98 also takes the B11 and B12 decisions, since the fix changes what the cache
+holds.
 
 ---
 
@@ -468,3 +473,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | 2026-09-01 | Claude (Opus 5) | **B1 closed.** The entry still asked for a determination that Phase 0 had already made on 2026-08-31; proposal §5 row 9b records the verdict (dead code, delete, do not port) and this map contradicted it. B1 rewritten with both cases and their corpus pins, §3.2's `service.py` row repointed from "broken today" to "dead, DELETE in P4-2". **B1b added** — the Service `oid`/`lg_key` `uuid.uuid4()` nondeterminism from the same run, which is live, blocks `service_simple`'s golden, and has no issue yet |
 | 2026-09-24 | Claude (Opus 5.5) | **B9 added** — nested constructs append their artificial links once per enclosing instance, and the duplicates reach the PGT as repeated `consumers`/`inputs`/`ports` entries (257 of 338 synthesised links, 17 corpus graphs). Found during P4-2; kept there for byte parity. No issue yet |
 | 2026-09-24 | Claude (Opus 5.5) | **B10-B13 added, B3 updated**, all from P4-2. B10: Gather output validation reads `src.inputs[0]` before the input link exists when links are listed in the other order — bare `IndexError`. B11 (suspected): the Gather drain splices inputs onto the first output DROP only. B12: the drain's `is_stream` comes from whichever link created the entry. B13: the sequentialisation branch, fixed in P4-2, still bypasses `_link_drops` and may re-use inputs. B3: the leaked `slgn` measured as always a Gather with port name `None`, so no drift is expected |
+| 2026-10-08 | Claude (Opus 5.5) | **B13 deferred to GitHub #98.** P4-3's Gather PR (#94, issue #76) moved group→Gather and leaf→Gather onto `GatherHandler.resolve_edges` but left the sequentialisation branch inline, because the cache it reads survived P4-2. #98 tracks the branch and carries the B11/B12 decisions with it |
