@@ -22,21 +22,43 @@
 # These passes were lifted out of LG.unroll_to_tpl and still work on LG's
 # own state, until the handler contexts replace it.
 # pylint: disable=protected-access
-import collections
 import logging
 from functools import partial
 from itertools import product
 
 from dlg.translator.errors import GraphException
-from dlg.translator.stages.unroll.constructs.registry import is_construct
+from dlg.translator.stages.unroll.constructs.registry import (
+    get_handler_for_node,
+    is_construct,
+)
 from dlg.translator.stages.unroll.link import (
     LinkContext,
     _is_stream_link,
     link_drops,
 )
+from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
+
+
+class _HandlerWiringContext:
+    """ adapt the LG state and wire helpers to edge-handler context interface"""
+
+    def __init__(self, lg):
+        self._lg = lg
+        self.session_id = lg._session_id
+
+    def node(self, node_id):
+        return self._lg._done_dict[node_id]
+
+    @staticmethod
+    def chunk_size(source, target):
+        return _get_chunk_size(source, target)
+
+    @staticmethod
+    def split(drops, size):
+        return _split_list(drops, size)
 
 
 def wire(lg):
@@ -51,6 +73,7 @@ def wire(lg):
     # are held here and spliced after every link has been wired.
     gathers = {}
     context = LinkContext(lg._session_id, lg._drop_dict["new_added"])
+    handler_context = _HandlerWiringContext(lg)
     link = partial(_link_or_defer, context, gathers)
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
@@ -195,55 +218,25 @@ def wire(lg):
                             link(slgn, tlgn, sdrops[i], tdrop, lk)
         else:  # slgn is not group, but tlgn is group
             if is_construct(tlgn, Categories.GROUP_BY):
-                grpby_dict = collections.defaultdict(list)
-                layer_index = tlgn.group_by_scatter_layers[1]
-                for gdd in sdrops:
-                    src_ctx = gdd["iid"].split("-")
-                    if tlgn.group_keys is None:
-                        # the last bit of iid (current h id) is the local GrougBy key, i.e. inner most loop context id
-                        gby = src_ctx[-1]
-                        if (
-                            slgn.h_level - 2 == tlgn.h_level and tlgn.h_level > 0
-                        ):  # groupby itself is nested inside a scatter
-                            # group key consists of group context id + inner most loop context id
-                            gctx = "-".join(src_ctx[0:-2])
-                            gby = f"{gctx}-{gby}"
-                    else:
-                        # find the "group by" scatter level
-                        gbylist = []
-                        if is_construct(
-                            slgn.group, Categories.GROUP_BY
-                        ):  # a chain of group bys
-                            try:
-                                src_ctx = gdd["iid"].split("$")[1].split("-")
-                            except IndexError as e:
-                                raise GraphException(
-                                    "The group by hiearchy in the multi-key group by '{0}' is not specified for node '{1}'".format(
-                                        slgn.group.name, slgn.name
-                                    )
-                                ) from e
-                        else:
-                            src_ctx.reverse()
-                        for lid in layer_index:
-                            gbylist.append(src_ctx[lid])
-                        gby = "-".join(gbylist)
-                    grpby_dict[gby].append(gdd)
-                grp_keys = grpby_dict.keys()
-                if len(grp_keys) != len(tdrops):
-                    # this happens when groupby itself is nested inside a scatter
-                    raise GraphException(
-                        "# of Group keys {0} != # of Group Drops {1} for LGN {2}".format(
-                            len(grp_keys), len(tdrops), tlgn.id
-                        )
-                    )
-                grp_keys = sorted(grp_keys)
-                for i, gk in enumerate(grp_keys):
-                    grpby_drop = tdrops[i]
-                    drop_list = grpby_dict[gk]
-                    for drp in drop_list:
-                        link(slgn, tlgn, drp, grpby_drop, lk)
-                        # drp.addOutput(grpby_drop)
-                        # grpby_drop.addInput(drp)
+                handler = get_handler_for_node(tlgn)
+                logical_link = LogicalLink(
+                    source=slgn,
+                    target=tlgn,
+                    source_port=lk.get("fromPort"),
+                    target_port=lk.get("toPort"),
+                    is_stream=lk.get("is_stream", False),
+                    loop_aware=("%s-%s" % (sid, tid))
+                    in lg._loop_aware_set,
+                )
+                edges = handler.resolve_edges(
+                    logical_link,
+                    sdrops,
+                    tdrops,
+                    handler_context,
+                )
+                for edge in edges:
+                    link(edge.link.source, edge.link.target, edge.source, edge.target, lk)
+
             elif is_construct(tlgn, Categories.GATHER):
                 _unroll_gather_as_output(
                     link, slgn, tlgn, sdrops, tdrops, chunk_size, lk
