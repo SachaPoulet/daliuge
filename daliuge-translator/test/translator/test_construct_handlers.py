@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from dlg.common import CategoryType
 from dlg.translator.errors import GInvalidLink, GInvalidNode, GraphException
 from dlg.translator.stages.unroll.constructs.branch import BranchHandler
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
@@ -17,6 +18,7 @@ from dlg.translator.stages.unroll.constructs.registry import (
 from dlg.translator.stages.unroll.constructs.scatter import ScatterHandler
 from dlg.translator.stages.unroll.constructs.service import ServiceHandler
 from dlg.translator.stages.unroll.constructs.subgraph import SubgraphHandler
+from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
@@ -229,6 +231,44 @@ class TestConstructHandlerDoP(unittest.TestCase):
 
             get_handler.assert_called_once_with(node)
             handler.degree_of_parallelism.assert_called_once_with(node)
+
+
+class TestServiceHandlerInstantiation(unittest.TestCase):
+
+    def test_service_instantiation_creates_application_drop(self):
+        coord = InstanceId((0,))
+        drop = {"oid": "service-drop"}
+
+        node = Mock()
+        node.is_group = True
+        node.is_data = False
+        node.is_app = False
+        node.jd = {"categoryType": "Construct"}
+        node.make_single_drop.return_value = drop
+
+        result = ServiceHandler().instantiate(node, coord, None)
+
+        self.assertEqual([drop], result)
+        self.assertEqual(
+            CategoryType.APPLICATION,
+            node.jd["categoryType"],
+        )
+        self.assertFalse(node.is_data)
+        self.assertTrue(node.is_app)
+        node.make_single_drop.assert_called_once_with(coord)
+
+    def test_non_group_service_instantiation_is_noop(self):
+        node = Mock()
+        node.is_group = False
+
+        result = ServiceHandler().instantiate(
+            node,
+            InstanceId((0,)),
+            None,
+        )
+
+        self.assertEqual([], result)
+        node.make_single_drop.assert_not_called()
 
 
 class TestGatherEdgeResolution(unittest.TestCase):
