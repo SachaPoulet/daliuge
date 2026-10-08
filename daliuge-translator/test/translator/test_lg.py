@@ -85,6 +85,67 @@ class TestLGInit(unittest.TestCase):
         self.assertEqual(CategoryType.DATA, memory_node["categoryType"])
         self.assertEqual(1, len(lg.unroll_to_tpl()))
 
+    def test_mpi_unroll_creates_process_drops_with_ranks(self):
+        """Test MPI drops and ranks are preserved when a 
+        real logical graph is fully unrolled."""
+        graph = {
+            "modelData": {
+                "filePath": "mpi-instantiation.graph",
+                "schemaVersion": 2,
+            },
+            "nodeDataArray": [
+                {
+                    "id": "mpi",
+                    "name": "mpi",
+                    "category": "Mpi",
+                    "categoryType": CategoryType.APPLICATION,
+                    "num_of_procs": 3,
+                    "fields": [
+                        {
+                            "id": "mpi-output",
+                            "name": "output",
+                            "usage": "OutputPort",
+                            "value": "",
+                        }
+                    ],
+                },
+                {
+                    "id": "worker",
+                    "name": "worker",
+                    "category": "PythonApp",
+                    "categoryType": CategoryType.APPLICATION,
+                    "fields": [
+                        {
+                            "id": "worker-input",
+                            "name": "input",
+                            "usage": "InputPort",
+                            "value": "",
+                        }
+                    ],
+                },
+            ],
+            "linkDataArray": [
+                {
+                    "from": "mpi",
+                    "to": "worker",
+                    "fromPort": "mpi-output",
+                    "toPort": "worker-input",
+                }
+            ],
+        }
+
+        drops = LG(graph, ssid="mpi-test").unroll_to_tpl()
+        mpi_drops = sorted(
+            (drop for drop in drops if drop["category"] == "Mpi"),
+            key=lambda drop: drop["proc_index"],
+        )
+
+        self.assertEqual(3, len(mpi_drops))
+        self.assertEqual([0, 1, 2], [drop["proc_index"] for drop in mpi_drops])
+        self.assertEqual(["0-0", "0-1", "0-2"], [drop["iid"] for drop in mpi_drops])
+        self.assertEqual([[0, 0], [0, 1], [0, 2]], [drop["rank"] for drop in mpi_drops])
+        self.assertTrue(all(drop["oid"].startswith("mpi-test_mpi_") for drop in mpi_drops))
+
 
 def _calc_num_drops(drop_values):
     """
