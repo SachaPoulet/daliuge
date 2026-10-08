@@ -29,6 +29,7 @@ from dlg.translator.vocabulary import Categories
 
 class TestMPIHandlerInstantiate(unittest.TestCase):
     def test_creates_one_drop_per_process_with_rank_and_loop_context(self):
+        """Test that MPIHandler creates one correctly indexed drop per process."""
         node = SimpleNamespace(dop=3, make_single_drop=Mock())
         node.make_single_drop.side_effect = lambda coord, **kwargs: dropdict(
             {"iid": str(coord), **kwargs}
@@ -53,6 +54,7 @@ class TestMPIHandlerInstantiate(unittest.TestCase):
         )
 
     def test_instantiator_routes_mpi_nodes_through_handler(self):
+        """Test the instantiator correctly routes MPI nodes through MPIHandler."""
         node = SimpleNamespace(
             id="mpi",
             category=Categories.MPI,
