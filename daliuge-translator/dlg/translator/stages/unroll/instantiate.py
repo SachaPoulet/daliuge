@@ -27,11 +27,30 @@ import logging
 import numpy as np
 
 from dlg.translator.errors import GInvalidNode
-from dlg.translator.stages.unroll.constructs.registry import is_construct
+from dlg.translator.stages.unroll.constructs.registry import (
+    get_handler_for_node,
+    is_construct,
+)
 from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
+
+
+class _InstantiationContext:
+    def __init__(self, lg, loop_context):
+        self._lg = lg
+        self.session_id = lg._session_id
+        self.loop_context = loop_context
+
+    def node(self, node_id):
+        return self._lg._done_dict[node_id]
+
+    def drops_of(self, node_id):
+        return self._lg._drop_dict[node_id]
+
+    def add_drop(self, node_id, drop):
+        self._lg._drop_dict[node_id].append(drop)
 
 
 def synthesise_links(lg):
@@ -168,10 +187,13 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
             for child in lgn.children:
                 lgn_to_pgn(lg, child, miid, get_child_lp_ctx(lgn, lpcxt, i))
     elif is_construct(lgn, Categories.MPI):
-        for i in range(lgn.dop):
-            miid = iid.child(i)
-            src_drop = lgn.make_single_drop(miid, loop_ctx=lpcxt, proc_index=i)
-            lg._drop_dict[lgn.id].append(src_drop)
+        handler = get_handler_for_node(lgn)
+        drops = handler.instantiate(
+            lgn,
+            iid,
+            _InstantiationContext(lg, lpcxt),
+        )
+        lg._drop_dict[lgn.id].extend(drops)
     elif is_construct(lgn, Categories.SERVICE):
         # no action required, inputapp node aleady created and marked with "isService"
         pass
