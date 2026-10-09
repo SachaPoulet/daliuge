@@ -145,6 +145,20 @@ class TestLGInit(unittest.TestCase):
         self.assertEqual(["0-0", "0-1", "0-2"], [drop["iid"] for drop in mpi_drops])
         self.assertEqual([[0, 0], [0, 1], [0, 2]], [drop["rank"] for drop in mpi_drops])
         self.assertTrue(all(drop["oid"].startswith("mpi-test_mpi_") for drop in mpi_drops))
+        worker_drop = next(drop for drop in drops if drop["category"] == "PythonApp")
+        worker_oid = worker_drop["oid"]
+        self.assertEqual(
+            [[{worker_oid: "output"}]] * 3,
+            [drop["outputs"] for drop in mpi_drops],
+        )
+        self.assertEqual(
+            [{drop["oid"]: "input"} for drop in mpi_drops],
+            worker_drop["producers"],
+        )
+        self.assertEqual(
+            {"input": "output"},
+            worker_drop["port_map"],
+        )
 
 
 def _calc_num_drops(drop_values):
