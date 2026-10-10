@@ -33,7 +33,7 @@ import math
 from dlg.translator.errors import GraphException
 from dlg.translator.stages.partition.scheduler import DAGUtil
 from dlg.translator.stages.partition.linearise import linearise
-from dlg.common import CategoryType
+from dlg.translator.stages.partition.projections.gojs import project_gojs
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -343,72 +343,52 @@ class PGT(object):
 
     def to_gojs_json(self, string_rep=True, visual=False):
         """
-        Convert PGT (without any partitions) to JSON for visualisation in GOJS
+        Convert PGT (without any partitions) to JSON for visualisation in GOJS.
 
-        Sub-class PGTPs will override this function, and replace this with
-        actual partitioning, and the visulisation becomes an option
+        Sub-class PGTPs override this function to perform partition-specific
+        preparation before delegating to this projection.
         """
-        G = self.dag
-        ret = dict()
-        ret["class"] = "go.GraphLinksModel"
-        nodes = []
-        links = []
-        # key_dict = dict()  # key - oid, value - GOJS key
+        del visual
 
-        for i, drop in enumerate(self._drop_list):
+        graph = self.dag
+        links = []
+
+        for index, drop in enumerate(self._drop_list):
             oid = drop["oid"]
-            node = dict()
-            node["key"] = i + 1
-            self._gojs_key_dict[oid] = i + 1
-            node["oid"] = oid
-            tt = drop["categoryType"]
-            if CategoryType.DATA == tt:
-                node["category"] = "Data"
-            elif CategoryType.APPLICATION == tt:
-                node["category"] = "Application"
-            node["name"] = drop["name"]
+            self._gojs_key_dict[oid] = index + 1
+
+            # Preserve the legacy normalisation performed before projection.
             if "iid" not in drop:
                 drop["iid"] = 0
-            node["iid"] = drop["iid"]
-            nodes.append(node)
 
         if self._extra_drops is None:
             self._extra_drops, links = linearise(
                 self._drop_list,
-                G,
+                graph,
                 self._gojs_key_dict,
             )
         else:
             for drop in self._drop_list:
-                oid = drop["oid"]
-                myk = self._gojs_key_dict[oid]
-                for oup in G.successors(myk):
-                    link = dict()
-                    link["from"] = myk
-                    link["to"] = oup
-                    links.append(link)
+                source_key = self._gojs_key_dict[drop["oid"]]
 
-        # going through the extra_drops
-        for i, drop in enumerate(self._extra_drops):
-            oid = drop["oid"]
-            node = dict()
-            node["key"] = (i + 1) * -1
-            node["oid"] = oid
-            tt = drop["categoryType"]
-            if tt == CategoryType.DATA:
-                node["category"] = "Data"
-            elif tt == CategoryType.APPLICATION:
-                node["category"] = "PythonApp"  # might not be correct
-            node["name"] = drop["name"]
-            nodes.append(node)
-            node["iid"] = drop["iid"]
+                for target_key in graph.successors(source_key):
+                    links.append(
+                        {
+                            "from": source_key,
+                            "to": target_key,
+                        }
+                    )
+
         self._links = links
-        ret["nodeDataArray"] = nodes
-        ret["linkDataArray"] = links
-        self.gojs_json_obj = ret
+
+        model = project_gojs(
+            self._drop_list,
+            self._extra_drops,
+            links,
+        )
+        self.gojs_json_obj = model
+
         if string_rep:
-            return json.dumps(ret, indent=2)
-        elif visual:
-            return ret
-        else:
-            return ret
+            return json.dumps(model, indent=2)
+
+        return model
