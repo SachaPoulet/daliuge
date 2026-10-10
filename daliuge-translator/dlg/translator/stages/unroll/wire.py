@@ -22,7 +22,6 @@
 # These passes were lifted out of LG.unroll_to_tpl and still work on LG's
 # own state; _WireContext adapts it to the handler context API.
 # pylint: disable=protected-access
-import collections
 import logging
 from functools import partial
 from itertools import product
@@ -250,55 +249,33 @@ def wire(lg):
                     )
         else:  # slgn is not group, but tlgn is group
             if is_construct(tlgn, Categories.GROUP_BY):
-                grpby_dict = collections.defaultdict(list)
-                layer_index = tlgn.group_by_scatter_layers[1]
-                for gdd in sdrops:
-                    src_ctx = gdd["iid"].split("-")
-                    if tlgn.group_keys is None:
-                        # the last bit of iid (current h id) is the local GrougBy key, i.e. inner most loop context id
-                        gby = src_ctx[-1]
-                        if (
-                            slgn.h_level - 2 == tlgn.h_level and tlgn.h_level > 0
-                        ):  # groupby itself is nested inside a scatter
-                            # group key consists of group context id + inner most loop context id
-                            gctx = "-".join(src_ctx[0:-2])
-                            gby = f"{gctx}-{gby}"
-                    else:
-                        # find the "group by" scatter level
-                        gbylist = []
-                        if is_construct(
-                            slgn.group, Categories.GROUP_BY
-                        ):  # a chain of group bys
-                            try:
-                                src_ctx = gdd["iid"].split("$")[1].split("-")
-                            except IndexError as e:
-                                raise GraphException(
-                                    "The group by hiearchy in the multi-key group by '{0}' is not specified for node '{1}'".format(
-                                        slgn.group.name, slgn.name
-                                    )
-                                ) from e
-                        else:
-                            src_ctx.reverse()
-                        for lid in layer_index:
-                            gbylist.append(src_ctx[lid])
-                        gby = "-".join(gbylist)
-                    grpby_dict[gby].append(gdd)
-                grp_keys = grpby_dict.keys()
-                if len(grp_keys) != len(tdrops):
-                    # this happens when groupby itself is nested inside a scatter
-                    raise GraphException(
-                        "# of Group keys {0} != # of Group Drops {1} for LGN {2}".format(
-                            len(grp_keys), len(tdrops), tlgn.id
-                        )
+                logical_link = LogicalLink(
+                    source=slgn,
+                    target=tlgn,
+                    source_port=lk.get("fromPort"),
+                    target_port=lk.get("toPort"),
+                    is_stream=lk.get("is_stream", False),
+                    loop_aware=("%s-%s" % (sid, tid))
+                    in lg._loop_aware_set,
+                )
+
+                handler = get_handler(Categories.GROUP_BY)
+                edges = handler.resolve_edges(
+                    logical_link,
+                    sdrops,
+                    tdrops,
+                    context,
+                )
+
+                for edge in edges:
+                    link(
+                        slgn,
+                        tlgn,
+                        edge.source,
+                        edge.target,
+                        lk,
                     )
-                grp_keys = sorted(grp_keys)
-                for i, gk in enumerate(grp_keys):
-                    grpby_drop = tdrops[i]
-                    drop_list = grpby_dict[gk]
-                    for drp in drop_list:
-                        link(slgn, tlgn, drp, grpby_drop, lk)
-                        # drp.addOutput(grpby_drop)
-                        # grpby_drop.addInput(drp)
+
             elif is_construct(tlgn, Categories.GATHER):
                 _resolve_gather_edges(
                     context,
