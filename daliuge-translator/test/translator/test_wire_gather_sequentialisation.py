@@ -11,6 +11,7 @@ import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from dlg.common import dropdict
 from dlg.translator.stages.unroll import wire as wire_module
@@ -280,6 +281,108 @@ class TestGatherSources(unittest.TestCase):
         )
 
         self.assertEqual({}, dict(self.sources))
+
+
+class TestChainedEdgeWiring(unittest.TestCase):
+    """Chained edges are wired by link_drops, from the input's own node."""
+
+    @staticmethod
+    def _link_to_start(lg):
+        return next(link for link in lg._lg_links if link["to"] == START_ID)
+
+    def test_each_chained_edge_goes_through_link_drops(self):
+        lg = sequentialisation_lg(*CASES["top_level_even"])
+        into_gather = next(
+            link
+            for link in lg._lg_links
+            if link["from"] == FILE_ID and link["to"] == GATHER_ID
+        )
+        to_start = self._link_to_start(lg)
+
+        with patch.object(
+            wire_module, "link_drops", wraps=wire_module.link_drops
+        ) as linker:
+            lg.unroll_to_tpl()
+
+        file_oids = {drop["oid"] for drop in lg._drop_dict[FILE_ID]}
+        chained = [
+            call.args for call in linker.call_args_list if call.args[2].id == START_ID
+        ]
+        self.assertEqual(2, len(chained))
+        for _, source, _, source_drop, _, chained_link in chained:
+            self.assertEqual(FILE_ID, source.id)
+            self.assertIn(source_drop["oid"], file_oids)
+            self.assertEqual(
+                {
+                    "from": FILE_ID,
+                    "to": START_ID,
+                    "fromPort": into_gather.get("fromPort"),
+                    "toPort": to_start.get("toPort"),
+                    "is_stream": to_start.get("is_stream", False),
+                },
+                chained_link,
+            )
+
+    def test_a_streaming_gather_link_chains_streaming_inputs(self):
+        lg = sequentialisation_lg(*CASES["top_level_even"])
+        self._link_to_start(lg)["is_stream"] = True
+
+        lg.unroll_to_tpl()
+
+        chained = [
+            drop for drop in lg._drop_dict[START_ID] if drop["iid"] in ("0-2", "0-3")
+        ]
+        for drop in chained:
+            self.assertEqual(1, len(drop["streamingInputs"]))
+            self.assertNotIn("inputs", drop)
+
+    def test_a_groupby_input_is_substituted_once_and_a_gather_input_skipped(self):
+        def node(node_id, category, category_type, **attributes):
+            return SimpleNamespace(
+                id=node_id,
+                name=node_id,
+                category=category,
+                is_group=category_type == "Construct",
+                jd={"category": category, "categoryType": category_type},
+                getPortName=Mock(return_value=node_id + "-port"),
+                **attributes,
+            )
+
+        groupby = node("groupby", Categories.GROUP_BY, "Construct")
+        upstream = node("upstream", Categories.GATHER, "Construct")
+        gather = node("gather", Categories.GATHER, "Construct", gather_width=1)
+        start = node(
+            "start", "PythonApp", "Application", group=SimpleNamespace(dop=2)
+        )
+        group_data = dropdict({"oid": "group-data"})
+        raw = dropdict({"oid": "groupby-0", "grp-data_drop": group_data})
+        sources = {
+            "g0": [
+                wire_module.GatherSource(
+                    groupby, raw, {"from": "groupby", "to": "gather"}
+                ),
+                wire_module.GatherSource(
+                    upstream,
+                    dropdict({"oid": "upstream-0"}),
+                    {"from": "upstream", "to": "gather"},
+                ),
+            ]
+        }
+        targets = [dropdict({"oid": "t0"}), dropdict({"oid": "t1"})]
+
+        wire_module._sequentialise_gather(
+            LinkContext("session-", []),
+            sources,
+            gather,
+            start,
+            [dropdict({"oid": "g0"})],
+            targets,
+            {"from": "gather", "to": "start"},
+        )
+
+        self.assertEqual([{"group-data": "start-port"}], targets[1]["inputs"])
+        self.assertNotIn("consumers", raw)
+        self.assertNotIn("inputs", targets[0])
 
 
 if __name__ == "__main__":
