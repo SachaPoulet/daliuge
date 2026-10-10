@@ -22,7 +22,6 @@
 # These passes were lifted out of LG.unroll_to_tpl and still work on LG's
 # own state; _WireContext adapts it to the handler context API.
 # pylint: disable=protected-access
-import collections
 import logging
 from functools import partial
 from itertools import product
