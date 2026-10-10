@@ -79,33 +79,34 @@ class GroupByHandler:
         layer_index = target_node.group_by_scatter_layers[1]
 
         for source_drop in sources:
-            source_context = source_drop["iid"].split("-")
+            coord = source_drop.coord
+            source_context = coord.path
+
             if target_node.group_keys is None:
-                group_key = source_context[-1]
+                group_key = str(source_context[-1])
                 if (
                     source_node.h_level - 2 == target_node.h_level
                     and target_node.h_level > 0
                 ):
-                    group_context = "-".join(source_context[0:-2])
+                    group_context = "-".join(
+                        str(value) for value in source_context[0:-2]
+                    )
                     group_key = f"{group_context}-{group_key}"
             else:
                 if is_construct(source_node.group, Categories.GROUP_BY):
-                    try:
-                        source_context = (
-                            source_drop["iid"].split("$")[1].split("-")
-                        )
-                    except IndexError as error:
+                    source_context = coord.group_key
+                    if not source_context:
                         raise GraphException(
                             "The group by hiearchy in the multi-key group by "
                             "'{0}' is not specified for node '{1}'".format(
                                 source_node.group.name, source_node.name
                             )
-                        ) from error
+                        )
                 else:
-                    source_context.reverse()
+                    source_context = tuple(reversed(coord.path))
 
                 group_key = "-".join(
-                    source_context[index] for index in layer_index
+                    str(source_context[index]) for index in layer_index
                 )
 
             groups[group_key].append(source_drop)
