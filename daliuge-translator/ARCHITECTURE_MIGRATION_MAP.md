@@ -470,6 +470,24 @@ branch reads the Gather cache, which P4-2 moved into `wire()` rather than deleti
 it inline (now `stages/unroll/wire.py`) and routed only group→Gather and leaf→Gather through
 the handler. #98 also takes the B11 and B12 decisions, since the fix changes what the cache
 holds.
+**✅ Resolved in GitHub PR #108 (issue #98), 2026-10-11.** The pairing moved to
+`GatherHandler.resolve_sequential_edges` and the chained edges are wired by `link_drops` from
+each input's own node, link and raw drop, which `_link_or_defer` records in a side table
+(`GatherSource`). The cache is unchanged, so **B11 and B12 were not needed and stay open**. The
+branch now runs after the link loop; that changes nothing today, because B10 rejects the
+opposite link order in validation. The re-use is **intended**: with fewer inputs than its
+window, re-using them is the only way every target in the window still waits on one (dropping
+it leaves targets unthrottled). Through `link_drops` the edges gain port-id port names and the
+link's `is_stream`, but **not** a stream NullDROP or BASH parameters — those checks never fire
+anywhere, §7 **B16**. Two limitations are recorded, not fixed:
+- **Extra inputs are ignored.** When an iteration has more than one output into the Gather, only
+  the first `gather_width` inputs are chained, so the next wave waits on part of the previous
+  one. A barrier (every target waits on all inputs) would cover it, at inputs × targets edges per
+  window and less overlap; not adopted.
+- **Nested Scatters with an uneven DoP chain across outer iterations.** A top-level Gather chunks
+  its inputs by `gather_width` across outer-iteration boundaries (`nested_uneven_2x5`: Gather drop
+  2 holds `0-0-4` and `0-1-0`), so no window rule can keep the waves inside one outer iteration.
+  Kept as is; fixing it means changing how the Gather chunks (`resolve_edges`, P4-3 #94).
 
 **B14 — the visual linearisation path cannot produce a PG.** `min_num_parts` (and `pso`, which
 does not run at all) synthesises intermediate DROPs only when `to_gojs_json` is called with
@@ -500,6 +518,29 @@ path never completes. Proposal §8 Q3 and P6-1 assumed otherwise; both are corre
 only moves the failure to point 2). The fix spans `linearise.py`, `to_pg_spec` and the
 scheduler, and wants its own issue — none yet. Recorded as proposal §5 row 22.
 
+**B15 — Gather sequentialisation overran its targets on an uneven DoP. ✅ Fixed in GitHub PR #108
+(issue #98).** The window bound `min((i + 2) · gather_width, dop · (i + 1))` capped only the
+first window, so whenever the Scatter's DoP is not a multiple of `gather_width` the last window
+indexed past the group-start drops: `IndexError` on a top-level Scatter (DoP 3 or 5, width 2).
+P4-2's guard bounded the `while` by `j_end`, not by `len(tdrops)`. The fix stops a window at the
+last target. A sweep of 432 shapes (outer 1-3 × DoP 1-12 × width 1-12) gave 111 crashes, all
+fixed, and 0 changes among the 321 that did not crash. Corpus: no graph reaches the branch.
+Recorded as proposal §5 row 23.
+
+**B16 — the stream and BASH checks in linking compare `categoryType` with category names, so
+they never fire.** `_is_stream_link` ([stages/unroll/link.py](dlg/translator/stages/unroll/link.py))
+tests `jd["categoryType"]` against `PythonApp`, `DALiuGEApp`, `Component` and the DynlibApps,
+and `link_drops` tests it against `BashShellApp` for both ends; `_link_or_defer`
+([stages/unroll/wire.py](dlg/translator/stages/unroll/wire.py)) repeats both. But
+`categoryType` holds `Application`, `Data`, `Construct`, `Control`, `Other` or `Service`.
+Corpus, 2026-10-11: `_is_stream_link` true on 0 links; 0 targets with `categoryType ==
+"BashShellApp"`, against 50 BashShellApp nodes, all `categoryType "Application"`. So no
+`StreamNull` bridge DROP is ever made, no BASH input or output parameter is added during
+linking, and `_link_or_defer` defers every non-application link out of a Gather, stream or not.
+Upstream, not from the rewrite: the same comparisons are in the legacy `lg.py` (at least since
+`620a9d0f`, 2022). Fixing it changes PGT output wherever those paths come alive, so it wants its
+own issue — none yet. Recorded as proposal §5 row 24.
+
 ---
 
 ## 8. Changes log
@@ -517,3 +558,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | 2026-10-08 | Claude (Opus 5.5) | **B13 deferred to GitHub #98.** P4-3's Gather PR (#94, issue #76) moved group→Gather and leaf→Gather onto `GatherHandler.resolve_edges` but left the sequentialisation branch inline, because the cache it reads survived P4-2. #98 tracks the branch and carries the B11/B12 decisions with it |
 | 2026-10-08 | Claude (Opus 5.5) | **§3.4 row 5 marked misassigned.** The within-group len-equality branch is reached only by the GroupBy/Gather group-start artificial links, which `lgn_to_pgn` makes for every group except Scatter; corpus 26 Gather + 1 GroupBy, 0 Scatter. The P4-3 Scatter PR (#96, issue #74) followed the row and is kept, being behaviour-preserving. Note added under the matrix; the handler table's `scatter.py` `resolve_edges` cell points at it |
 | 2026-10-11 | Claude (Opus 5.5) | **B14 added; §4.3 `linearise.py` row corrected**, from the review of PR #107 (issue #70, P6-1). Synthesis runs only under `visual=True` ([pgtp.py:560](dlg/dropmake/pgtp.py#L560)), and on that path it crashes before a PG exists (`iid`, then `to_pg_spec`, then `Scheduler.merge_partitions`), so no PG has carried synthetic DROPs. Decision: P6-1 keeps linearisation gated on `visual` and keeps the crash; the fix gets its own issue |
+| 2026-10-11 | Claude (Opus 5.5) | **B13 resolved, B15 and B16 added**, from PR #108 (issue #98). B13: sequentialisation moved to `GatherHandler.resolve_sequential_edges` and wired by `link_drops` through a `GatherSource` side table; the cache is unchanged, so B11/B12 stay open; input re-use recorded as intended; two limitations recorded (extra inputs ignored, uneven nested DoP crosses outer iterations). B15: the window overran the targets on an uneven DoP (`IndexError`), fixed in #108. B16: `_is_stream_link` and the BASH checks compare `categoryType` with category names and never fire; upstream, no issue yet |
