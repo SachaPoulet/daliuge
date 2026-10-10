@@ -32,7 +32,7 @@ import math
 
 from dlg.translator.errors import GraphException
 from dlg.translator.stages.partition.scheduler import DAGUtil
-from dlg.common import CategoryType, dropdict
+from dlg.translator.stages.partition.projections.gojs import project_gojs
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -342,154 +342,48 @@ class PGT(object):
 
     def to_gojs_json(self, string_rep=True, visual=False):
         """
-        Convert PGT (without any partitions) to JSON for visualisation in GOJS
+        Convert PGT (without any partitions) to JSON for visualisation in GOJS.
 
-        Sub-class PGTPs will override this function, and replace this with
-        actual partitioning, and the visulisation becomes an option
+        Sub-class PGTPs override this function to perform partition-specific
+        preparation before delegating to this projection.
         """
-        G = self.dag
-        ret = dict()
-        ret["class"] = "go.GraphLinksModel"
-        nodes = []
-        links = []
-        # key_dict = dict()  # key - oid, value - GOJS key
+        del visual
 
-        for i, drop in enumerate(self._drop_list):
+        graph = self.dag
+        links = []
+
+        for index, drop in enumerate(self._drop_list):
             oid = drop["oid"]
-            node = dict()
-            node["key"] = i + 1
-            self._gojs_key_dict[oid] = i + 1
-            node["oid"] = oid
-            tt = drop["categoryType"]
-            if CategoryType.DATA == tt:
-                node["category"] = "Data"
-            elif CategoryType.APPLICATION == tt:
-                node["category"] = "Application"
-            node["name"] = drop["name"]
+            self._gojs_key_dict[oid] = index + 1
+
+            # Preserve the legacy normalisation performed before projection.
             if "iid" not in drop:
                 drop["iid"] = 0
-            node["iid"] = drop["iid"]
-            nodes.append(node)
 
-        if self._extra_drops is None:
-            extra_drops = []
-            remove_edges = []
-            add_edges = []  # a list of tuples
-            add_nodes = []
+        if self._links:
+            links = [dict(link) for link in self._links]
+        else:
             for drop in self._drop_list:
-                oid = drop["oid"]
-                myk = self._gojs_key_dict[oid]
-                for i, oup in enumerate(G.successors(myk)):
-                    link = dict()
-                    link["from"] = myk
-                    from_dt = (
-                        0 if drop["categoryType"] in [CategoryType.DATA, "data"] else 1
+                source_key = self._gojs_key_dict[drop["oid"]]
+
+                for target_key in graph.successors(source_key):
+                    links.append(
+                        {
+                            "from": source_key,
+                            "to": target_key,
+                        }
                     )
-                    to_dt = G.nodes[oup]["drop_type"]
-                    if from_dt == to_dt:
-                        to_drop = G.nodes[oup]["drop_spec"]
-                        if from_dt == 0:
-                            # add an extra app DROP
-                            extra_oid = "{0}_TransApp_{1}".format(oid, i)
-                            dropSpec = dropdict(
-                                {
-                                    "oid": extra_oid,
-                                    "categoryType": CategoryType.APPLICATION,
-                                    "dropclass": "dlg.drop.BarrierAppDROP",
-                                    "name": "go_app",
-                                    "weight": 1,
-                                }
-                            )
-                            # create links
-                            drop.addConsumer(dropSpec)
-                            dropSpec.addInput(drop)
-                            dropSpec.addOutput(to_drop)
-                            to_drop.addProducer(dropSpec)
-                            mydt = 1
-                        else:
-                            # add an extra data DROP
-                            extra_oid = "{0}_TransData_{1}".format(oid, i)
-                            dropSpec = dropdict(
-                                {
-                                    "oid": extra_oid,
-                                    "categoryType": CategoryType.DATA,
-                                    "dropclass": "dlg.data.drops.memory.InMemoryDROP",
-                                    "name": "go_data",
-                                    "weight": 1,
-                                }
-                            )
-                            drop.addOutput(dropSpec)
-                            dropSpec.addProducer(drop)
-                            dropSpec.addConsumer(to_drop)
-                            to_drop.addInput(dropSpec)
-                            mydt = 0
-                        extra_drops.append(dropSpec)
-                        lid = len(extra_drops) * -1
-                        link["to"] = lid
-                        endlink = dict()
-                        endlink["from"] = lid
-                        endlink["to"] = oup
-                        links.append(endlink)
-                        # global graph updates
-                        # the new drop must have the same gid as the to_drop
-                        add_nodes.append(
-                            (
-                                lid,
-                                1,
-                                mydt,
-                                dropSpec,
-                                G.nodes[oup].get("gid", None),
-                            )
-                        )
-                        remove_edges.append((myk, oup))
-                        add_edges.append((myk, lid))
-                        add_edges.append((lid, oup))
-                    else:
-                        link["to"] = oup
-                    links.append(link)
-            for gn in add_nodes:
-                # logger.debug("added gid = {0} for new node {1}".format(gn[4], gn[0]))
-                G.add_node(
-                    gn[0],
-                    weight=gn[1],
-                    drop_type=gn[2],
-                    drop_spec=gn[3],
-                    gid=gn[4],
-                )
-            G.remove_edges_from(remove_edges)
-            G.add_edges_from(add_edges)
-            self._extra_drops = extra_drops
-        else:
-            for drop in self._drop_list:
-                oid = drop["oid"]
-                myk = self._gojs_key_dict[oid]
-                for oup in G.successors(myk):
-                    link = dict()
-                    link["from"] = myk
-                    link["to"] = oup
-                    links.append(link)
 
-        # going through the extra_drops
-        for i, drop in enumerate(self._extra_drops):
-            oid = drop["oid"]
-            node = dict()
-            node["key"] = (i + 1) * -1
-            node["oid"] = oid
-            tt = drop["categoryType"]
-            if tt == CategoryType.DATA:
-                node["category"] = "Data"
-            elif tt == CategoryType.APPLICATION:
-                node["category"] = "PythonApp"  # might not be correct
-            node["name"] = drop["name"]
-            nodes.append(node)
-            node["iid"] = drop["iid"]
         self._links = links
-        ret["nodeDataArray"] = nodes
-        ret["linkDataArray"] = links
-        self.gojs_json_obj = ret
+
+        model = project_gojs(
+            self._drop_list,
+            self._extra_drops or [],
+            links,
+        )
+        self.gojs_json_obj = model
+
         if string_rep:
-            return json.dumps(ret, indent=2)
-        elif visual:
-            return ret
-        else:
-            return ret
+            return json.dumps(model, indent=2)
+
+        return model

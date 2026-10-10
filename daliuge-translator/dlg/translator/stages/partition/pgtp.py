@@ -33,6 +33,7 @@ from dlg.translator.stages.partition.scheduler import (
     MinNumPartsScheduler,
     PSOScheduler,
 )
+from dlg.translator.stages.partition.linearise import linearise
 from dlg.common import CategoryType
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -511,6 +512,9 @@ class MySarkarPGTP(PGT):
                 for ip in self._inner_parts:
                     ip["group"] = in_out_part_map[ip["key"] - start_k] + start_i
 
+    def _prepare_gojs_projection(self):
+        """Prepare algorithm-specific state before GoJS projection."""
+
     def to_gojs_json(self, string_rep=True, visual=False):
         """
         Partition the PGT into a real "PGT with Partitions", thus PGTP
@@ -558,6 +562,8 @@ class MySarkarPGTP(PGT):
         self._grp_key_dict = key_dict
 
         if visual:
+            self._prepare_gojs_projection()
+
             jsobj = super(MySarkarPGTP, self).to_gojs_json(
                 string_rep=False, visual=visual
             )
@@ -618,6 +624,22 @@ class MinNumPartsPGTP(MySarkarPGTP):
         # during linearisation
         self._extra_drops = None
 
+    def _prepare_gojs_projection(self):
+        """Apply MinNumParts linearisation before visual projection."""
+        if self._extra_drops is not None:
+            return
+
+        key_dict = {
+            drop["oid"]: index + 1
+            for index, drop in enumerate(self._drop_list)
+        }
+
+        self._extra_drops, self._links = linearise(
+            self._drop_list,
+            self.dag,
+            key_dict,
+        )
+
     def get_partition_info(self):
         return "Lookahead"
 
@@ -650,6 +672,22 @@ class PSOPGTP(MySarkarPGTP):
         self._swarm_size = swarm_size
         super(PSOPGTP, self).__init__(drop_list, 0, par_label, max_dop, merge_parts)
         self._extra_drops = None
+
+    def _prepare_gojs_projection(self):
+        """Apply PSO linearisation before visual projection."""
+        if self._extra_drops is not None:
+            return
+
+        key_dict = {
+            drop["oid"]: index + 1
+            for index, drop in enumerate(self._drop_list)
+        }
+
+        self._extra_drops, self._links = linearise(
+            self._drop_list,
+            self.dag,
+            key_dict,
+        )
 
     def get_partition_info(self):
         return "Particle Swarm"
