@@ -1003,8 +1003,11 @@ can be pulled earlier than Phase 6 if convenient.
 `if self._extra_drops is None:` ([pgt.py:374](dlg/dropmake/pgt.py#L374)). Exactly two classes
 set that to `None` — `MinNumPartsPGTP` ([pgtp.py:619](dlg/dropmake/pgtp.py#L619)) and
 `PSOPGTP` ([pgtp.py:652](dlg/dropmake/pgtp.py#L652)) — both commented *"force it to
-re-calculate the extra drops due to extra links during linearisation"*. Those DROPs then reach
-the production PG via `PGT.drops` ([pgt.py:108-112](dlg/dropmake/pgt.py#L108-L112)).
+re-calculate the extra drops due to extra links during linearisation"*. ~~Those DROPs then reach
+the production PG via `PGT.drops` ([pgt.py:108-112](dlg/dropmake/pgt.py#L108-L112)).~~
+**Corrected 2026-10-11:** they would, but they are only synthesised under `visual=True`
+([pgtp.py:560](dlg/dropmake/pgtp.py#L560)), and that path crashes before a PG exists
+(migration map §7 B14, proposal §5 row 22). No PG has carried them.
 
 So this is **deliberate partitioning output typed into a serialiser**, not a visualisation
 artefact (§8 Q3). Move the synthesis to `partition/linearise.py`, owned by the algorithms that
@@ -1022,6 +1025,28 @@ a delegating method with an identical signature.
   case, so they are one comparison, not two. See §6.
 
 GOJS payload shape is a Tier 3 contract — the bundled viewer parses it. Do not touch it.
+
+**Review of PR #107 (GitHub issue #70), 2026-10-11.** Probed against `master` on
+`cont_img_mvp`, with timestamps normalised: the CLI PGs for `min_num_parts` and `mysarkar`, and
+the `mysarkar` web GoJS payload and PG, are byte-identical. Decisions and findings:
+
+- **Keep the trigger gated on `visual`.** Linearising unconditionally would add synthetic DROPs
+  to the CLI PG, which has never had them — a breach of the requirement above. Whether
+  linearisation *should* reach the production PG is a client question for the B14 fix.
+- **Do not fix the web crash here (High).** PR #107's `drop.get("iid", 0)` in the
+  projection's extra-drop loop moves the failure from `to_gojs_json` into `to_pg_spec`, which
+  is a behaviour change, and the full fix also touches the scheduler. Remove the fallback, so
+  the crash stays where `master` has it (`KeyError: 'iid'`, now in `projections/gojs.py`).
+- **Ownership only half moves (Medium).** The hook sits on the PGTP classes
+  (`_prepare_gojs_projection`), not on the algorithm modules, and `MySarkarPGTP.to_gojs_json`
+  still fires it. It is acceptable given the `visual` gate.
+- **No web-path test (Medium).** Nothing exercises `show_gojs=True` → `to_pg_spec` for
+  `min_num_parts`. That gap is how the fallback above got through.
+- **Minor:** the `MinNumPartsPGTP` and `PSOPGTP` overrides are identical and rebuild the key
+  dict the base builds again; `PGT.to_gojs_json` now reuses links cached from an earlier call
+  (`if self._links:`) where `master` recomputed them from the DAG — no observable difference on
+  working paths, but unrequested; link derivation and the `iid=0` normalisation stay in the
+  facade rather than the projection (map §4.5); one test sets up its PGTP with `object.__new__`.
 
 ## P6-2 — Break `to_pg_spec` apart
 

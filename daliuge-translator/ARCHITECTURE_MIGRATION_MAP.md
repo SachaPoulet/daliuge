@@ -200,7 +200,7 @@ run between each (proposal §6 Phase 4).
 | Target | Verb | Source |
 |--------|------|--------|
 | `islands.py` | MOVE | `PGT.{partitions, _can_merge, merge_partitions}` [pgt.py:77-107, 214-218](dlg/dropmake/pgt.py#L77); the two concrete `merge_partitions` overrides listed in §4.2; the merge/island block inside `to_pg_spec` (*approx* [pgt.py:283-300](dlg/dropmake/pgt.py#L283)) |
-| `linearise.py` | EXTRACT | the synthetic-DROP branch of `to_gojs_json` [pgt.py:374-462](dlg/dropmake/pgt.py#L374) — everything under `if self._extra_drops is None:`. **This is partitioning logic, not visualisation** (proposal §8 Q3). Its consumers are `MinNumPartsPGTP`/`PSOPGTP`, which set `_extra_drops = None` at [pgtp.py:619](dlg/dropmake/pgtp.py#L619) and [:652](dlg/dropmake/pgtp.py#L652). |
+| `linearise.py` | EXTRACT | the synthetic-DROP branch of `to_gojs_json` [pgt.py:374-462](dlg/dropmake/pgt.py#L374) — everything under `if self._extra_drops is None:`. **This is partitioning logic, not visualisation** (proposal §8 Q3). Its consumers are `MinNumPartsPGTP`/`PSOPGTP`, which set `_extra_drops = None` at [pgtp.py:619](dlg/dropmake/pgtp.py#L619) and [:652](dlg/dropmake/pgtp.py#L652). **Correction 2026-10-11:** it runs only on the visual path — `MySarkarPGTP.to_gojs_json` calls the base method under `if visual:` ([pgtp.py:560](dlg/dropmake/pgtp.py#L560)) — and that path crashes before a PG exists (§7 B14), so no PG carries synthetic DROPs today. The trigger stays gated on `visual` (P6-1, PR #107 review) |
 | `placeholders.py` | EXTRACT | the `tpl_fl` branch (*approx* [pgt.py:316-323](dlg/dropmake/pgt.py#L316)) and the `node`/`island` stamping loop (*approx* [:325-340](dlg/dropmake/pgt.py#L325)) |
 | `stage.py` | REWRITE | `pg_generator.partition` [:131-241](dlg/dropmake/pg_generator.py#L131); `PGT.__init__` state [pgt.py:53-76](dlg/dropmake/pgt.py#L53); `result`/`_extra_result` [:139-155](dlg/dropmake/pgt.py#L139) |
 
@@ -471,6 +471,35 @@ it inline (now `stages/unroll/wire.py`) and routed only group→Gather and leaf�
 the handler. #98 also takes the B11 and B12 decisions, since the fix changes what the cache
 holds.
 
+**B14 — the visual linearisation path cannot produce a PG.** `min_num_parts` (and `pso`, which
+does not run at all) synthesises intermediate DROPs only when `to_gojs_json` is called with
+`visual=True` ([pgtp.py:560](dlg/dropmake/pgtp.py#L560)), i.e. `show_gojs=True` — the web path
+`web/translator_utils.py` ([:170](dlg/dropmake/web/translator_utils.py#L170)) followed by
+`to_pg_spec`. On any graph with two directly adjacent same-type DROPs (`cont_img_mvp`: 6), that
+path fails at three successive points:
+
+1. **`KeyError: 'iid'`** in the extra-drop loop of `to_gojs_json`
+   ([pgt.py:485](dlg/dropmake/pgt.py#L485); after P6-1, `projections/gojs.py`). The synthetic
+   `dropdict`s never get an `iid`. Introduced upstream by `1524ac9d` (LIU-416), so it predates
+   the rewrite.
+2. Past that, `to_pg_spec` raises `KeyError: '<oid>_TransData_0'` on the synthetic DROPs:
+   `self._gojs_key_dict[oid]` and `drop['iid']` in the `humanReadableKey` line
+   ([pgt.py:336](dlg/dropmake/pgt.py#L336)) always, and `self._oid_gid_map[oid]`
+   ([pgt.py:331](dlg/dropmake/pgt.py#L331)) whenever no merge to fewer partitions rebuilds the
+   map — `MySarkarPGTP.to_gojs_json` fills it before linearising.
+3. Past that, any merge into more than one partition (or `num_islands > 1`) raises
+   `KeyError` in `Scheduler.merge_partitions` at `self._dag.adj[u][v]`
+   ([scheduler.py:555](dlg/dropmake/scheduler.py#L555)). The scheduler's `_part_edges` were
+   recorded before linearisation, which removes those `(u, v)` edges and adds the replacement
+   edges without a `weight`.
+
+Consequence: **no PG has carried synthetic DROPs** — the CLI path never linearises, and the web
+path never completes. Proposal §8 Q3 and P6-1 assumed otherwise; both are corrected. Measured
+2026-10-11 by probe against `master` and PR #107 (issue #70). P6-1 stays behaviour-preserving
+(the crash at point 1 is kept; PR #107's `drop.get("iid", 0)` fallback is to be removed, as it
+only moves the failure to point 2). The fix spans `linearise.py`, `to_pg_spec` and the
+scheduler, and wants its own issue — none yet. Recorded as proposal §5 row 22.
+
 ---
 
 ## 8. Changes log
@@ -487,3 +516,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | 2026-09-24 | Claude (Opus 5.5) | **B10-B13 added, B3 updated**, all from P4-2. B10: Gather output validation reads `src.inputs[0]` before the input link exists when links are listed in the other order — bare `IndexError`. B11 (suspected): the Gather drain splices inputs onto the first output DROP only. B12: the drain's `is_stream` comes from whichever link created the entry. B13: the sequentialisation branch, fixed in P4-2, still bypasses `_link_drops` and may re-use inputs. B3: the leaked `slgn` measured as always a Gather with port name `None`, so no drift is expected |
 | 2026-10-08 | Claude (Opus 5.5) | **B13 deferred to GitHub #98.** P4-3's Gather PR (#94, issue #76) moved group→Gather and leaf→Gather onto `GatherHandler.resolve_edges` but left the sequentialisation branch inline, because the cache it reads survived P4-2. #98 tracks the branch and carries the B11/B12 decisions with it |
 | 2026-10-08 | Claude (Opus 5.5) | **§3.4 row 5 marked misassigned.** The within-group len-equality branch is reached only by the GroupBy/Gather group-start artificial links, which `lgn_to_pgn` makes for every group except Scatter; corpus 26 Gather + 1 GroupBy, 0 Scatter. The P4-3 Scatter PR (#96, issue #74) followed the row and is kept, being behaviour-preserving. Note added under the matrix; the handler table's `scatter.py` `resolve_edges` cell points at it |
+| 2026-10-11 | Claude (Opus 5.5) | **B14 added; §4.3 `linearise.py` row corrected**, from the review of PR #107 (issue #70, P6-1). Synthesis runs only under `visual=True` ([pgtp.py:560](dlg/dropmake/pgtp.py#L560)), and on that path it crashes before a PG exists (`iid`, then `to_pg_spec`, then `Scheduler.merge_partitions`), so no PG has carried synthetic DROPs. Decision: P6-1 keeps linearisation gated on `visual` and keeps the crash; the fix gets its own issue |

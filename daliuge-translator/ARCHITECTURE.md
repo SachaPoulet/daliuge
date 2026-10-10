@@ -301,11 +301,16 @@ False and nothing is synthesised. Only `MinNumPartsPGTP` ([pgtp.py:619](dlg/drop
 and `PSOPGTP` ([pgtp.py:652](dlg/dropmake/pgtp.py#L652)) set it to `None`, both commented
 *"force it to re-calculate the extra drops due to extra links during linearisation"*.
 `pg_generator.partition` does call `to_gojs_json` unconditionally
-([pg_generator.py:233](dlg/dropmake/pg_generator.py#L233)), and `PGT.drops` returns
-`_drop_list + _extra_drops` ([pgt.py:108](dlg/dropmake/pgt.py#L108)) which `to_pg_spec`
-iterates — so for those two algorithms the synthetic DROPs are stamped with `node`/`island`
-and ship in the PG. The insertion is edge-zeroing linearisation output that happens to be
-typed into a serialiser, not a viewer nicety.
+([pg_generator.py:233](dlg/dropmake/pg_generator.py#L233)), but with `visual=show_gojs`, and
+their inherited `MySarkarPGTP.to_gojs_json` reaches the base method only under `if visual:`
+([pgtp.py:560](dlg/dropmake/pgtp.py#L560)). So the CLI path never synthesises anything, and
+the web path (`show_gojs=True`) synthesises and then crashes before a PG exists — on the
+missing `iid` first, and in `to_pg_spec` and the scheduler's partition merge after that
+(migration map §7 B14). **No PG carries synthetic DROPs today**, although `PGT.drops` would ship
+them (`_drop_list + _extra_drops`, [pgt.py:108](dlg/dropmake/pgt.py#L108)). The insertion is
+still edge-zeroing linearisation output typed into a serialiser by intent; in practice only the
+viewer path runs it. *(Corrected 2026-10-11; this paragraph previously said the DROPs ship in
+the PG.)*
 
 ---
 
@@ -445,10 +450,11 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
 
 6. **`to_gojs_json` mutates — and the mutation is load-bearing.** Two unrelated jobs share one
    method: GOJS serialisation, and synthesis of the intermediate DROPs that edge-zeroing
-   linearisation requires. The second only fires for `min_num_parts` and `pso` (§6), and those
-   DROPs reach the PG. So this is not "a viewer mutating production data" — it is partitioning
-   logic living in a serialiser. Separating them means moving the synthesis into the
-   partitioning layer, not deleting it.
+   linearisation requires. The second only fires for `min_num_parts` and `pso`, and only with
+   `visual=True` (§6) — a path that crashes before producing a PG, so those DROPs have never
+   reached one. By intent it is partitioning logic living in a serialiser, not "a viewer
+   mutating production data". Separating them means moving the synthesis into the partitioning
+   layer, not deleting it; the move keeps it gated on `visual` (corrected 2026-10-11).
 
 7. **Reprodata-as-last-list-element.** An untyped positional convention across four stage
    boundaries and both entry points. A typed envelope (`{"drops": [...], "reprodata": {...}}`)
@@ -497,8 +503,10 @@ Recorded as-is; these are the load-bearing weaknesses, not a redesign proposal.
     list ([pg_generator.py:233-241](dlg/dropmake/pg_generator.py#L233-L241)). Both branches are
     in use: `web/translator_utils.py:164` and the REST layer take the object path, the CLI and
     `daliuge-engine`'s deploy scripts take the list path. `to_gojs_json` is called on *both*,
-    so the linearisation mutation of §6 is not gated on `show_gojs` — only its `visual` flag
-    is. A stage typed `Artefact → Artefact` cannot reproduce this without keeping the flag.
+    but with `visual=show_gojs`, so the linearisation mutation of §6 **is** gated on
+    `show_gojs` in effect: it runs only on the object path. A stage typed
+    `Artefact → Artefact` cannot reproduce this without keeping the flag. *(Corrected
+    2026-10-11; this item previously said the mutation was not gated on `show_gojs`.)*
 
 13. **Both unroll phases mutate the logical model.** `lgn_to_pgn` adds inputs/outputs to
     LGNodes and appends to `self._lg_links` while instantiating (§5.1); `unroll_to_tpl`

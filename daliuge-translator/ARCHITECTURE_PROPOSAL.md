@@ -549,7 +549,7 @@ class InstanceId:
 | # | Today | After | Tier 2 cost |
 |---|-------|-------|-------------|
 | 1 | `LG.__init__` loads, configures, normalises, builds nodes, builds links, validates | `PrepareStage` returns an LG; `UnrollStage` consumes it. Parsing without compiling becomes possible. | import updates |
-| 2 | `to_gojs_json` inserts synthetic DROPs, and those DROPs reach the PG for `min_num_parts` / `pso` via `PGT.drops` — **deliberate linearisation, not a viewer artefact** (§8 Q3) | synthesis moves to `partition/linearise.py`, owned by the algorithms that need it; `projections/gojs.py` becomes a pure serialiser; `PGT.to_gojs_json` delegates | none |
+| 2 | `to_gojs_json` inserts synthetic DROPs for `min_num_parts` / `pso` — **deliberate linearisation, not a viewer artefact** (§8 Q3). ~~Those DROPs reach the PG via `PGT.drops`.~~ **Corrected 2026-10-11:** only on the `visual=True` path, which crashes before a PG exists (row 22) | synthesis moves to `partition/linearise.py`, owned by the algorithms that need it; `projections/gojs.py` becomes a pure serialiser; `PGT.to_gojs_json` delegates. The trigger stays gated on `visual` | none |
 | 3 | `to_pg_spec` does merging + islands + placeholders + hostname mapping | split across `partition/islands.py`, `partition/placeholders.py`, `map/stage.py`; `PGT.to_pg_spec` remains as a facade | none |
 | 4 | reprodata handled by hand at ~12 translator sites (+4 in the engine) | one adapter; every *translator* site collapses, web included. The engine's four stay, so the facade keeps returning bare lists and keeps not applying the `init_*` hooks (§8 Q8) | ~8 call-site edits |
 | 5 | Scatter DoP silently defaults to 4 [lg_node.py:629](dlg/dropmake/lg_node.py#L629) | **the count becomes a required field** — `ScatterHandler.degree_of_parallelism` raises `GInvalidNode` naming the node and the three accepted spellings. No `--lenient` escape: client-mandated removal (§8 Q4) | endpoints surface a new error for graphs that omit it |
@@ -575,6 +575,7 @@ class InstanceId:
 | 19 | **Gather output validation depends on link order.** The Gather rule reads `src.inputs[0].h_level` [lg.py:175](dlg/dropmake/lg.py#L175) while `LG.__init__` is still adding links in `linkDataArray` order, so a Gather → X link listed before the Gather's input link dies with a bare `IndexError` — no node, no `GInvalidLink` — and the same graph with the links swapped translates | not fixed in P4-2 (validation is Phase 3 ground). The fix is `GatherHandler.validate_link` running after every link is added, or raising `GInvalidLink` when the Gather has no input; either is a behaviour change on graphs that fail today. Migration map §7 **B10** | none |
 | 20 | **The Gather drain splices every input onto the first output DROP only** (`v[2][0]` [lg.py:766](dlg/dropmake/lg.py#L766)), and takes `is_stream` from whichever link created the cache entry (`v[-1]` [lg.py:769](dlg/dropmake/lg.py#L769)). Suspected, not observed: no corpus Gather has more than one output DROP, and switching `is_stream` to the input link changes nothing | kept in P4-2 for byte parity; the drain now lives in `wire()` as a local. Decide in P4-3's Gather PR. **Not decided there** (#94); moved to GitHub #98 with row 21, whose fix changes what the cache holds. Migration map §7 **B11**, **B12** | none |
 | 21 | **Gather sequentialisation could never run** — `getPortName(port=...)` [lg.py:595](dlg/dropmake/lg.py#L595) is not a valid keyword, so any graph reaching the branch raised `TypeError` | **fixed in P4-2** (a sanctioned behaviour change on graphs that crashed before; no corpus graph reaches it). The chained edges still bypass `_link_drops`, and inputs are re-used when there are fewer than `gather_width` — for P4-3. **Deferred from P4-3's Gather PR (#94) to GitHub #98**: the branch reads the Gather cache, which survived P4-2 in `wire()`. Migration map §7 **B13** | none |
+| 22 | **The visual linearisation path cannot produce a PG.** With `show_gojs=True` (the web path), `min_num_parts` on any graph with adjacent same-type DROPs fails three times in a row: `KeyError: 'iid'` on the synthetic DROPs in `to_gojs_json` [pgt.py:485](dlg/dropmake/pgt.py#L485) (upstream `1524ac9d`, LIU-416); then `KeyError` on their `oid` in `to_pg_spec` [pgt.py:331-336](dlg/dropmake/pgt.py#L331-L336); then, for any merge into more than one partition or island, `KeyError` at `self._dag.adj[u][v]` in `Scheduler.merge_partitions` [scheduler.py:555](dlg/dropmake/scheduler.py#L555), because linearisation removed edges the scheduler had recorded. The CLI path never linearises, so **no PG has ever carried synthetic DROPs** | **out of scope for P6-1**, which keeps the first crash unchanged (decided in PR #107's review). The fix spans `linearise.py`, `to_pg_spec` and the scheduler, and is a behaviour change — its own issue, none yet. Migration map §7 **B14** | none |
 
 **Explicitly not addressed:** splitting the `Original` / `Updated` REST generations, and
 extracting HTML rendering from `translator_rest.py` — both are app restructuring, which the
@@ -920,6 +921,26 @@ consequences:
   a 2-tuple. There is nothing to seed and no golden to compare, so this acceptance criterion
   has no `pso` case to apply to until the call is fixed. The reasoning still stands for any
   algorithm that is stochastic *and* working — none currently is.
+
+**Correction (2026-10-11, review of PR #107 / issue #70): step 4 never happens.** The mechanism
+above is right about *which* algorithms synthesise, but misses a gate. `MySarkarPGTP.to_gojs_json`
+— which `MinNumPartsPGTP` and `PSOPGTP` inherit — calls the base method only under `if visual:`
+[pgtp.py:560](dlg/dropmake/pgtp.py#L560), and `pg_generator.partition` passes
+`visual=show_gojs` [pg_generator.py:233](dlg/dropmake/pg_generator.py#L233). So:
+
+- **CLI / `show_gojs=False`:** the call is unconditional but nothing is synthesised;
+  `_extra_drops` stays `None` and `PGT.drops` returns the bare drop list.
+- **Web / `show_gojs=True`:** the DROPs are synthesised, and then the path crashes before a PG
+  exists (§5 row 22, map §7 B14).
+
+No PG has carried synthetic DROPs. The classification stands — the code's intent is
+linearisation, not viewing — but in practice only the viewer path runs it. **Decision:** P6-1
+keeps the trigger gated on `visual`, preserving today's output exactly, and does not fix the
+crash. The acceptance criterion holds trivially for the synthetic DROPs: there are none to
+compare. Measured on PR #107: `min_num_parts` and `mysarkar` CLI PGs byte-identical to `master`
+on `cont_img_mvp` (timestamps normalised), as are the `mysarkar` web GoJS payload and PG.
+Whether linearisation *should* reach the production PG is a client question for the issue that
+fixes row 22, not for P6-1.
 
 ### Q4 — Is failing loudly on a missing Scatter count acceptable? ✅ Resolved — the default is a defect, and removing it is mandated
 
@@ -1305,7 +1326,9 @@ errors" and 5c into "delete the dead one".
 **No open decisions remain. What is left are gates — answered, but still to be *verified*:**
 
 - **Q3 (client requirement)** — PG output byte-identical for `min_num_parts` and `pso` after
-  the linearisation move, `pso` under a fixed seed. Gates Phase 6.
+  the linearisation move, `pso` under a fixed seed. Gates Phase 6. *(2026-10-11: no PG carries
+  synthetic DROPs, and `pso` does not run, so the gate reduces to `min_num_parts`/`mysarkar`
+  byte parity — see the Q3 correction.)*
 - **Q8b (holds today, keep it holding)** — the annotate-twice regression test lands with
   Phase 1, so the no-hash-in-the-stamp property cannot silently regress.
 - **Q4 (expected corpus drift)** — Phase 0 must record which corpus graphs omit a Scatter
@@ -1359,6 +1382,7 @@ Conventions:
 | 2026-09-24 | Claude (Opus 5.5) | 4 | **§5 row 18 added: duplicate synthesised links.** Found during P4-2 while lifting link synthesis into a pre-pass: nested constructs append their artificial links once per enclosing instance, and the repeats reach the PGT as duplicate `consumers`/`inputs`/`ports` entries (257 of 338 synthesised links, 17 corpus graphs). P4-2 preserves it for byte parity; fix undecided, no issue | n/a — documentation only | §5 row 18, map §7 B9 |
 | 2026-09-24 | Claude (Opus 5.5) | 4 | **§5 rows 19-21 added** from P4-2: Gather output validation depends on link order (bare `IndexError`); the Gather drain's first-output-only splice and first-link `is_stream`; Gather sequentialisation, which could never run and is fixed in P4-2 with two limitations left for P4-3 | n/a — documentation only | §5 rows 19-21, map §7 B10-B13 |
 | 2026-10-08 | Claude (Opus 5.5) | 4 | **Gather sequentialisation split out of P4-3's Gather PR.** #94 (issue #76) moved group→Gather and leaf→Gather onto `GatherHandler.resolve_edges` and left the sequentialisation branch inline in `wire()`, because the cache it reads survived P4-2. Filed as GitHub #98, which also takes the row 20 decisions (B11, B12) left open by #94 | n/a — documentation only | §5 rows 20-21, map §7 B11-B13 |
+| 2026-10-11 | Claude (Opus 5.5) | 6 | **§8 Q3 corrected, §5 row 2 amended, §5 row 22 added**, from the review of PR #107 (issue #70, P6-1). Synthetic DROPs are only made under `visual=True` ([pgtp.py:560](dlg/dropmake/pgtp.py#L560)), and that path crashes before a PG exists — `iid` in `to_gojs_json`, then `to_pg_spec`, then `Scheduler.merge_partitions` — so no PG has carried them. Decision: P6-1 keeps the `visual` gate and the crash, and PR #107's `iid` fallback comes out (it only moved the crash into `to_pg_spec`); the fix is its own issue | n/a — documentation only; PR #107 probed byte-identical to `master` on `cont_img_mvp` | §5 row 22, map §7 B14 |
 
 ### Notes for coding agents
 
