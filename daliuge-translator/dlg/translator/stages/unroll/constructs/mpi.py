@@ -1,8 +1,15 @@
-from typing import Any, Optional
+from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any, Optional
+
+from dlg.common import dropdict
 from dlg.translator.vocabulary import Categories
 
-from .base import GraphContext
+from .base import GraphContext, InstantiationContext
+from ..coordinate import InstanceId
+
+if TYPE_CHECKING:
+    from ..model import LGNode
 
 
 class MPIHandler:
@@ -21,3 +28,18 @@ class MPIHandler:
         del ctx
 
         return int(node.jd["num_of_procs"])
+
+    def instantiate(
+        self,
+        node: LGNode,
+        coord: InstanceId,
+        ctx: InstantiationContext,
+    ) -> list[dropdict]:
+        return [
+            node.make_single_drop(
+                coord.child(index),
+                loop_ctx=ctx.loop_context,
+                proc_index=index,
+            )
+            for index in range(node.dop)
+        ]

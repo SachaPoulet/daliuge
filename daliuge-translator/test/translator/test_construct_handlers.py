@@ -1,4 +1,5 @@
 import unittest
+from collections import defaultdict
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
@@ -20,9 +21,126 @@ from dlg.translator.stages.unroll.constructs.scatter import ScatterHandler
 from dlg.translator.stages.unroll.constructs.service import ServiceHandler
 from dlg.translator.stages.unroll.constructs.subgraph import SubgraphHandler
 from dlg.translator.stages.unroll.coordinate import InstanceId
+from dlg.translator.stages.unroll.instantiate import lgn_to_pgn
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
+
+
+class TestMPIHandlerInstantiate(unittest.TestCase):
+    """Test MPI DROP instantiation through the handler."""
+
+    def test_creates_one_drop_per_process_with_rank_and_loop_context(self):
+        node = SimpleNamespace(
+            dop=3,
+            make_single_drop=Mock(),
+        )
+        node.make_single_drop.side_effect = (
+            lambda coord, **kwargs: dropdict(
+                {
+                    "iid": str(coord),
+                    **kwargs,
+                }
+            )
+        )
+
+        context = SimpleNamespace(
+            loop_context="loop-1",
+        )
+
+        drops = MPIHandler().instantiate(
+            node,
+            InstanceId((0, 2)),
+            context,
+        )
+
+        self.assertEqual(
+            [
+                {
+                    "iid": "0-2-0",
+                    "loop_ctx": "loop-1",
+                    "proc_index": 0,
+                },
+                {
+                    "iid": "0-2-1",
+                    "loop_ctx": "loop-1",
+                    "proc_index": 1,
+                },
+                {
+                    "iid": "0-2-2",
+                    "loop_ctx": "loop-1",
+                    "proc_index": 2,
+                },
+            ],
+            [
+                {
+                    key: drop[key]
+                    for key in (
+                        "iid",
+                        "loop_ctx",
+                        "proc_index",
+                    )
+                }
+                for drop in drops
+            ],
+        )
+
+    def test_instantiator_routes_mpi_nodes_through_handler(self):
+        node = SimpleNamespace(
+            id="mpi",
+            category=Categories.MPI,
+            is_group=False,
+            dop=2,
+            make_single_drop=Mock(
+                side_effect=lambda coord, **kwargs: dropdict(
+                    {
+                        "iid": str(coord),
+                        **kwargs,
+                    }
+                )
+            ),
+        )
+
+        graph = SimpleNamespace(
+            _session_id="test",
+            _done_dict={
+                node.id: node,
+            },
+            _drop_dict=defaultdict(list),
+        )
+
+        lgn_to_pgn(
+            graph,
+            node,
+            InstanceId((0, 4)),
+            "loop-2",
+        )
+
+        self.assertEqual(
+            [
+                {
+                    "iid": "0-4-0",
+                    "loop_ctx": "loop-2",
+                    "proc_index": 0,
+                },
+                {
+                    "iid": "0-4-1",
+                    "loop_ctx": "loop-2",
+                    "proc_index": 1,
+                },
+            ],
+            [
+                {
+                    key: drop[key]
+                    for key in (
+                        "iid",
+                        "loop_ctx",
+                        "proc_index",
+                    )
+                }
+                for drop in graph._drop_dict[node.id]
+            ],
+        )
 
 
 class TestGroupByHandlerResolveEdges(unittest.TestCase):

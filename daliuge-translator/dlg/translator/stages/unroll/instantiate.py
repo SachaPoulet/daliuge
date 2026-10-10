@@ -194,10 +194,10 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
             for child in lgn.children:
                 lgn_to_pgn(lg, child, miid, get_child_lp_ctx(lgn, lpcxt, i))
     elif is_construct(lgn, Categories.MPI):
-        for i in range(lgn.dop):
-            miid = iid.child(i)
-            src_drop = lgn.make_single_drop(miid, loop_ctx=lpcxt, proc_index=i)
-            lg._drop_dict[lgn.id].append(src_drop)
+        context = _HandlerInstantiationContext(lg, lpcxt)
+        handler = get_handler_for_node(lgn)
+        for src_drop in handler.instantiate(lgn, iid, context):
+            context.add_drop(lgn.id, src_drop)
     elif is_construct(lgn, Categories.SERVICE):
         # no action required, inputapp node aleady created and marked with "isService"
         pass
