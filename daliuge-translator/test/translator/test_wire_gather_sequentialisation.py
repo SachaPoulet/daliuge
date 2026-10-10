@@ -113,6 +113,58 @@ def sequentialisation_lg(dop, width, outer_dop=None):
     return LG(sequentialisation_graph(dop, width, outer_dop), ssid=TEST_SSID)
 
 
+def chained_edges(lg):
+    """Unroll ``lg`` and return each chained edge as (File iid, start iid)."""
+    lg.unroll_to_tpl()
+    iids = {
+        drop["oid"]: drop["iid"]
+        for drops in lg._drop_dict.values()
+        for drop in drops
+        if "iid" in drop
+    }
+    # "ports" has one shape whether or not the edge carries a port name.
+    return sorted(
+        (iids[port["oid"]], start["iid"])
+        for start in lg._drop_dict[START_ID]
+        for port in start.get("ports", [])
+        if port["direction"] == "input"
+    )
+
+
+# Edges the translator produced before the branch moved into GatherHandler.
+# The uneven top-level cases raise IndexError there, so have no entry.
+# nested_uneven_2x5 chains across outer iterations (0-0-3 -> 0-1-0); that is
+# the existing behaviour, kept as is.
+PINNED_EDGES = {
+    "top_level_even": [("0-0", "0-2"), ("0-1", "0-3")],
+    "width_equals_dop": [],
+    "nested_even_2x4": [
+        ("0-0-0", "0-0-2"),
+        ("0-0-1", "0-0-3"),
+        ("0-1-0", "0-1-2"),
+        ("0-1-1", "0-1-3"),
+    ],
+    "nested_even_3x4": [
+        ("0-0-0", "0-0-2"),
+        ("0-0-1", "0-0-3"),
+        ("0-1-0", "0-1-2"),
+        ("0-1-1", "0-1-3"),
+        ("0-2-0", "0-2-2"),
+        ("0-2-1", "0-2-3"),
+    ],
+    "nested_uneven_2x5": [
+        ("0-0-0", "0-0-2"),
+        ("0-0-1", "0-0-3"),
+        ("0-0-2", "0-0-4"),
+        ("0-0-3", "0-1-0"),
+        ("0-0-4", "0-1-1"),
+        ("0-1-0", "0-1-2"),
+        ("0-1-1", "0-1-3"),
+        ("0-1-2", "0-1-4"),
+    ],
+}
+
+
 class TestSequentialisationGraphs(unittest.TestCase):
     def test_every_case_reaches_the_sequentialisation_branch(self):
         """Each case has exactly one Gather -> foreign group-start link."""
@@ -130,6 +182,12 @@ class TestSequentialisationGraphs(unittest.TestCase):
                 ]
                 self.assertEqual(1, len(hits))
                 self.assertTrue(lg._done_dict[hits[0]["to"]].is_group_start)
+
+    def test_chained_edges_match_the_pinned_pairing(self):
+        for name, expected in PINNED_EDGES.items():
+            with self.subTest(case=name):
+                lg = sequentialisation_lg(*CASES[name])
+                self.assertEqual(expected, chained_edges(lg))
 
 
 if __name__ == "__main__":
