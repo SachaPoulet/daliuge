@@ -32,7 +32,6 @@ import math
 
 from dlg.translator.errors import GraphException
 from dlg.translator.stages.partition.scheduler import DAGUtil
-from dlg.translator.stages.partition.linearise import linearise
 from dlg.translator.stages.partition.projections.gojs import project_gojs
 
 logger = logging.getLogger(f"dlg.{__name__}")
@@ -361,12 +360,8 @@ class PGT(object):
             if "iid" not in drop:
                 drop["iid"] = 0
 
-        if self._extra_drops is None:
-            self._extra_drops, links = linearise(
-                self._drop_list,
-                graph,
-                self._gojs_key_dict,
-            )
+        if self._links:
+            links = [dict(link) for link in self._links]
         else:
             for drop in self._drop_list:
                 source_key = self._gojs_key_dict[drop["oid"]]
@@ -383,7 +378,7 @@ class PGT(object):
 
         model = project_gojs(
             self._drop_list,
-            self._extra_drops,
+            self._extra_drops or [],
             links,
         )
         self.gojs_json_obj = model

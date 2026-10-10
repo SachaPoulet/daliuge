@@ -101,6 +101,27 @@ class TestGojsProjection(unittest.TestCase):
         self.assertEqual(extra_drops, extra_before)
         self.assertEqual(links, links_before)
 
+    def test_missing_iid_uses_zero_without_mutating_drop(self):
+        drops = [
+            {
+                "oid": "app",
+                "categoryType": CategoryType.APPLICATION,
+                "name": "app",
+            },
+        ]
+
+        result = project_gojs(
+            drops,
+            [],
+            [],
+        )
+
+        self.assertEqual(
+            result["nodeDataArray"][0]["iid"],
+            0,
+        )
+        self.assertNotIn("iid", drops[0])
+
 
 if __name__ == "__main__":
     unittest.main()

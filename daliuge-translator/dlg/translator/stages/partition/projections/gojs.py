@@ -20,7 +20,7 @@ def project_gojs(drop_list, extra_drops, links):
             "key": index + 1,
             "oid": drop["oid"],
             "name": drop["name"],
-            "iid": drop["iid"],
+            "iid": drop.get("iid", 0),
         }
 
         category_type = drop["categoryType"]
@@ -36,7 +36,7 @@ def project_gojs(drop_list, extra_drops, links):
             "key": (index + 1) * -1,
             "oid": drop["oid"],
             "name": drop["name"],
-            "iid": drop["iid"],
+            "iid": drop.get("iid", 0),
         }
 
         category_type = drop["categoryType"]

@@ -13,6 +13,11 @@ import networkx as nx
 
 from dlg.common import CategoryType, dropdict
 from dlg.translator.stages.partition.linearise import linearise
+from dlg.translator.stages.partition.pgt import PGT
+from dlg.translator.stages.partition.pgtp import (
+    MinNumPartsPGTP,
+    PSOPGTP,
+)
 
 
 def _drop(oid, category_type):
@@ -163,6 +168,63 @@ class TestPartitionLinearise(unittest.TestCase):
             set(dag.edges()),
             {(1, 2)},
         )
+
+    def test_gojs_facade_does_not_trigger_linearisation(self):
+        source = _drop("source", CategoryType.APPLICATION)
+        target = _drop("target", CategoryType.APPLICATION)
+        dag = _dag(source, target, 1)
+
+        pgt = PGT([source, target], build_dag=False)
+        pgt._dag = dag
+        pgt._extra_drops = None
+
+        pgt.to_gojs_json(
+            string_rep=False,
+            visual=True,
+        )
+
+        self.assertIsNone(pgt._extra_drops)
+        self.assertEqual(
+            set(dag.edges()),
+            {(1, 2)},
+        )
+
+    def test_linearising_algorithms_own_visual_preparation(self):
+        for pgtp_type in (MinNumPartsPGTP, PSOPGTP):
+            with self.subTest(pgtp=pgtp_type.__name__):
+                source = _drop(
+                    "source",
+                    CategoryType.APPLICATION,
+                )
+                target = _drop(
+                    "target",
+                    CategoryType.APPLICATION,
+                )
+                dag = _dag(source, target, 1)
+
+                pgtp = object.__new__(pgtp_type)
+                pgtp._drop_list = [source, target]
+                pgtp._dag = dag
+                pgtp._extra_drops = None
+                pgtp._links = []
+
+                pgtp._prepare_gojs_projection()
+
+                self.assertEqual(
+                    len(pgtp._extra_drops),
+                    1,
+                )
+                self.assertEqual(
+                    pgtp._extra_drops[0]["oid"],
+                    "source_TransData_0",
+                )
+                self.assertEqual(
+                    set(dag.edges()),
+                    {
+                        (1, -1),
+                        (-1, 2),
+                    },
+                )
 
 
 if __name__ == "__main__":
