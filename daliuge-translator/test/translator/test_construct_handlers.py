@@ -164,6 +164,45 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             [(edge.source, edge.target) for edge in edges],
         )
 
+    def test_multi_key_groupby_sorts_indices_numerically_above_nine(
+        self,
+    ):
+        keys = [
+            (2, 0),
+            (10, 0),
+            (11, 0),
+            (2, 10),
+            (2, 11),
+            (10, 2),
+            (11, 10),
+        ]
+        source_iids = [
+            f"{second}-{first}"
+            for first, second in keys
+        ]
+
+        _, _, sources, targets, edges = self._resolve(
+            source_iids,
+            len(keys),
+            group_keys=("first", "second"),
+            group_by_scatter_layers=(
+                len(keys),
+                [0, 1],
+                [],
+            ),
+            source_group=self._node(Categories.SCATTER),
+        )
+
+        self.assertEqual(
+            [
+                (sources[index], targets[target_index])
+                for target_index, index in enumerate(
+                    [0, 3, 4, 1, 5, 2, 6]
+                )
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+
     def test_chained_multi_key_groupby_reads_group_key_after_dollar(
         self,
     ):
