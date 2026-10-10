@@ -32,7 +32,8 @@ import math
 
 from dlg.translator.errors import GraphException
 from dlg.translator.stages.partition.scheduler import DAGUtil
-from dlg.common import CategoryType, dropdict
+from dlg.translator.stages.partition.linearise import linearise
+from dlg.common import CategoryType
 
 logger = logging.getLogger(f"dlg.{__name__}")
 
@@ -372,93 +373,11 @@ class PGT(object):
             nodes.append(node)
 
         if self._extra_drops is None:
-            extra_drops = []
-            remove_edges = []
-            add_edges = []  # a list of tuples
-            add_nodes = []
-            for drop in self._drop_list:
-                oid = drop["oid"]
-                myk = self._gojs_key_dict[oid]
-                for i, oup in enumerate(G.successors(myk)):
-                    link = dict()
-                    link["from"] = myk
-                    from_dt = (
-                        0 if drop["categoryType"] in [CategoryType.DATA, "data"] else 1
-                    )
-                    to_dt = G.nodes[oup]["drop_type"]
-                    if from_dt == to_dt:
-                        to_drop = G.nodes[oup]["drop_spec"]
-                        if from_dt == 0:
-                            # add an extra app DROP
-                            extra_oid = "{0}_TransApp_{1}".format(oid, i)
-                            dropSpec = dropdict(
-                                {
-                                    "oid": extra_oid,
-                                    "categoryType": CategoryType.APPLICATION,
-                                    "dropclass": "dlg.drop.BarrierAppDROP",
-                                    "name": "go_app",
-                                    "weight": 1,
-                                }
-                            )
-                            # create links
-                            drop.addConsumer(dropSpec)
-                            dropSpec.addInput(drop)
-                            dropSpec.addOutput(to_drop)
-                            to_drop.addProducer(dropSpec)
-                            mydt = 1
-                        else:
-                            # add an extra data DROP
-                            extra_oid = "{0}_TransData_{1}".format(oid, i)
-                            dropSpec = dropdict(
-                                {
-                                    "oid": extra_oid,
-                                    "categoryType": CategoryType.DATA,
-                                    "dropclass": "dlg.data.drops.memory.InMemoryDROP",
-                                    "name": "go_data",
-                                    "weight": 1,
-                                }
-                            )
-                            drop.addOutput(dropSpec)
-                            dropSpec.addProducer(drop)
-                            dropSpec.addConsumer(to_drop)
-                            to_drop.addInput(dropSpec)
-                            mydt = 0
-                        extra_drops.append(dropSpec)
-                        lid = len(extra_drops) * -1
-                        link["to"] = lid
-                        endlink = dict()
-                        endlink["from"] = lid
-                        endlink["to"] = oup
-                        links.append(endlink)
-                        # global graph updates
-                        # the new drop must have the same gid as the to_drop
-                        add_nodes.append(
-                            (
-                                lid,
-                                1,
-                                mydt,
-                                dropSpec,
-                                G.nodes[oup].get("gid", None),
-                            )
-                        )
-                        remove_edges.append((myk, oup))
-                        add_edges.append((myk, lid))
-                        add_edges.append((lid, oup))
-                    else:
-                        link["to"] = oup
-                    links.append(link)
-            for gn in add_nodes:
-                # logger.debug("added gid = {0} for new node {1}".format(gn[4], gn[0]))
-                G.add_node(
-                    gn[0],
-                    weight=gn[1],
-                    drop_type=gn[2],
-                    drop_spec=gn[3],
-                    gid=gn[4],
-                )
-            G.remove_edges_from(remove_edges)
-            G.add_edges_from(add_edges)
-            self._extra_drops = extra_drops
+            self._extra_drops, links = linearise(
+                self._drop_list,
+                G,
+                self._gojs_key_dict,
+            )
         else:
             for drop in self._drop_list:
                 oid = drop["oid"]
