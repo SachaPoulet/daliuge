@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import dlg.translator.stages.unroll.wire as wire_module
+from dlg.translator.stages.unroll.constructs.gather import GatherHandler
 from dlg.translator.vocabulary import Categories
 
 
@@ -125,7 +126,9 @@ class TestGatherHandlerWiring(unittest.TestCase):
         self.assertIs(source, args[2])
         self.assertIs(target, args[3])
 
-    def test_gather_sequentialisation_stays_on_legacy_cache_path(self):
+    def test_gather_sequentialisation_routes_through_sequential_edges(self):
+        """A Gather -> foreign group-start link is not an edge into a Gather."""
+
         source = self._node(
             "gather",
             Categories.GATHER,
@@ -155,10 +158,22 @@ class TestGatherHandlerWiring(unittest.TestCase):
         with patch.object(
             wire_module,
             "_resolve_gather_edges",
-        ) as resolve_gather:
+        ) as resolve_gather, patch.object(
+            GatherHandler,
+            "resolve_sequential_edges",
+            return_value=[],
+        ) as resolve_sequential:
             wire_module.wire(graph)
 
         resolve_gather.assert_not_called()
+        resolve_sequential.assert_called_once()
+
+        link, inputs, targets, _ = resolve_sequential.call_args.args
+        self.assertIs(source, link.source)
+        self.assertIs(target, link.target)
+        # neither Gather drop has a recorded input in this graph
+        self.assertEqual([[], []], inputs)
+        self.assertIs(graph._drop_dict[target.id], targets)
 
 
 if __name__ == "__main__":
