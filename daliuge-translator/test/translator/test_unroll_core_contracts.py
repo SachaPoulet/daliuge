@@ -114,10 +114,22 @@ class TestValidateHierarchy(unittest.TestCase):
         self.assertIn("tgt", message)
 
     def test_only_one_side_in_a_group_is_rejected(self):
-        source = _node("A", group=_loop(2))
-        target = _node("B")
-        with self.assertRaises(GInvalidLink):
-            validate_hierarchy(source, target)
+        for source_group, target_group in ((_loop(2), None), (None, _loop(2))):
+            with self.subTest(source_group=source_group, target_group=target_group):
+                source = _node("A", group=source_group)
+                target = _node("B", group=target_group)
+                with self.assertRaises(GInvalidLink):
+                    validate_hierarchy(source, target)
+
+    def test_mixed_loop_and_non_loop_groups_are_rejected(self):
+        loop = _loop(2)
+        scatter = _node(Categories.SCATTER, is_group=True)
+        for source_group, target_group in ((loop, scatter), (scatter, loop)):
+            with self.subTest(source_group=source_group.category):
+                source = _node("A", group=source_group)
+                target = _node("B", group=target_group)
+                with self.assertRaises(GInvalidLink):
+                    validate_hierarchy(source, target)
 
     def test_non_loop_groups_are_rejected(self):
         source = _node("A", group=_node(Categories.SCATTER, is_group=True))
@@ -305,6 +317,21 @@ class TestEdgeHandlerFallback(unittest.TestCase):
             found = registry.get_edge_handler("S", "T", HLevelRelation.SOURCE_HIGHER)
         self.assertIs(wildcard, found)
 
+    def test_lookup_falls_back_through_every_candidate(self):
+        relation = HLevelRelation.EQUAL
+        candidates = list(registry._edge_key_candidates("S", "T", relation))
+        handlers = {
+            key: _StubHandler(f"candidate-{index}")
+            for index, key in enumerate(candidates)
+        }
+        with patch.dict(registry._edge_handlers, handlers, clear=True):
+            for key in candidates:
+                with self.subTest(key=key):
+                    self.assertIs(
+                        handlers[key], registry.get_edge_handler("S", "T", relation)
+                    )
+                    del registry._edge_handlers[key]
+
     def test_missing_key_is_a_key_error_carrying_the_request(self):
         with patch.dict(registry._edge_handlers, {}, clear=True):
             with self.assertRaises(KeyError) as raised:
@@ -381,6 +408,15 @@ class TestScatterHandler(unittest.TestCase):
             self.handler.resolve_edges(link, sources, targets, ctx=None)
         self.assertIn("within-group", str(raised.exception))
 
+    def test_resolve_edges_rejects_extra_targets_and_one_sided_empty_inputs(self):
+        link = LogicalLink(source=_node("S", id="s"), target=_node("T", id="t"))
+        for source_count, target_count in ((1, 2), (0, 1), (1, 0)):
+            with self.subTest(sources=source_count, targets=target_count):
+                sources = [dropdict({"oid": f"s{i}"}) for i in range(source_count)]
+                targets = [dropdict({"oid": f"t{i}"}) for i in range(target_count)]
+                with self.assertRaises(GraphException):
+                    self.handler.resolve_edges(link, sources, targets, ctx=None)
+
 
 class TestInstanceId(unittest.TestCase):
     """The wire form of an instance id is what iids in drops are built from."""
@@ -396,6 +432,13 @@ class TestInstanceId(unittest.TestCase):
         child = InstanceId((1, 2)).child(7)
         self.assertEqual((1, 2, 7), child.path)
         self.assertEqual("1-2-7", str(child))
+
+    def test_child_of_a_keyed_instance_keeps_the_group_key(self):
+        parent = InstanceId((1, 2), (3, 4))
+        child = parent.child(7)
+        self.assertEqual((1, 2, 7), child.path)
+        self.assertEqual((3, 4), child.group_key)
+        self.assertEqual("1-2$3-4", str(parent))
 
     def test_with_group_key_keeps_the_path(self):
         keyed = InstanceId((1, 2)).with_group_key((3, 4))

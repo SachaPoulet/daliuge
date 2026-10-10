@@ -270,6 +270,134 @@ class TestGatherSplice(unittest.TestCase):
         self.assertNotIn("consumers", a)
         self.assertNotIn("streamingConsumers", a)
 
+    @staticmethod
+    def _wire_with_unrelated_link(unrelated_last, is_stream):
+        source = _node("source", h_level=1)
+        gather = _gather(id="gather")
+        sink = _node("sink", gid=gather.id)
+        other = _node("other")
+        other_sink = _node("other_sink")
+        nodes = (source, gather, sink, other, other_sink)
+        for node in nodes:
+            node.getPortName = Mock(return_value=f"{node.id}_port")
+            node.h_related = Mock(return_value=True)
+            node.is_start_node = False
+
+        drops = {node.id: [_drop(f"{node.id}_drop")] for node in nodes}
+        drops["new_added"] = []
+        gather_links = [
+            {"from": source.id, "to": gather.id, "is_stream": is_stream},
+            {"from": gather.id, "to": sink.id},
+        ]
+        unrelated_link = {"from": other.id, "to": other_sink.id}
+        links = (
+            gather_links + [unrelated_link]
+            if unrelated_last
+            else [unrelated_link] + gather_links
+        )
+        graph = SimpleNamespace(
+            _session_id="session-",
+            _done_dict={node.id: node for node in nodes},
+            _drop_dict=drops,
+            _lg_links=links,
+            _loop_aware_set=set(),
+        )
+        wire_module.wire(graph)
+        return drops[source.id][0], drops[sink.id][0]
+
+    @unittest.expectedFailure
+    def test_unrelated_link_order_does_not_change_gather_ports(self):
+        """The splice currently reads the last link's source for Gather ports."""
+        first_source, first_sink = self._wire_with_unrelated_link(False, False)
+        last_source, last_sink = self._wire_with_unrelated_link(True, False)
+        self.assertEqual(first_source["consumers"], last_source["consumers"])
+        self.assertEqual(first_sink["inputs"], last_sink["inputs"])
+
+    @unittest.expectedFailure
+    def test_unrelated_link_order_does_not_change_streaming_gather_ports(self):
+        """The same stale source affects streaming Gather ports."""
+        first_source, first_sink = self._wire_with_unrelated_link(False, True)
+        last_source, last_sink = self._wire_with_unrelated_link(True, True)
+        self.assertEqual(
+            first_source["streamingConsumers"], last_source["streamingConsumers"]
+        )
+        self.assertEqual(first_sink["streamingInputs"], last_sink["streamingInputs"])
+
+
+class TestGatherSequentialisation(unittest.TestCase):
+    """A Gather can connect one batch's inputs to the next batch of starts."""
+
+    @staticmethod
+    def _wire_gather_to_starts(dop, gather_width, source_count):
+        source = _node("source", h_level=1)
+        gather = _gather(id="gather", gather_width=gather_width)
+        target = _node("target", gid="scatter", group=SimpleNamespace(dop=dop))
+        source_drops = [_drop(f"s{i}") for i in range(source_count)]
+        target_drops = [_drop(f"t{i}") for i in range(dop)]
+        graph = SimpleNamespace(
+            _session_id="session-",
+            _done_dict={node.id: node for node in (source, gather, target)},
+            _drop_dict={
+                source.id: source_drops,
+                gather.id: [
+                    _drop(f"g{i}") for i in range((dop + gather_width - 1) // gather_width)
+                ],
+                target.id: target_drops,
+                "new_added": [],
+            },
+            _lg_links=[
+                {"from": source.id, "to": gather.id},
+                {"from": gather.id, "to": target.id},
+            ],
+            _loop_aware_set=set(),
+        )
+        wire_module.wire(graph)
+        return source_drops, target_drops
+
+    def test_full_width_batch_connects_to_the_next_starts(self):
+        sources, targets = self._wire_gather_to_starts(4, 2, 4)
+        self.assertEqual([{"t2": "port"}], sources[0]["consumers"])
+        self.assertEqual([{"t3": "port"}], sources[1]["consumers"])
+        self.assertEqual([{"s0": "port"}], targets[2]["inputs"])
+        self.assertEqual([{"s1": "port"}], targets[3]["inputs"])
+        self.assertNotIn("consumers", sources[2])
+        self.assertNotIn("consumers", sources[3])
+
+    @unittest.expectedFailure
+    def test_partial_final_batch_stops_at_the_last_start(self):
+        """A short final batch currently indexes past the last target drop."""
+        sources, targets = self._wire_gather_to_starts(5, 3, 5)
+        self.assertEqual([{"t3": "port"}], sources[0]["consumers"])
+        self.assertEqual([{"t4": "port"}], sources[1]["consumers"])
+        self.assertEqual([{"s0": "port"}], targets[3]["inputs"])
+        self.assertEqual([{"s1": "port"}], targets[4]["inputs"])
+        self.assertNotIn("consumers", sources[2])
+
+    def test_no_cached_inputs_leave_sequential_starts_unwired(self):
+        gather = _gather(id="gather", gather_width=2)
+        own_start = _node("own_start", gid=gather.id)
+        later_start = _node("later_start", gid="scatter", group=SimpleNamespace(dop=4))
+        own_drops = [_drop("own0"), _drop("own1")]
+        later_drops = [_drop(f"later{i}") for i in range(4)]
+        graph = SimpleNamespace(
+            _session_id="session-",
+            _done_dict={node.id: node for node in (gather, own_start, later_start)},
+            _drop_dict={
+                gather.id: [_drop("g0"), _drop("g1")],
+                own_start.id: own_drops,
+                later_start.id: later_drops,
+                "new_added": [],
+            },
+            _lg_links=[
+                {"from": gather.id, "to": own_start.id},
+                {"from": gather.id, "to": later_start.id},
+            ],
+            _loop_aware_set=set(),
+        )
+        wire_module.wire(graph)
+        for drop in own_drops + later_drops:
+            self.assertNotIn("inputs", drop)
+
 
 class TestSubgraphResolution(unittest.TestCase):
     """Sub-graph edges keep the legacy behaviour of creating no links."""
@@ -376,6 +504,27 @@ class TestUnrollOptions(unittest.TestCase):
         result = self._unroll(specs, app="y")
         self.assertEqual(2, result[0]["sleep_time"])
         self.assertEqual(9, result[1]["sleep_time"])
+
+    def test_app_overrides_zerorun_only_for_application_drops_with_a_class(self):
+        specs = [
+            {
+                "oid": "app", "categoryType": "Application", "dropclass": "x",
+                "sleep_time": 5, "execution_time": 9,
+            },
+            {
+                "oid": "app-default", "categoryType": "Application",
+                "dropclass": "x", "sleep_time": 5,
+            },
+            {"oid": "data", "categoryType": "Data", "sleep_time": 5},
+        ]
+        result = self._unroll(specs, zerorun=True, app="replacement")
+        self.assertEqual(
+            ("replacement", 9), (result[0]["dropclass"], result[0]["sleep_time"])
+        )
+        self.assertEqual(
+            ("replacement", 2), (result[1]["dropclass"], result[1]["sleep_time"])
+        )
+        self.assertEqual(0, result[2]["sleep_time"])
 
 
 class TestGatherValidation(unittest.TestCase):
