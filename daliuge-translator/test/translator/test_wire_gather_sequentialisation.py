@@ -170,6 +170,13 @@ PINNED_EDGES = {
 }
 
 
+# The uneven top-level cases: the last window stops at the last target.
+FIXED_EDGES = {
+    "top_level_uneven_3_2": [("0-0", "0-2")],
+    "top_level_uneven_5_2": [("0-0", "0-2"), ("0-1", "0-3"), ("0-2", "0-4")],
+}
+
+
 class TestSequentialisationGraphs(unittest.TestCase):
     def test_every_case_reaches_the_sequentialisation_branch(self):
         """Each case has exactly one Gather -> foreign group-start link."""
@@ -190,6 +197,12 @@ class TestSequentialisationGraphs(unittest.TestCase):
 
     def test_chained_edges_match_the_pinned_pairing(self):
         for name, expected in PINNED_EDGES.items():
+            with self.subTest(case=name):
+                lg = sequentialisation_lg(*CASES[name])
+                self.assertEqual(expected, chained_edges(lg))
+
+    def test_uneven_cases_do_not_overrun_the_targets(self):
+        for name, expected in FIXED_EDGES.items():
             with self.subTest(case=name):
                 lg = sequentialisation_lg(*CASES[name])
                 self.assertEqual(expected, chained_edges(lg))

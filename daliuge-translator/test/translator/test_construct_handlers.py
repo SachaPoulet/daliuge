@@ -865,6 +865,68 @@ class TestGatherEdgeResolution(unittest.TestCase):
             )
 
 
+class TestGatherSequentialEdges(unittest.TestCase):
+    """Gather drop i's inputs feed the next window of group-start drops."""
+
+    @staticmethod
+    def _resolve(width, dop, inputs, n_targets):
+        link = LogicalLink(
+            SimpleNamespace(gather_width=width),
+            SimpleNamespace(group=SimpleNamespace(dop=dop)),
+        )
+        drops = [
+            [None if oid is None else {"oid": oid} for oid in gather_inputs]
+            for gather_inputs in inputs
+        ]
+        targets = [{"oid": "t%d" % index} for index in range(n_targets)]
+        edges = GatherHandler().resolve_sequential_edges(link, drops, targets, None)
+        return [(edge.source["oid"], edge.target["oid"]) for edge in edges]
+
+    def test_each_input_feeds_one_target_in_the_next_window(self):
+        self.assertEqual(
+            [("x0", "t2"), ("x1", "t3"), ("x2", "t4"), ("x3", "t5")],
+            self._resolve(2, 6, [["x0", "x1"], ["x2", "x3"], ["x4", "x5"]], 6),
+        )
+
+    def test_the_last_window_stops_at_the_last_target(self):
+        self.assertEqual(
+            [("x0", "t2"), ("x1", "t3"), ("x2", "t4")],
+            self._resolve(2, 5, [["x0", "x1"], ["x2", "x3"], ["x4"]], 5),
+        )
+        self.assertEqual(
+            [("x0", "t2")],
+            self._resolve(2, 3, [["x0", "x1"], ["x2"]], 3),
+        )
+
+    def test_fewer_inputs_than_the_window_are_reused(self):
+        self.assertEqual(
+            [("y0", "t3"), ("y0", "t4"), ("y0", "t5")],
+            self._resolve(3, 6, [["y0"]], 6),
+        )
+
+    def test_a_gather_without_inputs_chains_nothing(self):
+        self.assertEqual(
+            [("x2", "t4"), ("x3", "t5")],
+            self._resolve(2, 6, [[], ["x2", "x3"]], 6),
+        )
+
+    def test_an_input_from_another_gather_is_skipped(self):
+        self.assertEqual(
+            [("x1", "t2"), ("x1", "t3")],
+            self._resolve(2, 4, [[None, "x1"]], 4),
+        )
+        self.assertEqual([], self._resolve(2, 4, [[None, None]], 4))
+
+    def test_a_window_does_not_cross_into_the_next_outer_iteration(self):
+        # outer 2 x inner 4: targets t0-t3, then t4-t7
+        self.assertEqual(
+            [("x0", "t2"), ("x1", "t3"), ("x4", "t6"), ("x5", "t7")],
+            self._resolve(
+                2, 4, [["x0", "x1"], ["x2", "x3"], ["x4", "x5"], ["x6", "x7"]], 8
+            ),
+        )
+
+
 class TestLeafEdgeResolution(unittest.TestCase):
     class FakeWiringContext:
         def __init__(self, chunk_size):

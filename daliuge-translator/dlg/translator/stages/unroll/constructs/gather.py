@@ -101,3 +101,51 @@ class GatherHandler:
                 )
 
         return edges
+
+    def resolve_sequential_edges(
+        self,
+        link: "LogicalLink",
+        inputs: Sequence[Sequence[Optional[dropdict]]],
+        targets: Sequence[dropdict],
+        ctx: WiringContext,
+    ) -> list["Edge"]:
+        """Resolve a Gather -> group-start link that sequentialises a Scatter.
+
+        ``inputs[i]`` holds the inputs of the i-th Gather drop; ``targets``
+        are the group-start drops. Gather drop i's inputs feed the next
+        window of ``gather_width`` targets, so the Scatter runs that many
+        iterations at a time. When a Gather has fewer inputs than its window,
+        they are reused so every target in the window still waits on one.
+        A window never crosses into the next outer iteration, nor past the
+        last target. ``None`` marks an input from another Gather, which has
+        no drop to chain.
+        """
+        del ctx
+
+        from ..model import Edge
+
+        # gather_width is defined on lg_node.LGNode, not on the model LGNode
+        # that LogicalLink is annotated with.
+        gather: Any = link.source
+        edges = []
+
+        for index, gather_inputs in enumerate(inputs):
+            chainable = [drop for drop in gather_inputs if drop is not None]
+            if not chainable:
+                continue
+            width = gather.gather_width
+            dop = link.target.group.dop
+            start = (index + 1) * width
+            if start >= len(targets):
+                continue
+            if start >= dop and start % dop == 0:
+                continue
+            end = min((index + 2) * width, dop * (index + 1), len(targets))
+            while start < end:
+                for drop in chainable:
+                    if start >= end:
+                        break
+                    edges.append(Edge(link, drop, targets[start]))
+                    start += 1
+
+        return edges

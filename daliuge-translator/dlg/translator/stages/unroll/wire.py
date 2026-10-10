@@ -236,7 +236,7 @@ def wire(lg):
                 )
 
     for slgn, tlgn, sdrops, tdrops in sequentialised:
-        _sequentialise_gather(gathers, slgn, tlgn, sdrops, tdrops)
+        _sequentialise_gather(context, gathers, slgn, tlgn, sdrops, tdrops)
 
     for _, v in gathers.items():
         input_list = v[1]
@@ -464,33 +464,28 @@ def _resolve_leaf_edges(
         )
 
 
-def _sequentialise_gather(gathers, slgn, tlgn, sdrops, tdrops):
+def _sequentialise_gather(context, gathers, slgn, tlgn, sdrops, tdrops):
     """
     Chain each Gather drop's inputs to the group-start drops of the next
     window of iterations, so the Scatter runs gather_width at a time.
     """
-    for i, ga_drop in enumerate(sdrops):
-        if ga_drop["oid"] not in gathers:
-            # every link has been cached by now, so this Gather had no inputs
-            continue
-        ga_inputs = gathers[ga_drop["oid"]][1]
-        if not ga_inputs:
-            # nothing to chain, and j would never advance
-            continue
-        j = (i + 1) * slgn.gather_width
-        if j >= tlgn.group.dop and j % tlgn.group.dop == 0:
-            continue
-        j_end = min((i + 2) * slgn.gather_width, tlgn.group.dop * (i + 1))
-        while j < j_end:
-            # TODO merge this code into link_drops.
-            tname = tlgn.getPortName(ports="inputPorts")
-            # Go through the gather's inputs
-            for gddrop in ga_inputs:
-                if j >= j_end:
-                    break
-                gddrop.addConsumer(tdrops[j], name=tname)
-                tdrops[j].addInput(gddrop, name=tname)
-                j += 1
+    # every link has been cached by now, so a Gather drop missing from the
+    # cache had no inputs
+    inputs = [
+        gathers[ga_drop["oid"]][1] if ga_drop["oid"] in gathers else []
+        for ga_drop in sdrops
+    ]
+    edges = get_handler(Categories.GATHER).resolve_sequential_edges(
+        LogicalLink(source=slgn, target=tlgn),
+        inputs,
+        tdrops,
+        context,
+    )
+    # TODO merge this code into link_drops.
+    for edge in edges:
+        tname = tlgn.getPortName(ports="inputPorts")
+        edge.source.addConsumer(edge.target, name=tname)
+        edge.target.addInput(edge.source, name=tname)
 
 
 def _link_or_defer(
