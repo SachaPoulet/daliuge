@@ -20,17 +20,15 @@
 #    MA 02111-1307  USA
 #
 # These passes were lifted out of LG.unroll_to_tpl and still work on LG's
-# own state, until the handler contexts replace it.
+# own state; _WireContext adapts it to the handler context API.
 # pylint: disable=protected-access
+import collections
 import logging
 from functools import partial
 from itertools import product
 
 from dlg.translator.errors import GraphException
-from dlg.translator.stages.unroll.constructs.registry import (
-    get_handler_for_node,
-    is_construct,
-)
+from dlg.translator.stages.unroll.constructs.registry import get_handler, is_construct
 from dlg.translator.stages.unroll.link import (
     LinkContext,
     _is_stream_link,
@@ -42,22 +40,20 @@ from dlg.translator.vocabulary import Categories
 logger = logging.getLogger(f"dlg.{__name__}")
 
 
-class _HandlerWiringContext:
-    """ adapt the LG state and wire helpers to edge-handler context interface"""
+class _WireContext(LinkContext):
+    """Expose the resolver context while retaining the legacy link state."""
 
     def __init__(self, lg):
-        self._lg = lg
-        self.session_id = lg._session_id
+        super().__init__(lg._session_id, lg._drop_dict["new_added"])
+        self._nodes = lg._done_dict
 
     def node(self, node_id):
-        return self._lg._done_dict[node_id]
+        return self._nodes[node_id]
 
-    @staticmethod
-    def chunk_size(source, target):
+    def chunk_size(self, source, target):
         return _get_chunk_size(source, target)
 
-    @staticmethod
-    def split(drops, size):
+    def split(self, drops, size):
         return _split_list(drops, size)
 
 
@@ -72,8 +68,7 @@ def wire(lg):
     # becomes known when a link out of the Gather is wired, so the inputs
     # are held here and spliced after every link has been wired.
     gathers = {}
-    context = LinkContext(lg._session_id, lg._drop_dict["new_added"])
-    handler_context = _HandlerWiringContext(lg)
+    context = _WireContext(lg)
     link = partial(_link_or_defer, context, gathers)
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
@@ -122,22 +117,58 @@ def wire(lg):
             elif is_construct(slgn, Categories.SUBGRAPH) or is_construct(
                 tlgn, Categories.SUBGRAPH
             ):
-                pass
+                _resolve_subgraph_edges(
+                    context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                )
             else:
-                if len(sdrops) != len(tdrops):
-                    err_info = "For within-group links, # {2} Group Inputs {0} must be the same as # {3} of Component Outputs {1}".format(
-                        slgn.id, tlgn.id, len(sdrops), len(tdrops)
-                    )
-                    raise GraphException(err_info)
-                for i, sdrop in enumerate(sdrops):
-                    link(slgn, tlgn, sdrop, tdrops[i], lk)
+                # Matrix row 5 assigns this within-group fallback to Scatter.
+                # Its source may be GroupBy or Gather; link() still creates
+                # the physical connections through the common path.
+                logical_link = LogicalLink(
+                    source=slgn,
+                    target=tlgn,
+                    source_port=lk.get("fromPort"),
+                    target_port=lk.get("toPort"),
+                    is_stream=lk.get("is_stream", False),
+                    loop_aware=("%s-%s" % (sid, tid)) in lg._loop_aware_set,
+                )
+                edges = get_handler(Categories.SCATTER).resolve_edges(
+                    logical_link,
+                    sdrops,
+                    tdrops,
+                    context,
+                )
+                for edge in edges:
+                    link(slgn, tlgn, edge.source, edge.target, lk)
         elif slgn.is_group and tlgn.is_group:
             # slgn must be GroupBy and tlgn must be Gather
-            _unroll_gather_as_output(
-                link, slgn, tlgn, sdrops, tdrops, chunk_size, lk
+            _resolve_gather_edges(
+                context,
+                link,
+                slgn,
+                tlgn,
+                sdrops,
+                tdrops,
+                lk,
             )
         elif not slgn.is_group and (not tlgn.is_group):
             if slgn.is_start_node:
+                _resolve_leaf_edges(
+                    context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                    loop_aware=False,
+                )
                 continue
             if (
                 (slgn.group is not None)
@@ -206,19 +237,19 @@ def wire(lg):
                             if j % loop_iter == 0:
                                 link(slgn, tlgn, sdrops[i], tdrop, lk)
 
-                elif slgn.h_level >= tlgn.h_level:
-                    for i, chunk in enumerate(_split_list(sdrops, chunk_size)):
-                        # distribute slgn evenly to tlgn
-                        for sdrop in chunk:
-                            link(slgn, tlgn, sdrop, tdrops[i], lk)
                 else:
-                    for i, chunk in enumerate(_split_list(tdrops, chunk_size)):
-                        # distribute tlgn evenly to slgn
-                        for tdrop in chunk:
-                            link(slgn, tlgn, sdrops[i], tdrop, lk)
+                    _resolve_leaf_edges(
+                        context,
+                        link,
+                        slgn,
+                        tlgn,
+                        sdrops,
+                        tdrops,
+                        lk,
+                        loop_aware=lpaw,
+                    )
         else:  # slgn is not group, but tlgn is group
             if is_construct(tlgn, Categories.GROUP_BY):
-                handler = get_handler_for_node(tlgn)
                 logical_link = LogicalLink(
                     source=slgn,
                     target=tlgn,
@@ -228,21 +259,44 @@ def wire(lg):
                     loop_aware=("%s-%s" % (sid, tid))
                     in lg._loop_aware_set,
                 )
+
+                handler = get_handler(Categories.GROUP_BY)
                 edges = handler.resolve_edges(
                     logical_link,
                     sdrops,
                     tdrops,
-                    handler_context,
+                    context,
                 )
+
                 for edge in edges:
-                    link(edge.link.source, edge.link.target, edge.source, edge.target, lk)
+                    link(
+                        slgn,
+                        tlgn,
+                        edge.source,
+                        edge.target,
+                        lk,
+                    )
 
             elif is_construct(tlgn, Categories.GATHER):
-                _unroll_gather_as_output(
-                    link, slgn, tlgn, sdrops, tdrops, chunk_size, lk
+                _resolve_gather_edges(
+                    context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
                 )
             elif is_construct(tlgn, Categories.SUBGRAPH):
-                pass
+                _resolve_subgraph_edges(
+                    context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                )
             else:
                 raise GraphException(
                     "Unsupported target group {0}".format(tlgn.jd.category)
@@ -275,6 +329,119 @@ def wire(lg):
         len(lg._lg_links),
         lg._session_id,
     )
+
+
+def _resolve_gather_edges(
+    context,
+    link,
+    source,
+    target,
+    source_drops,
+    target_drops,
+    legacy_link,
+):
+    """Resolve edges into a Gather through the registered GatherHandler."""
+
+    logical_link = LogicalLink(
+        source=source,
+        target=target,
+        source_port=legacy_link.get("fromPort"),
+        target_port=legacy_link.get("toPort"),
+        is_stream=legacy_link.get("is_stream", False),
+    )
+
+    handler = get_handler(Categories.GATHER)
+    edges = handler.resolve_edges(
+        logical_link,
+        source_drops,
+        target_drops,
+        context,
+    )
+
+    for edge in edges:
+        link(
+            source,
+            target,
+            edge.source,
+            edge.target,
+            legacy_link,
+        )
+
+
+def _resolve_subgraph_edges(
+    context,
+    link,
+    source,
+    target,
+    source_drops,
+    target_drops,
+    legacy_link,
+):
+    """Resolve Subgraph edges through the registered SubgraphHandler."""
+
+    logical_link = LogicalLink(
+        source=source,
+        target=target,
+        source_port=legacy_link.get("fromPort"),
+        target_port=legacy_link.get("toPort"),
+        is_stream=legacy_link.get("is_stream", False),
+    )
+
+    handler = get_handler(Categories.SUBGRAPH)
+    edges = handler.resolve_edges(
+        logical_link,
+        source_drops,
+        target_drops,
+        context,
+    )
+
+    for edge in edges:
+        link(
+            source,
+            target,
+            edge.source,
+            edge.target,
+            legacy_link,
+        )
+
+
+def _resolve_leaf_edges(
+    context,
+    link,
+    source,
+    target,
+    source_drops,
+    target_drops,
+    legacy_link,
+    loop_aware,
+):
+    """Resolve plain leaf edges through the registered LeafHandler."""
+
+    logical_link = LogicalLink(
+        source=source,
+        target=target,
+        source_port=legacy_link.get("fromPort"),
+        target_port=legacy_link.get("toPort"),
+        is_stream=legacy_link.get("is_stream", False),
+        loop_aware=loop_aware,
+    )
+
+    handler = get_handler("leaf")
+    edges = handler.resolve_edges(
+        logical_link,
+        source_drops,
+        target_drops,
+        context,
+    )
+
+    for edge in edges:
+        link(
+            source,
+            target,
+            edge.source,
+            edge.target,
+            legacy_link,
+        )
 
 
 def _link_or_defer(context, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
@@ -323,19 +490,6 @@ def _split_list(ls, n):
     """
     for i in range(0, len(ls), n):
         yield ls[i: i + n]
-
-
-def _unroll_gather_as_output(link, slgn, tlgn, sdrops, tdrops, chunk_size, llink):
-    if slgn.h_level < tlgn.h_level:
-        raise GraphException(
-            "Gather {0} has higher h-level than its input {1}".format(
-                tlgn.id, slgn.id
-            )
-        )
-    # src must be data
-    for i, chunk in enumerate(_split_list(sdrops, chunk_size)):
-        for sdrop in chunk:
-            link(slgn, tlgn, sdrop, tdrops[i], llink)
 
 
 def _get_chunk_size(s, t):

@@ -27,11 +27,32 @@ import logging
 import numpy as np
 
 from dlg.translator.errors import GInvalidNode
-from dlg.translator.stages.unroll.constructs.registry import is_construct
+from dlg.translator.stages.unroll.constructs.registry import (
+    get_handler_for_node,
+    is_construct,
+)
 from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
+
+
+class _HandlerInstantiationContext:
+    """Expose legacy LG state through the handler instantiation interface."""
+
+    def __init__(self, lg, loop_context=None):
+        self._lg = lg
+        self.session_id = lg._session_id
+        self.loop_context = loop_context
+
+    def node(self, node_id):
+        return self._lg._done_dict[node_id]
+
+    def drops_of(self, node_id):
+        return self._lg._drop_dict[node_id]
+
+    def add_drop(self, node_id, drop):
+        self._lg._drop_dict[node_id].append(drop)
 
 
 def synthesise_links(lg):
@@ -154,7 +175,12 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
                 grp_h = tuple(int(x) for x in np.unravel_index(i, shape))
                 miid = miid.with_group_key(grp_h)
 
-            if not is_construct(lgn, Categories.SCATTER) and not is_construct(
+            if is_construct(lgn, Categories.SERVICE):
+                context = _HandlerInstantiationContext(lg, lpcxt)
+                handler = get_handler_for_node(lgn)
+                for src_drop in handler.instantiate(lgn, miid, context):
+                    context.add_drop(lgn.id, src_drop)
+            elif not is_construct(lgn, Categories.SCATTER) and not is_construct(
                 lgn, Categories.LOOP
             ):
                 # make GroupBy and Gather drops
