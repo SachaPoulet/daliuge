@@ -42,6 +42,7 @@ from collections import defaultdict
 
 from dlg.common import CategoryType
 from dlg.translator.errors import GInvalidNode
+from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.model import LGNode as ModelLGNode
 from dlg.translator.vocabulary import Categories
@@ -110,6 +111,32 @@ class TestCategoryTypeInference(unittest.TestCase):
             }
         )
         self.assertEqual(node.jd["categoryType"], CategoryType.CONSTRUCT)
+
+
+class TestInstanceIdRetention(unittest.TestCase):
+    def test_make_single_drop_retains_coordinate_and_wire_iid(self):
+        node = _make_node(
+            {
+                "id": "coord-node",
+                "name": "coord-node",
+                "category": Categories.FILE,
+                "categoryType": CategoryType.DATA,
+            }
+        )
+        coord = InstanceId((0, 2), group_key=(3, 4))
+
+        drop = node.make_single_drop(coord)
+
+        self.assertEqual("0-2$3-4", drop["iid"])
+        self.assertEqual(
+            "test_lg_node_coord-node_0-2$3-4",
+            drop["oid"],
+        )
+        self.assertEqual([0, 2], drop["rank"])
+        self.assertIs(coord, drop.coord)
+
+        # The coordinate is internal Python state, not part of the PG wire dict.
+        self.assertNotIn("coord", drop)
 
 
 class TestLGNodeModelSplit(unittest.TestCase):

@@ -590,6 +590,7 @@ class LGNode(LGNodeModel):
         if self._reprodata is not None:
             kwargs["reprodata"] = self._reprodata.copy()
         drop_spec.update(kwargs)
+        drop_spec.coord = iid
         return drop_spec
 
     @staticmethod
