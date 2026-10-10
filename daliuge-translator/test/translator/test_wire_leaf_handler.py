@@ -102,7 +102,7 @@ class TestLeafHandlerWiring(unittest.TestCase):
             resolve_leaf.call_args.kwargs["loop_aware"]
         )
 
-    def test_loop_iteration_relink_stays_on_legacy_path(self):
+    def test_loop_iteration_relink_routes_through_loop_handler(self):
         loop_group = SimpleNamespace(
             id="loop",
             name="loop",
@@ -144,15 +144,20 @@ class TestLeafHandlerWiring(unittest.TestCase):
 
         with patch.object(
             wire_module,
+            "get_handler",
+            wraps=wire_module.get_handler,
+        ) as get_handler, patch.object(
+            wire_module,
             "_resolve_leaf_edges",
         ) as resolve_leaf, patch.object(
             wire_module,
             "_link_or_defer",
-        ) as legacy_link:
+        ) as physical_link:
             wire_module.wire(graph)
 
+        get_handler.assert_called_once_with(Categories.LOOP)
         resolve_leaf.assert_not_called()
-        legacy_link.assert_called_once()
+        physical_link.assert_called_once()
 
 
 if __name__ == "__main__":

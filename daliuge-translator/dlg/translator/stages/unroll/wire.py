@@ -24,7 +24,6 @@
 # pylint: disable=protected-access
 import logging
 from functools import partial
-from itertools import product
 
 from dlg.translator.errors import GraphException
 from dlg.translator.stages.unroll.constructs.registry import get_handler, is_construct
@@ -76,7 +75,6 @@ def wire(lg):
         tlgn = lg._done_dict[tid]
         sdrops = lg._drop_dict[sid]
         tdrops = lg._drop_dict[tid]
-        chunk_size = _get_chunk_size(slgn, tlgn)
         if slgn.is_group and not tlgn.is_group:
             # this link must be artifically added (within group link)
             # since
@@ -169,84 +167,29 @@ def wire(lg):
                     loop_aware=False,
                 )
                 continue
-            if (
-                (slgn.group is not None)
-                and is_construct(slgn.group, Categories.LOOP)
-                and slgn.gid == tlgn.gid
-                and slgn.is_group_end
-                and tlgn.is_group_start
-            ):
-                # Re-link to the next iteration's start
-                lsd = len(sdrops)
-                if lsd != len(tdrops):
-                    raise GraphException(
-                        "# of sdrops '{0}' != # of tdrops '{1}'for Loop '{2}'".format(
-                            slgn.name, tlgn.name, slgn.group.name
-                        )
-                    )
-                # first add the outer construct (scatter, gather, group-by) boundary
-                loop_chunk_size = slgn.group.dop
-                for i, chunk in enumerate(
-                    _split_list(sdrops, loop_chunk_size)
-                ):
-                    for j, sdrop in enumerate(chunk):
-                        if j < loop_chunk_size - 1:
-                            link(
-                                slgn,
-                                tlgn,
-                                sdrop,
-                                tdrops[i * loop_chunk_size + j + 1],
-                                lk,
-                            )
-            elif (
-                slgn.group is not None
-                and is_construct(slgn.group, Categories.LOOP)
-                and tlgn.group is not None
-                and is_construct(tlgn.group, Categories.LOOP)
-                and (not slgn.h_related(tlgn))
-            ):
-                # stepwise locking for links between two Loops
-                for sdrop, tdrop in product(sdrops, tdrops):
-                    if sdrop["loop_ctx"] == tdrop["loop_ctx"]:
-                        link(slgn, tlgn, sdrop, tdrop, lk)
-            else:
-                lpaw = ("%s-%s" % (sid, tid)) in lg._loop_aware_set
-                if (
-                    slgn.group is not None
-                    and is_construct(slgn.group, Categories.LOOP)
-                    and lpaw
-                    and slgn.h_level > tlgn.h_level
-                ):
-                    loop_iter = slgn.group.dop
-                    for i, chunk in enumerate(_split_list(sdrops, chunk_size)):
-                        for j, sdrop in enumerate(chunk):
-                            # only link drops in the last loop iteration
-                            if j % loop_iter == loop_iter - 1:
-                                link(slgn, tlgn, sdrop, tdrops[i], lk)
-                elif (
-                    tlgn.group is not None
-                    and is_construct(tlgn.group, Categories.LOOP)
-                    and lpaw
-                    and slgn.h_level < tlgn.h_level
-                ):
-                    loop_iter = tlgn.group.dop
-                    for i, chunk in enumerate(_split_list(tdrops, chunk_size)):
-                        for j, tdrop in enumerate(chunk):
-                            # only link drops in the first loop iteration
-                            if j % loop_iter == 0:
-                                link(slgn, tlgn, sdrops[i], tdrop, lk)
 
-                else:
-                    _resolve_leaf_edges(
-                        context,
-                        link,
-                        slgn,
-                        tlgn,
-                        sdrops,
-                        tdrops,
-                        lk,
-                        loop_aware=lpaw,
-                    )
+            loop_aware = ("%s-%s" % (sid, tid)) in lg._loop_aware_set
+
+            if not _resolve_loop_edges(
+                context,
+                link,
+                slgn,
+                tlgn,
+                sdrops,
+                tdrops,
+                lk,
+                loop_aware,
+            ):
+                _resolve_leaf_edges(
+                    context,
+                    link,
+                    slgn,
+                    tlgn,
+                    sdrops,
+                    tdrops,
+                    lk,
+                    loop_aware=loop_aware,
+                )
         else:  # slgn is not group, but tlgn is group
             if is_construct(tlgn, Categories.GROUP_BY):
                 logical_link = LogicalLink(
@@ -402,6 +345,90 @@ def _resolve_subgraph_edges(
             edge.target,
             legacy_link,
         )
+
+
+def _resolve_loop_edges(
+    context,
+    link,
+    source,
+    target,
+    source_drops,
+    target_drops,
+    legacy_link,
+    loop_aware,
+):
+    """Route Loop-owned leaf edges through LoopHandler.
+
+    Return True when the edge belongs to one of the four Loop-specific
+    cases, including cases that intentionally resolve to no physical edges.
+    """
+
+    source_group = source.group
+    target_group = target.group
+
+    source_in_loop = (
+        source_group is not None
+        and is_construct(source_group, Categories.LOOP)
+    )
+    target_in_loop = (
+        target_group is not None
+        and is_construct(target_group, Categories.LOOP)
+    )
+
+    loop_owned = (
+        (
+            source_in_loop
+            and source.gid == target.gid
+            and source.is_group_end
+            and target.is_group_start
+        )
+        or (
+            source_in_loop
+            and target_in_loop
+            and not source.h_related(target)
+        )
+        or (
+            source_in_loop
+            and loop_aware
+            and source.h_level > target.h_level
+        )
+        or (
+            target_in_loop
+            and loop_aware
+            and source.h_level < target.h_level
+        )
+    )
+
+    if not loop_owned:
+        return False
+
+    logical_link = LogicalLink(
+        source=source,
+        target=target,
+        source_port=legacy_link.get("fromPort"),
+        target_port=legacy_link.get("toPort"),
+        is_stream=legacy_link.get("is_stream", False),
+        loop_aware=loop_aware,
+    )
+
+    handler = get_handler(Categories.LOOP)
+    edges = handler.resolve_edges(
+        logical_link,
+        source_drops,
+        target_drops,
+        context,
+    )
+
+    for edge in edges:
+        link(
+            source,
+            target,
+            edge.source,
+            edge.target,
+            legacy_link,
+        )
+
+    return True
 
 
 def _resolve_leaf_edges(
