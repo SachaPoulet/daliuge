@@ -1,4 +1,5 @@
 import unittest
+from collections import defaultdict
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
@@ -21,6 +22,7 @@ from dlg.translator.stages.unroll.constructs.service import ServiceHandler
 from dlg.translator.stages.unroll.constructs.subgraph import SubgraphHandler
 from dlg.translator.stages.unroll.lg_node import LGNode
 from dlg.translator.stages.unroll.model import LogicalLink
+from dlg.translator.stages.unroll.wire import wire
 from dlg.translator.vocabulary import Categories
 
 
@@ -129,6 +131,34 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             [
                 (sources[1], targets[0]),
                 (sources[0], targets[1]),
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+
+    def test_multi_key_groupby_sorts_indices_numerically_above_nine(self):
+        keys = [
+            (2, 0),
+            (10, 0),
+            (11, 0),
+            (2, 10),
+            (2, 11),
+            (10, 2),
+            (11, 10),
+        ]
+        source_iids = [f"{second}-{first}" for first, second in keys]
+        _, _, sources, targets, edges = self._resolve(
+            source_iids,
+            len(keys),
+            group_keys=("first", "second"),
+            group_by_scatter_layers=(len(keys), [0, 1], []),
+            source_group=self._node(Categories.SCATTER),
+        )
+        numeric_order = [0, 3, 4, 1, 5, 2, 6]
+
+        self.assertEqual(
+            [
+                (sources[source_index], targets[target_index])
+                for target_index, source_index in enumerate(numeric_order)
             ],
             [(edge.source, edge.target) for edge in edges],
         )
@@ -396,6 +426,99 @@ class TestConstructHandlerDoP(unittest.TestCase):
 
             get_handler.assert_called_once_with(node)
             handler.degree_of_parallelism.assert_called_once_with(node)
+
+
+class TestGroupByWire(unittest.TestCase):
+    """Test GroupBy edge pairing through wire and physical port wiring."""
+
+    def test_wire_connects_numeric_group_pairs_using_link_port_names(self):
+        source_port_names = {"source-output-id": "source-output"}
+        target_port_names = {"target-input-id": "target-input"}
+
+        def get_port_name(port_names, ports, index=0, portId=None):
+            del ports
+            if index < 0:
+                return port_names
+            return port_names.get(portId)
+
+        source = SimpleNamespace(
+            id="source",
+            name="source",
+            category=Categories.PYTHON_APP,
+            categoryType="Application",
+            jd={"categoryType": "Application"},
+            is_group=False,
+            is_start_node=False,
+            group=None,
+            h_level=0,
+            getPortName=lambda ports, index=0, portId=None: get_port_name(
+                source_port_names, ports, index, portId
+            ),
+        )
+        target = SimpleNamespace(
+            id="groupby",
+            name="groupby",
+            category=Categories.GROUP_BY,
+            categoryType="Construct",
+            jd={"category": Categories.GROUP_BY, "categoryType": "Construct"},
+            is_group=True,
+            group_keys=None,
+            group_by_scatter_layers=(3, [], []),
+            groupby_width=3,
+            h_level=0,
+            getPortName=lambda ports, index=0, portId=None: get_port_name(
+                target_port_names, ports, index, portId
+            ),
+        )
+        source_drops = [
+            dropdict({"oid": "source-10", "iid": "0-10"}),
+            dropdict({"oid": "source-2", "iid": "0-2"}),
+            dropdict({"oid": "source-11", "iid": "0-11"}),
+        ]
+        target_drops = [
+            dropdict({"oid": "group-0"}),
+            dropdict({"oid": "group-1"}),
+            dropdict({"oid": "group-2"}),
+        ]
+        logical_link = {
+            "from": source.id,
+            "to": target.id,
+            "fromPort": "source-output-id",
+            "toPort": "target-input-id",
+        }
+        graph = SimpleNamespace(
+            _session_id="test",
+            _drop_dict=defaultdict(
+                list,
+                {source.id: source_drops, target.id: target_drops},
+            ),
+            _done_dict={source.id: source, target.id: target},
+            _lg_links=[logical_link],
+            _loop_aware_set=set(),
+        )
+
+        wire(graph)
+
+        self.assertEqual(
+            [
+                [{"group-1": "source-output"}],
+                [{"group-0": "source-output"}],
+                [{"group-2": "source-output"}],
+            ],
+            [source_drop["outputs"] for source_drop in source_drops],
+        )
+        self.assertEqual(
+            [
+                [{"source-2": "target-input"}],
+                [{"source-10": "target-input"}],
+                [{"source-11": "target-input"}],
+            ],
+            [target_drop["producers"] for target_drop in target_drops],
+        )
+        self.assertEqual(
+            [{"target-input": "source-output"}] * 3,
+            [target_drop["port_map"] for target_drop in target_drops],
+        )
 
 
 if __name__ == "__main__":

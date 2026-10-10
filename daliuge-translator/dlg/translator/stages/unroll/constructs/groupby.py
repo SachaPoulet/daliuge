@@ -118,7 +118,14 @@ class GroupByHandler:
             )
 
         edges = []
-        for index, group_key in enumerate(sorted(groups)):
+        for index, group_key in enumerate(
+            sorted(
+                groups,
+                key=lambda value: tuple(
+                    int(component) for component in value.split("-")
+                ),
+            )
+        ):
             for source_drop in groups[group_key]:
                 edges.append(
                     Edge(
