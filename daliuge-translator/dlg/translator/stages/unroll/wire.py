@@ -75,6 +75,9 @@ def wire(lg):
     # The cache keeps only the substituted drop; sequentialisation also needs
     # the input's node, raw drop and own link to wire through link_drops.
     gather_sources = collections.defaultdict(list)
+    # (gather lgn, group-start lgn, gather drops, group-start drops) for each
+    # Gather -> group-start link, chained once the loop below has finished.
+    sequentialised = []
     context = _WireContext(lg)
     link = partial(
         _link_or_defer, context, gathers, gather_sources=gather_sources
@@ -96,31 +99,8 @@ def wire(lg):
             ):  # not the artifical link between gather and its own start child
                 # gather iteration case, tgt must be a Group-Start Component
                 # this is a way to manually sequentialise a Scatter that has a high DoP
-                for i, ga_drop in enumerate(sdrops):
-                    if ga_drop["oid"] not in gathers:
-                        logger.warning(
-                            "Gather %s Drop not yet in cache, sequentialisation may fail!",
-                            slgn.name,
-                        )
-                        continue
-                    ga_inputs = gathers[ga_drop["oid"]][1]
-                    if not ga_inputs:
-                        # nothing to chain, and j would never advance
-                        continue
-                    j = (i + 1) * slgn.gather_width
-                    if j >= tlgn.group.dop and j % tlgn.group.dop == 0:
-                        continue
-                    j_end = min((i + 2) * slgn.gather_width, tlgn.group.dop * (i + 1))
-                    while j < j_end:
-                        # TODO merge this code into link_drops.
-                        tname = tlgn.getPortName(ports="inputPorts")
-                        # Go through the gather's inputs
-                        for gddrop in ga_inputs:
-                            if j >= j_end:
-                                break
-                            gddrop.addConsumer(tdrops[j], name=tname)
-                            tdrops[j].addInput(gddrop, name=tname)
-                            j += 1
+                # Deferred until every link into the Gather has been cached.
+                sequentialised.append((slgn, tlgn, sdrops, tdrops))
 
             elif is_construct(slgn, Categories.SUBGRAPH) or is_construct(
                 tlgn, Categories.SUBGRAPH
@@ -254,6 +234,9 @@ def wire(lg):
                 raise GraphException(
                     "Unsupported target group {0}".format(tlgn.jd.category)
                 )
+
+    for slgn, tlgn, sdrops, tdrops in sequentialised:
+        _sequentialise_gather(gathers, slgn, tlgn, sdrops, tdrops)
 
     for _, v in gathers.items():
         input_list = v[1]
@@ -479,6 +462,35 @@ def _resolve_leaf_edges(
             edge.target,
             legacy_link,
         )
+
+
+def _sequentialise_gather(gathers, slgn, tlgn, sdrops, tdrops):
+    """
+    Chain each Gather drop's inputs to the group-start drops of the next
+    window of iterations, so the Scatter runs gather_width at a time.
+    """
+    for i, ga_drop in enumerate(sdrops):
+        if ga_drop["oid"] not in gathers:
+            # every link has been cached by now, so this Gather had no inputs
+            continue
+        ga_inputs = gathers[ga_drop["oid"]][1]
+        if not ga_inputs:
+            # nothing to chain, and j would never advance
+            continue
+        j = (i + 1) * slgn.gather_width
+        if j >= tlgn.group.dop and j % tlgn.group.dop == 0:
+            continue
+        j_end = min((i + 2) * slgn.gather_width, tlgn.group.dop * (i + 1))
+        while j < j_end:
+            # TODO merge this code into link_drops.
+            tname = tlgn.getPortName(ports="inputPorts")
+            # Go through the gather's inputs
+            for gddrop in ga_inputs:
+                if j >= j_end:
+                    break
+                gddrop.addConsumer(tdrops[j], name=tname)
+                tdrops[j].addInput(gddrop, name=tname)
+                j += 1
 
 
 def _link_or_defer(

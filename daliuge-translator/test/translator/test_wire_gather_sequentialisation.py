@@ -194,6 +194,21 @@ class TestSequentialisationGraphs(unittest.TestCase):
                 lg = sequentialisation_lg(*CASES[name])
                 self.assertEqual(expected, chained_edges(lg))
 
+    def test_link_order_does_not_change_the_chaining(self):
+        """The Gather -> start link may be wired before the links into the Gather.
+
+        LG validation still rejects that order in linkDataArray (a Gather's
+        output is checked against an input it has not seen yet), so the
+        order is changed after validation, where wire() reads it.
+        """
+
+        lg = sequentialisation_lg(*CASES["top_level_even"])
+        to_start = next(link for link in lg._lg_links if link["to"] == START_ID)
+        lg._lg_links.remove(to_start)
+        lg._lg_links.insert(0, to_start)
+
+        self.assertEqual(PINNED_EDGES["top_level_even"], chained_edges(lg))
+
 
 def _node(category, category_type, is_group=False):
     return SimpleNamespace(
