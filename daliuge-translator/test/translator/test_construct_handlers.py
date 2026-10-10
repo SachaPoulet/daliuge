@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
 
-from dlg.common import dropdict
+from dlg.common import CategoryType, dropdict
 from dlg.translator.errors import GInvalidLink, GInvalidNode, GraphException
 from dlg.translator.stages.unroll.constructs.branch import BranchHandler
 from dlg.translator.stages.unroll.constructs.gather import GatherHandler
@@ -28,33 +28,64 @@ from dlg.translator.vocabulary import Categories
 
 
 class TestMPIHandlerInstantiate(unittest.TestCase):
-    def test_creates_one_drop_per_process_with_rank_and_loop_context(self):
-        """Test that MPIHandler creates one correctly indexed drop per process."""
-        node = SimpleNamespace(dop=3, make_single_drop=Mock())
-        node.make_single_drop.side_effect = lambda coord, **kwargs: dropdict(
-            {"iid": str(coord), **kwargs}
-        )
-        context = SimpleNamespace(loop_context="loop-1")
+    """Test MPI DROP instantiation through the handler."""
 
-        drops = MPIHandler().instantiate(node, InstanceId((0, 2)), context)
+    def test_creates_one_drop_per_process_with_rank_and_loop_context(self):
+        node = SimpleNamespace(
+            dop=3,
+            make_single_drop=Mock(),
+        )
+        node.make_single_drop.side_effect = (
+            lambda coord, **kwargs: dropdict(
+                {
+                    "iid": str(coord),
+                    **kwargs,
+                }
+            )
+        )
+
+        context = SimpleNamespace(
+            loop_context="loop-1",
+        )
+
+        drops = MPIHandler().instantiate(
+            node,
+            InstanceId((0, 2)),
+            context,
+        )
 
         self.assertEqual(
             [
-                {"iid": "0-2-0", "loop_ctx": "loop-1", "proc_index": 0},
-                {"iid": "0-2-1", "loop_ctx": "loop-1", "proc_index": 1},
-                {"iid": "0-2-2", "loop_ctx": "loop-1", "proc_index": 2},
+                {
+                    "iid": "0-2-0",
+                    "loop_ctx": "loop-1",
+                    "proc_index": 0,
+                },
+                {
+                    "iid": "0-2-1",
+                    "loop_ctx": "loop-1",
+                    "proc_index": 1,
+                },
+                {
+                    "iid": "0-2-2",
+                    "loop_ctx": "loop-1",
+                    "proc_index": 2,
+                },
             ],
             [
                 {
                     key: drop[key]
-                    for key in ("iid", "loop_ctx", "proc_index")
+                    for key in (
+                        "iid",
+                        "loop_ctx",
+                        "proc_index",
+                    )
                 }
                 for drop in drops
             ],
         )
 
     def test_instantiator_routes_mpi_nodes_through_handler(self):
-        """Test the instantiator correctly routes MPI nodes through MPIHandler."""
         node = SimpleNamespace(
             id="mpi",
             category=Categories.MPI,
@@ -62,27 +93,50 @@ class TestMPIHandlerInstantiate(unittest.TestCase):
             dop=2,
             make_single_drop=Mock(
                 side_effect=lambda coord, **kwargs: dropdict(
-                    {"iid": str(coord), **kwargs}
+                    {
+                        "iid": str(coord),
+                        **kwargs,
+                    }
                 )
             ),
         )
+
         graph = SimpleNamespace(
             _session_id="test",
-            _done_dict={node.id: node},
+            _done_dict={
+                node.id: node,
+            },
             _drop_dict=defaultdict(list),
         )
 
-        lgn_to_pgn(graph, node, InstanceId((0, 4)), "loop-2")
+        lgn_to_pgn(
+            graph,
+            node,
+            InstanceId((0, 4)),
+            "loop-2",
+        )
 
         self.assertEqual(
             [
-                {"iid": "0-4-0", "loop_ctx": "loop-2", "proc_index": 0},
-                {"iid": "0-4-1", "loop_ctx": "loop-2", "proc_index": 1},
+                {
+                    "iid": "0-4-0",
+                    "loop_ctx": "loop-2",
+                    "proc_index": 0,
+                },
+                {
+                    "iid": "0-4-1",
+                    "loop_ctx": "loop-2",
+                    "proc_index": 1,
+                },
             ],
             [
                 {
                     key: drop[key]
-                    for key in ("iid", "loop_ctx", "proc_index")
+                    for key in (
+                        "iid",
+                        "loop_ctx",
+                        "proc_index",
+                    )
                 }
                 for drop in graph._drop_dict[node.id]
             ],
@@ -90,7 +144,7 @@ class TestMPIHandlerInstantiate(unittest.TestCase):
 
 
 class TestGroupByHandlerResolveEdges(unittest.TestCase):
-    """Test the GroupBy edge pairing for IID-derived keys and error cases"""
+    """Test GroupBy edge pairing for IID-derived keys and error cases."""
 
     class UnusedWiringContext:
         session_id = "test"
@@ -102,12 +156,16 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         @staticmethod
         def chunk_size(source, target):
             del source, target
-            raise AssertionError("GroupBy edge resolution should not chunk drops")
+            raise AssertionError(
+                "GroupBy edge resolution should not chunk drops"
+            )
 
         @staticmethod
         def split(drops, size):
             del drops, size
-            raise AssertionError("GroupBy edge resolution should not split drops")
+            raise AssertionError(
+                "GroupBy edge resolution should not split drops"
+            )
 
     @staticmethod
     def _node(category, **attributes):
@@ -116,41 +174,64 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             name=attributes.pop("name", category),
             category=category,
             is_group=category
-            in (Categories.GROUP_BY, Categories.SCATTER, Categories.LOOP),
+            in (
+                Categories.GROUP_BY,
+                Categories.SCATTER,
+                Categories.LOOP,
+            ),
             jd={"category": category},
             group=None,
             h_level=0,
         )
+
         for name, value in attributes.items():
             setattr(node, name, value)
+
         return cast(LGNode, node)
 
-    def _resolve(self, source_iids, target_count, **target_attributes):
+    def _resolve(
+        self,
+        source_iids,
+        target_count,
+        **target_attributes,
+    ):
         source_group = target_attributes.pop("source_group", None)
+
         source = self._node(
             Categories.PYTHON_APP,
             h_level=target_attributes.pop("source_h_level", 0),
         )
         source.group = source_group
+
         target = self._node(
             Categories.GROUP_BY,
             h_level=target_attributes.pop("target_h_level", 0),
             group_keys=target_attributes.pop("group_keys", None),
             group_by_scatter_layers=target_attributes.pop(
-                "group_by_scatter_layers", (target_count, [], [])
+                "group_by_scatter_layers",
+                (target_count, [], []),
             ),
         )
+
         link = LogicalLink(source=source, target=target)
-        sources = [dropdict({"iid": iid}) for iid in source_iids]
-        targets = [
-            dropdict({"target": index}) for index in range(target_count)
+
+        sources = [
+            dropdict({"iid": iid})
+            for iid in source_iids
         ]
+
+        targets = [
+            dropdict({"target": index})
+            for index in range(target_count)
+        ]
+
         edges = GroupByHandler().resolve_edges(
             link,
             sources,
             targets,
             self.UnusedWiringContext(),
         )
+
         return source, target, sources, targets, edges
 
     def test_buckets_source_drops_and_sorts_group_keys(self):
@@ -177,7 +258,10 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         )
 
         self.assertEqual(
-            [(sources[0], targets[0]), (sources[1], targets[1])],
+            [
+                (sources[0], targets[0]),
+                (sources[1], targets[1]),
+            ],
             [(edge.source, edge.target) for edge in edges],
         )
 
@@ -198,7 +282,9 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             [(edge.source, edge.target) for edge in edges],
         )
 
-    def test_multi_key_groupby_sorts_indices_numerically_above_nine(self):
+    def test_multi_key_groupby_sorts_indices_numerically_above_nine(
+        self,
+    ):
         keys = [
             (2, 0),
             (10, 0),
@@ -208,40 +294,59 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             (10, 2),
             (11, 10),
         ]
-        source_iids = [f"{second}-{first}" for first, second in keys]
+        source_iids = [
+            f"{second}-{first}"
+            for first, second in keys
+        ]
+
         _, _, sources, targets, edges = self._resolve(
             source_iids,
             len(keys),
             group_keys=("first", "second"),
-            group_by_scatter_layers=(len(keys), [0, 1], []),
+            group_by_scatter_layers=(
+                len(keys),
+                [0, 1],
+                [],
+            ),
             source_group=self._node(Categories.SCATTER),
         )
 
         self.assertEqual(
             [
                 (sources[index], targets[target_index])
-                for target_index, index in enumerate([0, 3, 4, 1, 5, 2, 6])
+                for target_index, index in enumerate(
+                    [0, 3, 4, 1, 5, 2, 6]
+                )
             ],
             [(edge.source, edge.target) for edge in edges],
         )
 
-    def test_chained_multi_key_groupby_reads_group_key_after_dollar(self):
+    def test_chained_multi_key_groupby_reads_group_key_after_dollar(
+        self,
+    ):
         source = self._node(Categories.PYTHON_APP)
         source.group = self._node(
             Categories.GROUP_BY,
             name="outer-groupby",
         )
+
         target = self._node(
             Categories.GROUP_BY,
             group_keys=("first", "second"),
             group_by_scatter_layers=(2, [0, 1], []),
         )
+
         link = LogicalLink(source=source, target=target)
+
         sources = [
             dropdict({"iid": "0-1$2-3"}),
             dropdict({"iid": "0-1$1-3"}),
         ]
-        targets = [dropdict({"target": 0}), dropdict({"target": 1})]
+
+        targets = [
+            dropdict({"target": 0}),
+            dropdict({"target": 1}),
+        ]
 
         edges = GroupByHandler().resolve_edges(
             link,
@@ -258,17 +363,24 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             [(edge.source, edge.target) for edge in edges],
         )
 
-    def test_chained_multi_key_groupby_requires_dollar_context(self):
+    def test_chained_multi_key_groupby_requires_dollar_context(
+        self,
+    ):
         source = self._node(Categories.PYTHON_APP)
         source.group = self._node(Categories.GROUP_BY)
+
         target = self._node(
             Categories.GROUP_BY,
             group_keys=("first", "second"),
             group_by_scatter_layers=(1, [0], []),
         )
+
         link = LogicalLink(source=source, target=target)
 
-        with self.assertRaisesRegex(GraphException, "hiearchy.*not specified"):
+        with self.assertRaisesRegex(
+            GraphException,
+            "hiearchy.*not specified",
+        ):
             GroupByHandler().resolve_edges(
                 link,
                 [dropdict({"iid": "0-1"})],
@@ -276,12 +388,55 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
                 self.UnusedWiringContext(),
             )
 
-    def test_rejects_mismatch_between_group_keys_and_target_drops(self):
-        with self.assertRaisesRegex(GraphException, "# of Group keys 2 != # of Group Drops 1"):
-            self._resolve(["0-1", "0-2"], 1)
+    def test_rejects_mismatch_between_group_keys_and_target_drops(
+        self,
+    ):
+        with self.assertRaisesRegex(
+            GraphException,
+            "# of Group keys 2 != # of Group Drops 1",
+        ):
+            self._resolve(
+                ["0-1", "0-2"],
+                1,
+            )
 
 
 class TestConstructHandlerDoP(unittest.TestCase):
+
+    def test_scatter_resolves_aligned_boundary_edges(self):
+        source = SimpleNamespace(id="group", name="group")
+        target = SimpleNamespace(id="component", name="component")
+        link = LogicalLink(source, target)
+        sources = [{"oid": "source-0"}, {"oid": "source-1"}]
+        targets = [{"oid": "target-0"}, {"oid": "target-1"}]
+
+        edges = ScatterHandler().resolve_edges(link, sources, targets, None)
+
+        self.assertEqual(
+            [
+                (source_drop, target_drop)
+                for source_drop, target_drop in zip(sources, targets)
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
+        self.assertTrue(all(edge.link is link for edge in edges))
+
+    def test_scatter_boundary_edge_resolution_preserves_length_error(self):
+        link = LogicalLink(
+            SimpleNamespace(id="group"),
+            SimpleNamespace(id="component"),
+        )
+
+        with self.assertRaisesRegex(
+            GraphException,
+            r"# 1 Group Inputs group must be the same as # 2 of Component Outputs component",
+        ):
+            ScatterHandler().resolve_edges(
+                link,
+                [{"oid": "source"}],
+                [{"oid": "target-0"}, {"oid": "target-1"}],
+                None,
+            )
 
     def test_gather_rejects_non_data_input(self):
         source = SimpleNamespace(
@@ -488,6 +643,273 @@ class TestConstructHandlerDoP(unittest.TestCase):
 
             get_handler.assert_called_once_with(node)
             handler.degree_of_parallelism.assert_called_once_with(node)
+
+
+class TestSubgraphEdgeResolution(unittest.TestCase):
+
+    def test_subgraph_edges_are_noop(self):
+        subgraph = SimpleNamespace(name="subgraph")
+        leaf = SimpleNamespace(name="leaf")
+
+        handler = SubgraphHandler()
+
+        with self.subTest(direction="subgraph-source"):
+            link = LogicalLink(subgraph, leaf)
+            self.assertEqual(
+                [],
+                handler.resolve_edges(
+                    link,
+                    [{"oid": "source"}],
+                    [{"oid": "target"}],
+                    Mock(),
+                ),
+            )
+
+        with self.subTest(direction="subgraph-target"):
+            link = LogicalLink(leaf, subgraph)
+            self.assertEqual(
+                [],
+                handler.resolve_edges(
+                    link,
+                    [{"oid": "source"}],
+                    [{"oid": "target"}],
+                    Mock(),
+                ),
+            )
+
+
+class TestServiceHandlerInstantiation(unittest.TestCase):
+
+    def test_service_instantiation_creates_application_drop(self):
+        coord = InstanceId((0,))
+        drop = {"oid": "service-drop"}
+
+        node = Mock()
+        node.is_group = True
+        node.is_data = False
+        node.is_app = False
+        node.jd = {"categoryType": "Construct"}
+        node.make_single_drop.return_value = drop
+
+        result = ServiceHandler().instantiate(node, coord, None)
+
+        self.assertEqual([drop], result)
+        self.assertEqual(
+            CategoryType.APPLICATION,
+            node.jd["categoryType"],
+        )
+        self.assertFalse(node.is_data)
+        self.assertTrue(node.is_app)
+        node.make_single_drop.assert_called_once_with(coord)
+
+    def test_non_group_service_instantiation_is_noop(self):
+        node = Mock()
+        node.is_group = False
+
+        result = ServiceHandler().instantiate(
+            node,
+            InstanceId((0,)),
+            None,
+        )
+
+        self.assertEqual([], result)
+        node.make_single_drop.assert_not_called()
+
+
+class TestGatherEdgeResolution(unittest.TestCase):
+    class FakeWiringContext:
+        def __init__(self, chunk_size):
+            self._chunk_size = chunk_size
+
+        def chunk_size(self, source, target):
+            del source, target
+            return self._chunk_size
+
+        @staticmethod
+        def split(drops, size):
+            for index in range(0, len(drops), size):
+                yield drops[index:index + size]
+
+    @staticmethod
+    def _node(node_id, h_level):
+        return SimpleNamespace(
+            id=node_id,
+            h_level=h_level,
+        )
+
+    def test_gather_groups_source_drops_by_chunk_size(self):
+        source = self._node("source", 2)
+        target = self._node("gather", 1)
+        link = LogicalLink(source, target)
+
+        sources = [
+            {"oid": "s0"},
+            {"oid": "s1"},
+            {"oid": "s2"},
+            {"oid": "s3"},
+        ]
+        targets = [
+            {"oid": "g0"},
+            {"oid": "g1"},
+        ]
+
+        edges = GatherHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.FakeWiringContext(2),
+        )
+
+        self.assertEqual(
+            [
+                ("s0", "g0"),
+                ("s1", "g0"),
+                ("s2", "g1"),
+                ("s3", "g1"),
+            ],
+            [
+                (edge.source["oid"], edge.target["oid"])
+                for edge in edges
+            ],
+        )
+
+    def test_gather_accepts_equal_h_level(self):
+        source = self._node("source", 1)
+        target = self._node("gather", 1)
+        link = LogicalLink(source, target)
+
+        edges = GatherHandler().resolve_edges(
+            link,
+            [{"oid": "s0"}],
+            [{"oid": "g0"}],
+            self.FakeWiringContext(1),
+        )
+
+        self.assertEqual(1, len(edges))
+        self.assertEqual("s0", edges[0].source["oid"])
+        self.assertEqual("g0", edges[0].target["oid"])
+
+    def test_gather_rejects_target_with_higher_level(self):
+        source = self._node("source", 1)
+        target = self._node("gather", 2)
+        link = LogicalLink(source, target)
+
+        with self.assertRaises(GraphException):
+            GatherHandler().resolve_edges(
+                link,
+                [{"oid": "s0"}],
+                [{"oid": "g0"}],
+                self.FakeWiringContext(1),
+            )
+
+
+class TestLeafEdgeResolution(unittest.TestCase):
+    class FakeWiringContext:
+        def __init__(self, chunk_size):
+            self._chunk_size = chunk_size
+
+        def chunk_size(self, source, target):
+            del source, target
+            return self._chunk_size
+
+        @staticmethod
+        def split(drops, size):
+            for index in range(0, len(drops), size):
+                yield drops[index:index + size]
+
+    @staticmethod
+    def _node(name, h_level, is_start_node=False):
+        return SimpleNamespace(
+            name=name,
+            h_level=h_level,
+            is_start_node=is_start_node,
+        )
+
+    def test_leaf_start_node_produces_no_edges(self):
+        source = self._node("start", 0, is_start_node=True)
+        target = self._node("target", 0)
+        link = LogicalLink(source, target)
+
+        edges = LeafHandler().resolve_edges(
+            link,
+            [{"oid": "source"}],
+            [{"oid": "target"}],
+            self.FakeWiringContext(1),
+        )
+
+        self.assertEqual([], edges)
+
+    def test_leaf_source_higher_or_equal_distributes_sources_to_targets(self):
+        source = self._node("source", 2)
+        target = self._node("target", 1)
+        link = LogicalLink(source, target)
+
+        sources = [
+            {"oid": "s0"},
+            {"oid": "s1"},
+            {"oid": "s2"},
+            {"oid": "s3"},
+        ]
+        targets = [
+            {"oid": "t0"},
+            {"oid": "t1"},
+        ]
+
+        edges = LeafHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.FakeWiringContext(2),
+        )
+
+        self.assertEqual(
+            [
+                ("s0", "t0"),
+                ("s1", "t0"),
+                ("s2", "t1"),
+                ("s3", "t1"),
+            ],
+            [
+                (edge.source["oid"], edge.target["oid"])
+                for edge in edges
+            ],
+        )
+
+    def test_leaf_target_higher_distributes_targets_to_sources(self):
+        source = self._node("source", 1)
+        target = self._node("target", 2)
+        link = LogicalLink(source, target)
+
+        sources = [
+            {"oid": "s0"},
+            {"oid": "s1"},
+        ]
+        targets = [
+            {"oid": "t0"},
+            {"oid": "t1"},
+            {"oid": "t2"},
+            {"oid": "t3"},
+        ]
+
+        edges = LeafHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.FakeWiringContext(2),
+        )
+
+        self.assertEqual(
+            [
+                ("s0", "t0"),
+                ("s0", "t1"),
+                ("s1", "t2"),
+                ("s1", "t3"),
+            ],
+            [
+                (edge.source["oid"], edge.target["oid"])
+                for edge in edges
+            ],
+        )
 
 
 if __name__ == "__main__":

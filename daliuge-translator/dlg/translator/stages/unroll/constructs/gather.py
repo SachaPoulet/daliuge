@@ -1,10 +1,14 @@
 import math
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
-from dlg.translator.errors import GInvalidLink
+from dlg.common import dropdict
+from dlg.translator.errors import GInvalidLink, GraphException
 from dlg.translator.vocabulary import Categories
 
-from .base import GraphContext
+from .base import GraphContext, WiringContext
+
+if TYPE_CHECKING:
+    from ..model import Edge, LogicalLink
 
 
 class GatherHandler:
@@ -60,3 +64,40 @@ class GatherHandler:
             input_dop = node.dop_diff(input_node)
 
         return int(math.ceil(input_dop / float(node.gather_width)))
+
+    def resolve_edges(
+        self,
+        link: "LogicalLink",
+        sources: Sequence[dropdict],
+        targets: Sequence[dropdict],
+        ctx: WiringContext,
+    ) -> list["Edge"]:
+        """Resolve edges whose target is a Gather construct."""
+
+        from ..model import Edge
+
+        source = link.source
+        target = link.target
+
+        if source.h_level < target.h_level:
+            raise GraphException(
+                "Gather {0} has higher h-level than its input {1}".format(
+                    target.id,
+                    source.id,
+                )
+            )
+
+        chunk_size = ctx.chunk_size(source, target)
+        edges = []
+
+        for index, chunk in enumerate(ctx.split(sources, chunk_size)):
+            for source_drop in chunk:
+                edges.append(
+                    Edge(
+                        link,
+                        source_drop,
+                        targets[index],
+                    )
+                )
+
+        return edges
