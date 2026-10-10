@@ -5,13 +5,18 @@ from SuperBasicScatterGather: the Gather loses its input application and links
 back to a group-start application inside the Scatter it gathers.
 """
 
+import collections
 import copy
 import json
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
+from dlg.common import dropdict
+from dlg.translator.stages.unroll import wire as wire_module
 from dlg.translator.stages.unroll.constructs.registry import is_construct
 from dlg.translator.stages.unroll.lg import LG
+from dlg.translator.stages.unroll.link import LinkContext
 from dlg.translator.vocabulary import Categories
 
 
@@ -188,6 +193,65 @@ class TestSequentialisationGraphs(unittest.TestCase):
             with self.subTest(case=name):
                 lg = sequentialisation_lg(*CASES[name])
                 self.assertEqual(expected, chained_edges(lg))
+
+
+def _node(category, category_type, is_group=False):
+    return SimpleNamespace(
+        id=category,
+        name=category,
+        category=category,
+        is_group=is_group,
+        jd={"category": category, "categoryType": category_type},
+    )
+
+
+class TestGatherSources(unittest.TestCase):
+    """Links into a Gather are recorded with the input's own node and link."""
+
+    def setUp(self):
+        self.context = LinkContext("session-", [])
+        self.gathers = {}
+        self.sources = collections.defaultdict(list)
+        self.gather = _node(Categories.GATHER, "Construct", is_group=True)
+
+    def _defer(self, slgn, tlgn, src, tgt, llink):
+        wire_module._link_or_defer(
+            self.context,
+            self.gathers,
+            slgn,
+            tlgn,
+            src,
+            tgt,
+            llink,
+            gather_sources=self.sources,
+        )
+
+    def test_an_input_is_recorded_with_its_raw_drop(self):
+        groupby = _node(Categories.GROUP_BY, "Construct", is_group=True)
+        group_data = dropdict({"oid": "group-data"})
+        source = dropdict({"oid": "groupby", "grp-data_drop": group_data})
+        llink = {"from": "groupby", "to": "gather"}
+
+        self._defer(groupby, self.gather, source, dropdict({"oid": "g"}), llink)
+
+        self.assertEqual(
+            [wire_module.GatherSource(groupby, source, llink)], self.sources["g"]
+        )
+        # the cache itself is unchanged: it still holds the substituted drop
+        self.assertEqual([group_data], self.gathers["g"][1])
+
+    def test_an_output_of_a_gather_is_not_recorded(self):
+        output = _node("File", "Data")
+
+        self._defer(
+            self.gather,
+            output,
+            dropdict({"oid": "g"}),
+            dropdict({"oid": "out"}),
+            {"from": "gather", "to": "File"},
+        )
+
+        self.assertEqual({}, dict(self.sources))
 
 
 if __name__ == "__main__":

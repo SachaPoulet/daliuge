@@ -22,6 +22,7 @@
 # These passes were lifted out of LG.unroll_to_tpl and still work on LG's
 # own state; _WireContext adapts it to the handler context API.
 # pylint: disable=protected-access
+import collections
 import logging
 from functools import partial
 
@@ -36,6 +37,10 @@ from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
+
+# One link into a Gather: the source LGNode, its raw (unsubstituted) drop,
+# and the logical link it arrived on.
+GatherSource = collections.namedtuple("GatherSource", ["node", "drop", "link"])
 
 
 class _WireContext(LinkContext):
@@ -66,8 +71,14 @@ def wire(lg):
     # becomes known when a link out of the Gather is wired, so the inputs
     # are held here and spliced after every link has been wired.
     gathers = {}
+    # key - gather drop oid, value - [GatherSource, ...] for each input link.
+    # The cache keeps only the substituted drop; sequentialisation also needs
+    # the input's node, raw drop and own link to wire through link_drops.
+    gather_sources = collections.defaultdict(list)
     context = _WireContext(lg)
-    link = partial(_link_or_defer, context, gathers)
+    link = partial(
+        _link_or_defer, context, gathers, gather_sources=gather_sources
+    )
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
         tid = lk["to"]  # target key
@@ -470,12 +481,26 @@ def _resolve_leaf_edges(
         )
 
 
-def _link_or_defer(context, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
+def _link_or_defer(
+    context,
+    gathers,
+    slgn,
+    tlgn,
+    src_drop,
+    tgt_drop,
+    llink,
+    gather_sources=None,
+):
     """
     link_drops, except that links into or out of a Gather are held in gathers
-    instead of wired; see wire().
+    instead of wired; see wire(). Links into a Gather are also recorded in
+    gather_sources, when given.
     """
     if is_construct(tlgn, Categories.GATHER):
+        if gather_sources is not None:
+            gather_sources[tgt_drop["oid"]].append(
+                GatherSource(slgn, src_drop, llink)
+            )
         if is_construct(slgn, Categories.GROUP_BY):
             sdrop = src_drop["grp-data_drop"]
         elif is_construct(slgn, Categories.GATHER):
