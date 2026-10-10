@@ -189,9 +189,15 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
 
         return cast(LGNode, node)
 
+    @staticmethod
+    def _drop(coord):
+        source_drop = dropdict({"iid": str(coord)})
+        source_drop.coord = coord
+        return source_drop
+
     def _resolve(
         self,
-        source_iids,
+        source_coords,
         target_count,
         **target_attributes,
     ):
@@ -216,8 +222,8 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         link = LogicalLink(source=source, target=target)
 
         sources = [
-            dropdict({"iid": iid})
-            for iid in source_iids
+            self._drop(coord)
+            for coord in source_coords
         ]
 
         targets = [
@@ -236,7 +242,11 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
 
     def test_buckets_source_drops_and_sorts_group_keys(self):
         _, _, sources, targets, edges = self._resolve(
-            ["2-1", "0-1", "0-2"],
+            [
+                InstanceId((2, 1)),
+                InstanceId((0, 1)),
+                InstanceId((0, 2)),
+            ],
             2,
         )
 
@@ -251,7 +261,10 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
 
     def test_includes_outer_group_context_for_nested_scatter(self):
         _, _, sources, targets, edges = self._resolve(
-            ["4-2-1", "5-2-1"],
+            [
+                InstanceId((4, 2, 1)),
+                InstanceId((5, 2, 1)),
+            ],
             2,
             source_h_level=3,
             target_h_level=1,
@@ -267,7 +280,10 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
 
     def test_multi_key_groupby_reverses_iid_context(self):
         _, _, sources, targets, edges = self._resolve(
-            ["0-1", "1-0"],
+            [
+                InstanceId((0, 1)),
+                InstanceId((1, 0)),
+            ],
             2,
             group_keys=("first", "second"),
             group_by_scatter_layers=(2, [0], []),
@@ -294,13 +310,13 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             (10, 2),
             (11, 10),
         ]
-        source_iids = [
-            f"{second}-{first}"
+        source_coords = [
+            InstanceId((second, first))
             for first, second in keys
         ]
 
         _, _, sources, targets, edges = self._resolve(
-            source_iids,
+            source_coords,
             len(keys),
             group_keys=("first", "second"),
             group_by_scatter_layers=(
@@ -339,8 +355,12 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         link = LogicalLink(source=source, target=target)
 
         sources = [
-            dropdict({"iid": "0-1$2-3"}),
-            dropdict({"iid": "0-1$1-3"}),
+            self._drop(
+                InstanceId((0, 1), group_key=(2, 3))
+            ),
+            self._drop(
+                InstanceId((0, 1), group_key=(1, 3))
+            ),
         ]
 
         targets = [
@@ -383,10 +403,49 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         ):
             GroupByHandler().resolve_edges(
                 link,
-                [dropdict({"iid": "0-1"})],
+                [self._drop(InstanceId((0, 1)))],
                 [dropdict({"target": 0})],
                 self.UnusedWiringContext(),
             )
+
+    def test_reads_structured_coordinate_instead_of_iid_string(self):
+        source = self._node(Categories.PYTHON_APP)
+        target = self._node(
+            Categories.GROUP_BY,
+            group_keys=None,
+            group_by_scatter_layers=(2, [], []),
+        )
+        link = LogicalLink(source=source, target=target)
+
+        sources = [
+            self._drop(InstanceId((0, 1))),
+            self._drop(InstanceId((0, 2))),
+        ]
+
+        # Deliberately make the serialized values disagree with the
+        # coordinates. GroupBy resolution must use the structured values.
+        sources[0]["iid"] = "0-2"
+        sources[1]["iid"] = "0-1"
+
+        targets = [
+            dropdict({"target": 0}),
+            dropdict({"target": 1}),
+        ]
+
+        edges = GroupByHandler().resolve_edges(
+            link,
+            sources,
+            targets,
+            self.UnusedWiringContext(),
+        )
+
+        self.assertEqual(
+            [
+                (sources[0], targets[0]),
+                (sources[1], targets[1]),
+            ],
+            [(edge.source, edge.target) for edge in edges],
+        )
 
     def test_rejects_mismatch_between_group_keys_and_target_drops(
         self,
@@ -396,7 +455,10 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             "# of Group keys 2 != # of Group Drops 1",
         ):
             self._resolve(
-                ["0-1", "0-2"],
+                [
+                    InstanceId((0, 1)),
+                    InstanceId((0, 2)),
+                ],
                 1,
             )
 

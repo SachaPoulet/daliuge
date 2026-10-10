@@ -6,7 +6,13 @@ from unittest.mock import Mock
 from dlg.common import dropdict
 
 import dlg.translator.stages.unroll.wire as wire_module
+from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.vocabulary import Categories
+
+
+def _with_coord(drop, coord):
+    drop.coord = coord
+    return drop
 
 
 class FakeDrop(dict):
@@ -57,8 +63,14 @@ class TestGroupByHandlerWiring(unittest.TestCase):
         # Deliberately reverse the IID order so the test checks that
         # GroupByHandler pairing is actually used by wire().
         source_drops = [
-            FakeDrop(oid="source-1", iid="1"),
-            FakeDrop(oid="source-0", iid="0"),
+            _with_coord(
+                FakeDrop(oid="source-1", iid="1"),
+                InstanceId((1,)),
+            ),
+            _with_coord(
+                FakeDrop(oid="source-0", iid="0"),
+                InstanceId((0,)),
+            ),
         ]
         target_drops = [
             FakeDrop(oid="groupby-0"),
@@ -177,18 +189,27 @@ class TestGroupByHandlerWiring(unittest.TestCase):
         )
 
         source_drops = [
-            dropdict({
-                "oid": "source-10",
-                "iid": "0-10",
-            }),
-            dropdict({
-                "oid": "source-2",
-                "iid": "0-2",
-            }),
-            dropdict({
-                "oid": "source-11",
-                "iid": "0-11",
-            }),
+            _with_coord(
+                dropdict({
+                    "oid": "source-10",
+                    "iid": "0-10",
+                }),
+                InstanceId((0, 10)),
+            ),
+            _with_coord(
+                dropdict({
+                    "oid": "source-2",
+                    "iid": "0-2",
+                }),
+                InstanceId((0, 2)),
+            ),
+            _with_coord(
+                dropdict({
+                    "oid": "source-11",
+                    "iid": "0-11",
+                }),
+                InstanceId((0, 11)),
+            ),
         ]
 
         target_drops = [
