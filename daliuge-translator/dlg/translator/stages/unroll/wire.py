@@ -22,6 +22,7 @@
 # These passes were lifted out of LG.unroll_to_tpl and still work on LG's
 # own state; _WireContext adapts it to the handler context API.
 # pylint: disable=protected-access
+import collections
 import logging
 from functools import partial
 
@@ -36,6 +37,10 @@ from dlg.translator.stages.unroll.model import LogicalLink
 from dlg.translator.vocabulary import Categories
 
 logger = logging.getLogger(f"dlg.{__name__}")
+
+# One link into a Gather: the source LGNode, its raw (unsubstituted) drop,
+# and the logical link it arrived on.
+GatherSource = collections.namedtuple("GatherSource", ["node", "drop", "link"])
 
 
 class _WireContext(LinkContext):
@@ -66,8 +71,18 @@ def wire(lg):
     # becomes known when a link out of the Gather is wired, so the inputs
     # are held here and spliced after every link has been wired.
     gathers = {}
+    # key - gather drop oid, value - [GatherSource, ...] for each input link.
+    # The cache keeps only the substituted drop; sequentialisation also needs
+    # the input's node, raw drop and own link to wire through link_drops.
+    gather_sources = collections.defaultdict(list)
+    # (gather lgn, group-start lgn, gather drops, group-start drops, link)
+    # for each Gather -> group-start link, chained once the loop below has
+    # finished.
+    sequentialised = []
     context = _WireContext(lg)
-    link = partial(_link_or_defer, context, gathers)
+    link = partial(
+        _link_or_defer, context, gathers, gather_sources=gather_sources
+    )
     for lk in lg._lg_links:
         sid = lk["from"]  # source key
         tid = lk["to"]  # target key
@@ -85,31 +100,8 @@ def wire(lg):
             ):  # not the artifical link between gather and its own start child
                 # gather iteration case, tgt must be a Group-Start Component
                 # this is a way to manually sequentialise a Scatter that has a high DoP
-                for i, ga_drop in enumerate(sdrops):
-                    if ga_drop["oid"] not in gathers:
-                        logger.warning(
-                            "Gather %s Drop not yet in cache, sequentialisation may fail!",
-                            slgn.name,
-                        )
-                        continue
-                    ga_inputs = gathers[ga_drop["oid"]][1]
-                    if not ga_inputs:
-                        # nothing to chain, and j would never advance
-                        continue
-                    j = (i + 1) * slgn.gather_width
-                    if j >= tlgn.group.dop and j % tlgn.group.dop == 0:
-                        continue
-                    j_end = min((i + 2) * slgn.gather_width, tlgn.group.dop * (i + 1))
-                    while j < j_end:
-                        # TODO merge this code into link_drops.
-                        tname = tlgn.getPortName(ports="inputPorts")
-                        # Go through the gather's inputs
-                        for gddrop in ga_inputs:
-                            if j >= j_end:
-                                break
-                            gddrop.addConsumer(tdrops[j], name=tname)
-                            tdrops[j].addInput(gddrop, name=tname)
-                            j += 1
+                # Deferred until every link into the Gather has been cached.
+                sequentialised.append((slgn, tlgn, sdrops, tdrops, lk))
 
             elif is_construct(slgn, Categories.SUBGRAPH) or is_construct(
                 tlgn, Categories.SUBGRAPH
@@ -243,6 +235,11 @@ def wire(lg):
                 raise GraphException(
                     "Unsupported target group {0}".format(tlgn.jd.category)
                 )
+
+    for slgn, tlgn, sdrops, tdrops, lk in sequentialised:
+        _sequentialise_gather(
+            context, gather_sources, slgn, tlgn, sdrops, tdrops, lk
+        )
 
     for _, v in gathers.items():
         input_list = v[1]
@@ -470,12 +467,75 @@ def _resolve_leaf_edges(
         )
 
 
-def _link_or_defer(context, gathers, slgn, tlgn, src_drop, tgt_drop, llink):
+def _sequentialise_gather(
+    context, gather_sources, slgn, tlgn, sdrops, tdrops, lk
+):
+    """
+    Chain each Gather drop's inputs to the group-start drops of the next
+    window of iterations, so the Scatter runs gather_width at a time.
+
+    Each chained edge is wired by link_drops as a link from the input's own
+    node: its source port comes from the input's link into the Gather, its
+    target port and streaming from the Gather -> group-start link.
+    """
+    # every link has been recorded by now, so a Gather drop without sources
+    # had no inputs; an input from another Gather has no drop to chain
+    sources = [gather_sources.get(ga_drop["oid"], []) for ga_drop in sdrops]
+    inputs = [
+        [
+            None
+            if is_construct(source.node, Categories.GATHER)
+            else source.drop
+            for source in gather_inputs
+        ]
+        for gather_inputs in sources
+    ]
+    edges = get_handler(Categories.GATHER).resolve_sequential_edges(
+        LogicalLink(source=slgn, target=tlgn),
+        inputs,
+        tdrops,
+        context,
+    )
+    # drops are dicts, so look their source up by identity
+    source_of = {
+        id(source.drop): source
+        for gather_inputs in sources
+        for source in gather_inputs
+    }
+    for edge in edges:
+        source = source_of[id(edge.source)]
+        chained_link = {
+            "from": source.link["from"],
+            "to": lk["to"],
+            "fromPort": source.link.get("fromPort"),
+            "toPort": lk.get("toPort"),
+            "is_stream": lk.get("is_stream", False),
+        }
+        link_drops(
+            context, source.node, tlgn, edge.source, edge.target, chained_link
+        )
+
+
+def _link_or_defer(
+    context,
+    gathers,
+    slgn,
+    tlgn,
+    src_drop,
+    tgt_drop,
+    llink,
+    gather_sources=None,
+):
     """
     link_drops, except that links into or out of a Gather are held in gathers
-    instead of wired; see wire().
+    instead of wired; see wire(). Links into a Gather are also recorded in
+    gather_sources, when given.
     """
     if is_construct(tlgn, Categories.GATHER):
+        if gather_sources is not None:
+            gather_sources[tgt_drop["oid"]].append(
+                GatherSource(slgn, src_drop, llink)
+            )
         if is_construct(slgn, Categories.GROUP_BY):
             sdrop = src_drop["grp-data_drop"]
         elif is_construct(slgn, Categories.GATHER):

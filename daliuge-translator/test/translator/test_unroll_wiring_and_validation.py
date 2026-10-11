@@ -363,9 +363,8 @@ class TestGatherSequentialisation(unittest.TestCase):
         self.assertNotIn("consumers", sources[2])
         self.assertNotIn("consumers", sources[3])
 
-    @unittest.expectedFailure
     def test_partial_final_batch_stops_at_the_last_start(self):
-        """A short final batch currently indexes past the last target drop."""
+        """A short final batch stops at the last target drop."""
         sources, targets = self._wire_gather_to_starts(5, 3, 5)
         self.assertEqual([{"t3": "port"}], sources[0]["consumers"])
         self.assertEqual([{"t4": "port"}], sources[1]["consumers"])
