@@ -116,9 +116,12 @@ class GatherHandler:
         window of ``gather_width`` targets, so the Scatter runs that many
         iterations at a time. When a Gather has fewer inputs than its window,
         they are reused so every target in the window still waits on one.
-        A window never crosses into the next outer iteration, nor past the
-        last target. ``None`` marks an input from another Gather, which has
-        no drop to chain.
+        A window never runs past the last target, and is skipped when it would
+        start exactly at an outer iteration's first target. Windows are counted
+        over all targets, so when the Scatter's DoP is not a multiple of
+        ``gather_width`` a Gather drop holds inputs from two outer iterations
+        and its edges can cross into the next one. ``None`` marks an input
+        from another Gather, which has no drop to chain.
         """
         del ctx
 
