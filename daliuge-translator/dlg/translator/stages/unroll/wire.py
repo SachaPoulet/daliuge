@@ -75,8 +75,9 @@ def wire(lg):
     # The cache keeps only the substituted drop; sequentialisation also needs
     # the input's node, raw drop and own link to wire through link_drops.
     gather_sources = collections.defaultdict(list)
-    # (gather lgn, group-start lgn, gather drops, group-start drops, link) for
-    # each Gather -> group-start link, chained once the loop below has finished.
+    # (gather lgn, group-start lgn, gather drops, group-start drops, link)
+    # for each Gather -> group-start link, chained once the loop below has
+    # finished.
     sequentialised = []
     context = _WireContext(lg)
     link = partial(
@@ -236,7 +237,9 @@ def wire(lg):
                 )
 
     for slgn, tlgn, sdrops, tdrops, lk in sequentialised:
-        _sequentialise_gather(context, gather_sources, slgn, tlgn, sdrops, tdrops, lk)
+        _sequentialise_gather(
+            context, gather_sources, slgn, tlgn, sdrops, tdrops, lk
+        )
 
     for _, v in gathers.items():
         input_list = v[1]
@@ -464,7 +467,9 @@ def _resolve_leaf_edges(
         )
 
 
-def _sequentialise_gather(context, gather_sources, slgn, tlgn, sdrops, tdrops, lk):
+def _sequentialise_gather(
+    context, gather_sources, slgn, tlgn, sdrops, tdrops, lk
+):
     """
     Chain each Gather drop's inputs to the group-start drops of the next
     window of iterations, so the Scatter runs gather_width at a time.
@@ -478,7 +483,9 @@ def _sequentialise_gather(context, gather_sources, slgn, tlgn, sdrops, tdrops, l
     sources = [gather_sources.get(ga_drop["oid"], []) for ga_drop in sdrops]
     inputs = [
         [
-            None if is_construct(source.node, Categories.GATHER) else source.drop
+            None
+            if is_construct(source.node, Categories.GATHER)
+            else source.drop
             for source in gather_inputs
         ]
         for gather_inputs in sources
@@ -491,7 +498,9 @@ def _sequentialise_gather(context, gather_sources, slgn, tlgn, sdrops, tdrops, l
     )
     # drops are dicts, so look their source up by identity
     source_of = {
-        id(source.drop): source for gather_inputs in sources for source in gather_inputs
+        id(source.drop): source
+        for gather_inputs in sources
+        for source in gather_inputs
     }
     for edge in edges:
         source = source_of[id(edge.source)]
@@ -502,7 +511,9 @@ def _sequentialise_gather(context, gather_sources, slgn, tlgn, sdrops, tdrops, l
             "toPort": lk.get("toPort"),
             "is_stream": lk.get("is_stream", False),
         }
-        link_drops(context, source.node, tlgn, edge.source, edge.target, chained_link)
+        link_drops(
+            context, source.node, tlgn, edge.source, edge.target, chained_link
+        )
 
 
 def _link_or_defer(

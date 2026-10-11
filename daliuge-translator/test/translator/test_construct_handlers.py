@@ -901,7 +901,9 @@ class TestGatherSequentialEdges(unittest.TestCase):
             for gather_inputs in inputs
         ]
         targets = [{"oid": "t%d" % index} for index in range(n_targets)]
-        edges = GatherHandler().resolve_sequential_edges(link, drops, targets, None)
+        edges = GatherHandler().resolve_sequential_edges(
+            link, drops, targets, None
+        )
         return [(edge.source["oid"], edge.target["oid"]) for edge in edges]
 
     def test_each_input_feeds_one_target_in_the_next_window(self):
@@ -944,7 +946,10 @@ class TestGatherSequentialEdges(unittest.TestCase):
         self.assertEqual(
             [("x0", "t2"), ("x1", "t3"), ("x4", "t6"), ("x5", "t7")],
             self._resolve(
-                2, 4, [["x0", "x1"], ["x2", "x3"], ["x4", "x5"], ["x6", "x7"]], 8
+                2,
+                4,
+                [["x0", "x1"], ["x2", "x3"], ["x4", "x5"], ["x6", "x7"]],
+                8,
             ),
         )
 

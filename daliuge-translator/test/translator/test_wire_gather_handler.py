@@ -149,7 +149,7 @@ class TestGatherHandlerWiring(unittest.TestCase):
         self.assertIs(target, args[3])
 
     def test_gather_sequentialisation_routes_through_sequential_edges(self):
-        """A Gather -> foreign group-start link is not an edge into a Gather."""
+        """Gather -> foreign group-start is not an edge into the Gather."""
 
         source = self._node(
             "gather",

@@ -188,7 +188,9 @@ class TestSequentialisationGraphs(unittest.TestCase):
                 hits = [
                     link
                     for link in lg._lg_links
-                    if is_construct(lg._done_dict[link["from"]], Categories.GATHER)
+                    if is_construct(
+                        lg._done_dict[link["from"]], Categories.GATHER
+                    )
                     and lg._done_dict[link["from"]].is_group
                     and not lg._done_dict[link["to"]].is_group
                     and lg._done_dict[link["to"]].gid != link["from"]
@@ -209,7 +211,7 @@ class TestSequentialisationGraphs(unittest.TestCase):
                 self.assertEqual(expected, chained_edges(lg))
 
     def test_link_order_does_not_change_the_chaining(self):
-        """The Gather -> start link may be wired before the links into the Gather.
+        """The Gather -> start link may be wired before the links into it.
 
         LG validation still rejects that order in linkDataArray (a Gather's
         output is checked against an input it has not seen yet), so the
@@ -217,7 +219,9 @@ class TestSequentialisationGraphs(unittest.TestCase):
         """
 
         lg = sequentialisation_lg(*CASES["top_level_even"])
-        to_start = next(link for link in lg._lg_links if link["to"] == START_ID)
+        to_start = next(
+            link for link in lg._lg_links if link["to"] == START_ID
+        )
         lg._lg_links.remove(to_start)
         lg._lg_links.insert(0, to_start)
 
@@ -261,10 +265,13 @@ class TestGatherSources(unittest.TestCase):
         source = dropdict({"oid": "groupby", "grp-data_drop": group_data})
         llink = {"from": "groupby", "to": "gather"}
 
-        self._defer(groupby, self.gather, source, dropdict({"oid": "g"}), llink)
+        gather_drop = dropdict({"oid": "g"})
+
+        self._defer(groupby, self.gather, source, gather_drop, llink)
 
         self.assertEqual(
-            [wire_module.GatherSource(groupby, source, llink)], self.sources["g"]
+            [wire_module.GatherSource(groupby, source, llink)],
+            self.sources["g"],
         )
         # the cache itself is unchanged: it still holds the substituted drop
         self.assertEqual([group_data], self.gathers["g"][1])
@@ -306,7 +313,9 @@ class TestChainedEdgeWiring(unittest.TestCase):
 
         file_oids = {drop["oid"] for drop in lg._drop_dict[FILE_ID]}
         chained = [
-            call.args for call in linker.call_args_list if call.args[2].id == START_ID
+            call.args
+            for call in linker.call_args_list
+            if call.args[2].id == START_ID
         ]
         self.assertEqual(2, len(chained))
         for _, source, _, source_drop, _, chained_link in chained:
@@ -330,13 +339,15 @@ class TestChainedEdgeWiring(unittest.TestCase):
         lg.unroll_to_tpl()
 
         chained = [
-            drop for drop in lg._drop_dict[START_ID] if drop["iid"] in ("0-2", "0-3")
+            drop
+            for drop in lg._drop_dict[START_ID]
+            if drop["iid"] in ("0-2", "0-3")
         ]
         for drop in chained:
             self.assertEqual(1, len(drop["streamingInputs"]))
             self.assertNotIn("inputs", drop)
 
-    def test_a_groupby_input_is_substituted_once_and_a_gather_input_skipped(self):
+    def test_groupby_input_substituted_once_gather_input_skipped(self):
         def node(node_id, category, category_type, **attributes):
             return SimpleNamespace(
                 id=node_id,
