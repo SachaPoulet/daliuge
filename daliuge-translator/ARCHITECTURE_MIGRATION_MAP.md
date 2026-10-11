@@ -541,6 +541,21 @@ Upstream, not from the rewrite: the same comparisons are in the legacy `lg.py` (
 `620a9d0f`, 2022). Fixing it changes PGT output wherever those paths come alive, so it wants its
 own issue — none yet. Recorded as proposal §5 row 24.
 
+**B17 — the `Updated` `/partition` and `/unroll_and_partition` routes pass the algorithm
+parameters as the partition label.** Both call `partition(graph, algorithm, num_partitions,
+num_islands, algo_params.dict())` ([web/translator_rest.py:961](dlg/translator/web/translator_rest.py#L961),
+[:1014](dlg/translator/web/translator_rest.py#L1014)). The fifth positional parameter of
+`partition` is `partition_label`, not `**algo_params`
+([stages/partition/stage.py:85](dlg/translator/stages/partition/stage.py#L85)), so the
+`AlgoParams` form fields (`min_goal`, `max_load_imb`, `deadline`, …) never reach the algorithm,
+which always runs on its defaults, and the label becomes that dict. The label only names GOJS
+group nodes, which these routes do not return, so the visible effect is the ignored parameters.
+Upstream: the call dates from `d578695f` (2022-09-12), when the route was added, and
+`partition_label` was already fifth. PR #111 (issue #72, P7-1) keeps it on purpose (the payloads
+must not move) and makes it explicit as `PartitionOptions(partition_label=algo_params.dict())`.
+The fix is `algo_params=` instead, which changes PGT output whenever a client sends parameters,
+so it wants its own issue — none yet. Recorded as proposal §5 row 25.
+
 ---
 
 ## 8. Changes log
@@ -559,3 +574,4 @@ Same rules as the proposal's §9. Append-only, newest at the bottom.
 | 2026-10-08 | Claude (Opus 5.5) | **§3.4 row 5 marked misassigned.** The within-group len-equality branch is reached only by the GroupBy/Gather group-start artificial links, which `lgn_to_pgn` makes for every group except Scatter; corpus 26 Gather + 1 GroupBy, 0 Scatter. The P4-3 Scatter PR (#96, issue #74) followed the row and is kept, being behaviour-preserving. Note added under the matrix; the handler table's `scatter.py` `resolve_edges` cell points at it |
 | 2026-10-11 | Claude (Opus 5.5) | **B14 added; §4.3 `linearise.py` row corrected**, from the review of PR #107 (issue #70, P6-1). Synthesis runs only under `visual=True` ([pgtp.py:560](dlg/dropmake/pgtp.py#L560)), and on that path it crashes before a PG exists (`iid`, then `to_pg_spec`, then `Scheduler.merge_partitions`), so no PG has carried synthetic DROPs. Decision: P6-1 keeps linearisation gated on `visual` and keeps the crash; the fix gets its own issue |
 | 2026-10-11 | Claude (Opus 5.5) | **B13 resolved, B15 and B16 added**, from PR #108 (issue #98). B13: sequentialisation moved to `GatherHandler.resolve_sequential_edges` and wired by `link_drops` through a `GatherSource` side table; the cache is unchanged, so B11/B12 stay open; input re-use recorded as intended; two limitations recorded (extra inputs ignored, uneven nested DoP crosses outer iterations). B15: the window overran the targets on an uneven DoP (`IndexError`), fixed in #108. B16: `_is_stream_link` and the BASH checks compare `categoryType` with category names and never fire; upstream, no issue yet |
+| 2026-10-11 | Claude (Opus 5.5) | **B17 added**, from the review of PR #111 (issue #72, P7-1). The `Updated` `/partition` and `/unroll_and_partition` routes pass `algo_params.dict()` as `partition`'s fifth positional argument, which is `partition_label`, so the algorithm parameters are ignored. Upstream since `d578695f` (2022); #111 keeps it explicitly for payload parity; the fix gets its own issue |
