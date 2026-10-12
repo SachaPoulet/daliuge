@@ -65,6 +65,15 @@ class GatherHandler:
 
         return int(math.ceil(input_dop / float(node.gather_width)))
 
+    def gather_width(self, node: Any) -> int:
+        """
+        Gather width
+        """
+        try:
+            return int(node.jd["num_of_inputs"])
+        except KeyError:
+            return 1
+
     def resolve_edges(
         self,
         link: "LogicalLink",

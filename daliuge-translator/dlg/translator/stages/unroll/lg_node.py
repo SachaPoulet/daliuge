@@ -30,7 +30,7 @@ import logging
 import random
 
 from dlg.translator.stages.unroll.constructs.registry import (
-    get_handler_for_node,
+    get_handler,
     is_construct,
 )
 from dlg.translator.stages.unroll.model import LGNode as LGNodeModel
@@ -105,21 +105,11 @@ class LGNode(LGNodeModel):
 
         self._dropclass = value
 
-    def has_group(self):
-        return self.group is not None
-
     def has_converted(self):
         return self._converted
 
     def complete_conversion(self):
         self._converted = True
-
-    @property
-    def gid(self):
-        if self.group is None:
-            return 0
-        else:
-            return self.group.id
 
     @property
     def has_child(self):
@@ -138,37 +128,15 @@ class LGNode(LGNodeModel):
         return self.jd["category"] == Categories.END
 
     @property
-    def group_keys(self):
-        """
-        Return:
-            None or a list of keys (each key is an integer)
-        """
-        if not is_construct(self, Categories.GROUP_BY):
-            return None
-        val = str(self.jd.get("group_key", "None"))
-        if val in ["None", "-1", ""]:
-            return None
-        else:
-            try:
-                return [int(x) for x in val.split(",")]
-            except ValueError as ve:
-                raise GraphException(
-                    "group_key must be an integer or comma-separated integers: {0}".format(
-                        ve
-                    )
-                ) from ve
-
-    @property
     def gather_width(self):
         """
         Gather width
         """
         if is_construct(self, Categories.GATHER):
+            # Kept after the first read: make_single_drop later rewrites jd
+            # from fields, so reading it again can give another width.
             if self._gaw is None:
-                try:
-                    self._gaw = int(self.jd["num_of_inputs"])
-                except KeyError:
-                    self._gaw = 1
+                self._gaw = get_handler(Categories.GATHER).gather_width(self)
             return self._gaw
         else:
             # TODO: use OO style to replace all type-related statements!
@@ -181,151 +149,11 @@ class LGNode(LGNodeModel):
         """
         if is_construct(self, Categories.GROUP_BY):
             if self._grpw is None:
-                tlgn = self.inputs[0]
-                re_dop = 1
-                cg = tlgn.group  # exclude its own group
-                while cg.has_group():
-                    re_dop *= cg.group.dop
-                    cg = cg.group
-                self._grpw = re_dop
+                handler = get_handler(Categories.GROUP_BY)
+                self._grpw = handler.groupby_width(self)
             return self._grpw
         else:
             return None
-
-    @property
-    def group_by_scatter_layers(self):
-        """
-        Return:
-            scatter layers info associated with this group by logical node
-            A tuple of three items:
-                (1) DoP
-                (2) layer indexes (list) from innser scatter to outer scatter
-                (3) layers (list)
-        """
-        if not is_construct(self, Categories.GROUP_BY):
-            return None
-
-        tlgn = self.inputs[0]
-        grpks = self.group_keys
-        ret_dop = 1
-        layer_index = []  # from inner to outer
-        layers = []  # from inner to outer
-        c = 0
-        if is_construct(tlgn.group, Categories.GROUP_BY):
-            # group by followed by another group by
-            if grpks is None or len(grpks) < 1:
-                raise GInvalidNode(
-                    "Must specify group_key for Group By '{0}'".format(self.name)
-                )
-            # find the "root" groupby and get all of its scatters
-            inputgrp = self
-            while (inputgrp is not None) and is_construct(
-                inputgrp.inputs[0].group, Categories.GROUP_BY
-            ):
-                inputgrp = inputgrp.inputs[0].group
-            # inputgrp now is the "root" groupby that follows Scatter immiately
-            # move it to Scatter
-            inputgrp = inputgrp.inputs[0].group
-            # go thru all the scatters
-            while (inputgrp is not None) and is_construct(inputgrp, Categories.SCATTER):
-                if inputgrp.id in grpks:
-                    ret_dop *= inputgrp.dop
-                    layer_index.append(c)
-                    layers.append(inputgrp)
-                inputgrp = inputgrp.group
-                c += 1
-        else:
-            if grpks is None or len(grpks) < 1:
-                ret_dop = tlgn.group.dop
-                layer_index.append(0)
-                layers.append(tlgn.group)
-            else:
-                if len(grpks) == 1:
-                    if grpks[0] == tlgn.group.id:
-                        ret_dop = tlgn.group.dop
-                        layer_index.append(0)
-                        layers.append(tlgn.group)
-                    else:
-                        raise GInvalidNode(
-                            "Wrong single group_key for {0}".format(self.name)
-                        )
-                else:
-                    inputgrp = tlgn.group
-                    # find the "groupby column list" from all layers of scatter loops
-                    while (inputgrp is not None) and is_construct(
-                        inputgrp, Categories.SCATTER
-                    ):
-                        if inputgrp.id in grpks:
-                            ret_dop *= inputgrp.dop
-                            layer_index.append(c)
-                            layers.append(inputgrp)
-                        inputgrp = inputgrp.group
-                        c += 1
-
-        return ret_dop, layer_index, layers
-
-    @property
-    def dop(self):
-        """
-        Degree of Parallelism: integer
-        default: 1
-        """
-        if self._dop is None:
-            handler = get_handler_for_node(self)
-            self._dop = handler.degree_of_parallelism(self)
-
-        return self._dop
-
-    def dop_diff(self, that_lgn):
-        """
-        TODO: This does not belong in the LGNode class
-
-        dop difference between inner node/group and outer group
-        e.g for each outer group, how many instances of inner nodes/groups
-        """
-        # if (self.is_group() or that_lgn.is_group()):
-        #     raise GraphException("Cannot compute dop diff between groups.")
-        # don't check h_related for efficiency since it should have been checked
-        # if (self.h_related(that_lgn)):
-        il = self.h_level
-        al = that_lgn.h_level
-        if il == al:
-            return 1
-        elif il > al:
-            oln = that_lgn
-            iln = self
-        else:
-            iln = that_lgn
-            oln = self
-        re_dop = 1
-        cg = iln
-        init_cond = cg.gid != oln.gid and cg.has_group()
-        while init_cond or is_construct(cg, Categories.MPI):
-            if is_construct(cg, Categories.MPI):
-                re_dop *= cg.dop
-            # else:
-            if init_cond:
-                re_dop *= cg.group.dop
-            cg = cg.group
-            if cg is None:
-                break
-            init_cond = cg.gid != oln.gid and cg.has_group()
-        return re_dop
-        # else:
-        #     pass
-        # raise GInvalidLink("{0} and {1} are not hierarchically related".format(self.id, that_lgn.id))
-
-    def h_related(self, that_lgn):
-        """
-        TODO: This does not belong in the LGNode class
-        """
-        that_gh = that_lgn.group_hierarchy
-        this_gh = self.group_hierarchy
-        if len(that_gh) + len(this_gh) <= 1:
-            # at least one is at the root level
-            return True
-
-        return that_gh.find(this_gh) > -1 or this_gh.find(that_gh) > -1
 
     def make_oid(self, iid=InstanceId((0,))):
         """
@@ -592,8 +420,3 @@ class LGNode(LGNodeModel):
         drop_spec.update(kwargs)
         drop_spec.coord = iid
         return drop_spec
-
-    @staticmethod
-    def str_to_bool(value, default_value=False):
-        res = True if value in ["1", "true", "True", "yes"] else default_value
-        return res

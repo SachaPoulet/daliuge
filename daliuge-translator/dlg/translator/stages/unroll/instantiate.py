@@ -158,14 +158,16 @@ def lgn_to_pgn(lg, lgn, iid=InstanceId((0,)), lpcxt=None):
     """
     if lgn.is_group:
         multikey_grpby = False
-        lgk = lgn.group_keys
         shape = []
-        if lgk is not None and len(lgk) > 1:
-            multikey_grpby = True
-            # inner most scatter to outer most scatter
-            scatters = lgn.group_by_scatter_layers[2]
-            # inner most is also the slowest running index
-            shape = [x.dop for x in scatters]
+        if is_construct(lgn, Categories.GROUP_BY):
+            groupby = get_handler_for_node(lgn)
+            lgk = groupby.group_keys(lgn)
+            if lgk is not None and len(lgk) > 1:
+                multikey_grpby = True
+                # inner most scatter to outer most scatter
+                scatters = groupby.group_by_scatter_layers(lgn)[2]
+                # inner most is also the slowest running index
+                shape = [x.dop for x in scatters]
 
         for i in range(lgn.dop):
             miid = iid.child(i)

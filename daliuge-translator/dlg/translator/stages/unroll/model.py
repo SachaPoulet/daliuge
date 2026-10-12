@@ -145,6 +145,16 @@ class LGNode:
     def group(self, value):
         self._grp = value
 
+    def has_group(self):
+        return self.group is not None
+
+    @property
+    def gid(self):
+        if self.group is None:
+            return 0
+        else:
+            return self.group.id
+
     def add_output(self, lg_node, srcPort=None):
         if lg_node not in self._outputs:
             self._outputs.append(lg_node)
@@ -209,6 +219,69 @@ class LGNode:
             glist.append("0")
             self._g_h = "-".join(reversed(glist))
         return self._g_h
+
+    @property
+    def dop(self):
+        """
+        Degree of Parallelism: integer
+        default: 1
+        """
+        if self._dop is None:
+            handler = get_handler_for_node(self)
+            self._dop = handler.degree_of_parallelism(self)
+
+        return self._dop
+
+    def dop_diff(self, that_lgn):
+        """
+        TODO: This does not belong in the LGNode class
+
+        dop difference between inner node/group and outer group
+        e.g for each outer group, how many instances of inner nodes/groups
+        """
+        # if (self.is_group() or that_lgn.is_group()):
+        #     raise GraphException("Cannot compute dop diff between groups.")
+        # don't check h_related for efficiency since it should have been checked
+        # if (self.h_related(that_lgn)):
+        il = self.h_level
+        al = that_lgn.h_level
+        if il == al:
+            return 1
+        elif il > al:
+            oln = that_lgn
+            iln = self
+        else:
+            iln = that_lgn
+            oln = self
+        re_dop = 1
+        cg = iln
+        init_cond = cg.gid != oln.gid and cg.has_group()
+        while init_cond or is_construct(cg, Categories.MPI):
+            if is_construct(cg, Categories.MPI):
+                re_dop *= cg.dop
+            # else:
+            if init_cond:
+                re_dop *= cg.group.dop
+            cg = cg.group
+            if cg is None:
+                break
+            init_cond = cg.gid != oln.gid and cg.has_group()
+        return re_dop
+        # else:
+        #     pass
+        # raise GInvalidLink("{0} and {1} are not hierarchically related".format(self.id, that_lgn.id))
+
+    def h_related(self, that_lgn):
+        """
+        TODO: This does not belong in the LGNode class
+        """
+        that_gh = that_lgn.group_hierarchy
+        this_gh = self.group_hierarchy
+        if len(that_gh) + len(this_gh) <= 1:
+            # at least one is at the root level
+            return True
+
+        return that_gh.find(this_gh) > -1 or this_gh.find(that_gh) > -1
 
     @property
     def weight(self):

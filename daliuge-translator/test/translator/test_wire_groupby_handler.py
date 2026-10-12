@@ -23,11 +23,12 @@
 import unittest
 from collections import defaultdict
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from dlg.common import dropdict
 
 import dlg.translator.stages.unroll.wire as wire_module
+from dlg.translator.stages.unroll.constructs.groupby import GroupByHandler
 from dlg.translator.stages.unroll.coordinate import InstanceId
 from dlg.translator.vocabulary import Categories
 
@@ -72,9 +73,7 @@ class TestGroupByHandlerWiring(unittest.TestCase):
             h_level=0,
             gid="groupby",
             group=None,
-            group_keys=None,
             groupby_width=1,
-            group_by_scatter_layers=(2, [], []),
             jd={
                 "category": Categories.GROUP_BY,
                 "categoryType": "Data",
@@ -121,7 +120,12 @@ class TestGroupByHandlerWiring(unittest.TestCase):
             _loop_aware_set=set(),
         )
 
-        wire_module.wire(graph)
+        with patch.object(
+            GroupByHandler,
+            "group_by_scatter_layers",
+            return_value=(2, [], []),
+        ):
+            wire_module.wire(graph)
 
         # IID 0 must pair with target 0, and IID 1 with target 1.
         source_drops[1].addConsumer.assert_called_once_with(
@@ -198,8 +202,6 @@ class TestGroupByHandlerWiring(unittest.TestCase):
                 "categoryType": "Construct",
             },
             is_group=True,
-            group_keys=None,
-            group_by_scatter_layers=(3, [], []),
             groupby_width=3,
             h_level=0,
             getPortName=lambda ports, index=0, portId=None: get_port_name(
@@ -264,7 +266,12 @@ class TestGroupByHandlerWiring(unittest.TestCase):
             _loop_aware_set=set(),
         )
 
-        wire_module.wire(graph)
+        with patch.object(
+            GroupByHandler,
+            "group_by_scatter_layers",
+            return_value=(3, [], []),
+        ):
+            wire_module.wire(graph)
 
         self.assertEqual(
             [
