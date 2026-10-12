@@ -37,7 +37,6 @@ class TestServiceHandlerInstantiationRouting(unittest.TestCase):
             category=Categories.SERVICE,
             is_group=True,
             jd={"category": Categories.SERVICE},
-            group_keys=None,
             dop=1,
             children=[],
         )

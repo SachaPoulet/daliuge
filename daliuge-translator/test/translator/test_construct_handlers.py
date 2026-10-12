@@ -217,6 +217,17 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         source_drop.coord = coord
         return source_drop
 
+    @staticmethod
+    def _handler(group_keys, group_by_scatter_layers):
+        """GroupByHandler with fixed keys and scatter layers, so these
+        tests cover the pairing alone."""
+        handler = GroupByHandler()
+        handler.group_keys = Mock(return_value=group_keys)
+        handler.group_by_scatter_layers = Mock(
+            return_value=group_by_scatter_layers
+        )
+        return handler
+
     def _resolve(
         self,
         source_coords,
@@ -234,8 +245,10 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         target = self._node(
             Categories.GROUP_BY,
             h_level=target_attributes.pop("target_h_level", 0),
-            group_keys=target_attributes.pop("group_keys", None),
-            group_by_scatter_layers=target_attributes.pop(
+        )
+        handler = self._handler(
+            target_attributes.pop("group_keys", None),
+            target_attributes.pop(
                 "group_by_scatter_layers",
                 (target_count, [], []),
             ),
@@ -253,7 +266,7 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             for index in range(target_count)
         ]
 
-        edges = GroupByHandler().resolve_edges(
+        edges = handler.resolve_edges(
             link,
             sources,
             targets,
@@ -368,11 +381,8 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             name="outer-groupby",
         )
 
-        target = self._node(
-            Categories.GROUP_BY,
-            group_keys=("first", "second"),
-            group_by_scatter_layers=(2, [0, 1], []),
-        )
+        target = self._node(Categories.GROUP_BY)
+        handler = self._handler(("first", "second"), (2, [0, 1], []))
 
         link = LogicalLink(source=source, target=target)
 
@@ -390,7 +400,7 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             dropdict({"target": 1}),
         ]
 
-        edges = GroupByHandler().resolve_edges(
+        edges = handler.resolve_edges(
             link,
             sources,
             targets,
@@ -411,11 +421,8 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
         source = self._node(Categories.PYTHON_APP)
         source.group = self._node(Categories.GROUP_BY)
 
-        target = self._node(
-            Categories.GROUP_BY,
-            group_keys=("first", "second"),
-            group_by_scatter_layers=(1, [0], []),
-        )
+        target = self._node(Categories.GROUP_BY)
+        handler = self._handler(("first", "second"), (1, [0], []))
 
         link = LogicalLink(source=source, target=target)
 
@@ -423,7 +430,7 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             GraphException,
             "hiearchy.*not specified",
         ):
-            GroupByHandler().resolve_edges(
+            handler.resolve_edges(
                 link,
                 [self._drop(InstanceId((0, 1)))],
                 [dropdict({"target": 0})],
@@ -432,11 +439,8 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
 
     def test_reads_structured_coordinate_instead_of_iid_string(self):
         source = self._node(Categories.PYTHON_APP)
-        target = self._node(
-            Categories.GROUP_BY,
-            group_keys=None,
-            group_by_scatter_layers=(2, [], []),
-        )
+        target = self._node(Categories.GROUP_BY)
+        handler = self._handler(None, (2, [], []))
         link = LogicalLink(source=source, target=target)
 
         sources = [
@@ -454,7 +458,7 @@ class TestGroupByHandlerResolveEdges(unittest.TestCase):
             dropdict({"target": 1}),
         ]
 
-        edges = GroupByHandler().resolve_edges(
+        edges = handler.resolve_edges(
             link,
             sources,
             targets,
@@ -567,8 +571,10 @@ class TestConstructHandlerDoP(unittest.TestCase):
             MPIHandler().degree_of_parallelism(mpi, None),
         )
 
+        scatter = SimpleNamespace(category=Categories.SCATTER, dop=3)
         groupby = SimpleNamespace(
-            group_by_scatter_layers=(3, [], [])
+            jd={},
+            inputs=[SimpleNamespace(group=scatter)],
         )
         self.assertEqual(
             3,
