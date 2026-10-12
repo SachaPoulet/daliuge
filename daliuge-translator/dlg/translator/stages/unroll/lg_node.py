@@ -29,10 +29,7 @@ import json
 import logging
 import random
 
-from dlg.translator.stages.unroll.constructs.registry import (
-    get_handler_for_node,
-    is_construct,
-)
+from dlg.translator.stages.unroll.constructs.registry import is_construct
 from dlg.translator.stages.unroll.model import LGNode as LGNodeModel
 from dlg.common import CategoryType
 from dlg.common import dropdict
@@ -105,21 +102,11 @@ class LGNode(LGNodeModel):
 
         self._dropclass = value
 
-    def has_group(self):
-        return self.group is not None
-
     def has_converted(self):
         return self._converted
 
     def complete_conversion(self):
         self._converted = True
-
-    @property
-    def gid(self):
-        if self.group is None:
-            return 0
-        else:
-            return self.group.id
 
     @property
     def has_child(self):
@@ -263,69 +250,6 @@ class LGNode(LGNodeModel):
                         c += 1
 
         return ret_dop, layer_index, layers
-
-    @property
-    def dop(self):
-        """
-        Degree of Parallelism: integer
-        default: 1
-        """
-        if self._dop is None:
-            handler = get_handler_for_node(self)
-            self._dop = handler.degree_of_parallelism(self)
-
-        return self._dop
-
-    def dop_diff(self, that_lgn):
-        """
-        TODO: This does not belong in the LGNode class
-
-        dop difference between inner node/group and outer group
-        e.g for each outer group, how many instances of inner nodes/groups
-        """
-        # if (self.is_group() or that_lgn.is_group()):
-        #     raise GraphException("Cannot compute dop diff between groups.")
-        # don't check h_related for efficiency since it should have been checked
-        # if (self.h_related(that_lgn)):
-        il = self.h_level
-        al = that_lgn.h_level
-        if il == al:
-            return 1
-        elif il > al:
-            oln = that_lgn
-            iln = self
-        else:
-            iln = that_lgn
-            oln = self
-        re_dop = 1
-        cg = iln
-        init_cond = cg.gid != oln.gid and cg.has_group()
-        while init_cond or is_construct(cg, Categories.MPI):
-            if is_construct(cg, Categories.MPI):
-                re_dop *= cg.dop
-            # else:
-            if init_cond:
-                re_dop *= cg.group.dop
-            cg = cg.group
-            if cg is None:
-                break
-            init_cond = cg.gid != oln.gid and cg.has_group()
-        return re_dop
-        # else:
-        #     pass
-        # raise GInvalidLink("{0} and {1} are not hierarchically related".format(self.id, that_lgn.id))
-
-    def h_related(self, that_lgn):
-        """
-        TODO: This does not belong in the LGNode class
-        """
-        that_gh = that_lgn.group_hierarchy
-        this_gh = self.group_hierarchy
-        if len(that_gh) + len(this_gh) <= 1:
-            # at least one is at the root level
-            return True
-
-        return that_gh.find(this_gh) > -1 or this_gh.find(that_gh) > -1
 
     def make_oid(self, iid=InstanceId((0,))):
         """
@@ -592,8 +516,3 @@ class LGNode(LGNodeModel):
         drop_spec.update(kwargs)
         drop_spec.coord = iid
         return drop_spec
-
-    @staticmethod
-    def str_to_bool(value, default_value=False):
-        res = True if value in ["1", "true", "True", "yes"] else default_value
-        return res

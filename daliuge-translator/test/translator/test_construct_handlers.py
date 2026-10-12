@@ -719,7 +719,7 @@ class TestConstructHandlerDoP(unittest.TestCase):
         handler.degree_of_parallelism.return_value = 7
 
         with patch(
-            "dlg.translator.stages.unroll.lg_node.get_handler_for_node",
+            "dlg.translator.stages.unroll.model.get_handler_for_node",
             return_value=handler,
         ) as get_handler:
             self.assertEqual(7, node.dop)
