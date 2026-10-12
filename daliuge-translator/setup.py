@@ -40,10 +40,11 @@ logger = logging.getLogger(f"dlg.{__name__}")
 
 def extract_version():
     """
-    Retrived the current version based on the most recent version tag, stored in daliuge-common/VERSION.
-    This is then split into the individual major/minor/patch numbers.
+    Retrieve the version stored in this package's VERSION file.
 
-    :return: tuple(int, int, int): major, minor, patch
+    The value is split into individual major, minor, and patch numbers.
+
+    :return: tuple[int, int, int]: major, minor, patch
     """
     TAG_VERSION_FILE = "VERSION"
     with (Path(__file__).parent / TAG_VERSION_FILE).open(encoding="utf8") as open_file:
