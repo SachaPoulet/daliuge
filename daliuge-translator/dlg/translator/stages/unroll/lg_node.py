@@ -29,7 +29,10 @@ import json
 import logging
 import random
 
-from dlg.translator.stages.unroll.constructs.registry import is_construct
+from dlg.translator.stages.unroll.constructs.registry import (
+    get_handler,
+    is_construct,
+)
 from dlg.translator.stages.unroll.model import LGNode as LGNodeModel
 from dlg.common import CategoryType
 from dlg.common import dropdict
@@ -151,11 +154,10 @@ class LGNode(LGNodeModel):
         Gather width
         """
         if is_construct(self, Categories.GATHER):
+            # Kept after the first read: make_single_drop later rewrites jd
+            # from fields, so reading it again can give another width.
             if self._gaw is None:
-                try:
-                    self._gaw = int(self.jd["num_of_inputs"])
-                except KeyError:
-                    self._gaw = 1
+                self._gaw = get_handler(Categories.GATHER).gather_width(self)
             return self._gaw
         else:
             # TODO: use OO style to replace all type-related statements!
