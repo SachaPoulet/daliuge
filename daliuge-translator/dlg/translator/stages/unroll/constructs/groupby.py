@@ -94,12 +94,10 @@ class GroupByHandler:
         node: Any,
     ) -> tuple[int, list[int], list[Any]]:
         """
-        Return:
-            scatter layers info associated with this group by logical node
-            A tuple of three items:
-                (1) DoP
-                (2) layer indexes (list) from innser scatter to outer scatter
-                (3) layers (list)
+        Scatter layers info associated with this group by logical node.
+
+        returns a tuple of three items: DoP, list(layer indexes) from 
+        inner scatter to outer scatter, and list(layers)
         """
         from .registry import is_construct
 
