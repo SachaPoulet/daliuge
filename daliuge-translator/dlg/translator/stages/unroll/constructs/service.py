@@ -8,11 +8,15 @@ from .base import GraphContext, InstantiationContext
 
 
 class ServiceHandler:
+    """handler for Service constructs, 
+    they instantiate as Application DROPs."""
+
     construct_type = Categories.SERVICE
     is_group_construct = True
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
+        """accept every link, Service adds no link rules"""
         del source, target
 
     def degree_of_parallelism(
@@ -22,7 +26,7 @@ class ServiceHandler:
     ) -> int:
         del node, ctx
 
-        return 1
+        return 1 # Service instantiated once per enclosing instance
 
     def instantiate(
         self,

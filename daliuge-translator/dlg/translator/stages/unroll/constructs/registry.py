@@ -20,6 +20,7 @@ _edge_handlers: dict[EdgeKey, ConstructHandler] = {}
 
 
 def register_handler(handler: ConstructHandler) -> None:
+    """Register a handler under its construct type and each of its edge keys."""
     _handlers[handler.construct_type] = handler
 
     for key in handler.edge_keys:
@@ -27,10 +28,18 @@ def register_handler(handler: ConstructHandler) -> None:
 
 
 def get_handler(construct_type: str) -> ConstructHandler:
+    """return handler registered for a construct type"""
     return _handlers[construct_type]
 
 
 def get_handler_for_node(node: Any) -> ConstructHandler:
+    """
+    A group node gets its group construct's handler, or the Subgraph handler
+    when it is a subgraph app
+
+    A non-group node gets its category's non-group handler, falling back to
+    the Leaf handler.
+    """
     if node.is_group:
         category = node.category
         handler = _handlers.get(category)
@@ -78,6 +87,7 @@ def get_edge_handler(
     target_construct: Optional[str],
     relation: HLevelRelation,
 ) -> ConstructHandler:
+    """Return handler that resolves edges for this kind of link"""
     for key in _edge_key_candidates(source_construct, target_construct, relation):
         handler = _edge_handlers.get(key)
 

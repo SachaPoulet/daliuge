@@ -11,11 +11,16 @@ if TYPE_CHECKING:
 
 
 class ScatterHandler:
+    """Handler for Scatter, which repeats its body DoP times and makes no DROP."""
+
     construct_type = Categories.SCATTER
     is_group_construct = True
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
+        """reject any link to or from the Scatter construct itself.
+        Links must go to Scatter's input application or its body.
+        """
         from .registry import is_construct
 
         if is_construct(source, Categories.SCATTER) or is_construct(
@@ -33,6 +38,9 @@ class ScatterHandler:
         node: Any,
         ctx: Optional[GraphContext] = None,
     ) -> int:
+        """Return the Scatter's DoP from num_of_copies, num_of_splits or
+        Number of copies --> raises GInvalidNode if none set
+        """
         del ctx
 
         for key in [

@@ -131,6 +131,7 @@ class LoopHandler:
         return []
 
     def validate_link(self, source: Any, target: Any) -> None:
+        """Reject any link to or from the Loop construct itself"""
         from .registry import is_construct
 
         if is_construct(source, Categories.LOOP) or is_construct(
@@ -147,6 +148,8 @@ class LoopHandler:
         node: Any,
         ctx: Optional[GraphContext] = None,
     ) -> int:
+        """Return iteration count from num_of_iter, Number of Iterations
+        or Number of loops"""
         del ctx
 
         for key in [

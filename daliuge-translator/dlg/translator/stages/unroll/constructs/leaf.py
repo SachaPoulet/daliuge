@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
 
 class LeafHandler:
+    """default handler for nodes that aren't constructs -> Applications and Data."""
+
     construct_type = "leaf"
     is_group_construct = False
     edge_keys = ()
@@ -23,7 +25,7 @@ class LeafHandler:
     ) -> int:
         del node, ctx
 
-        return 1
+        return 1 # leaf node is one DROP per enclosing instance
 
     def resolve_edges(
         self,
