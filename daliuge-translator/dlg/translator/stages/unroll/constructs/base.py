@@ -65,10 +65,9 @@ class WiringContext(GraphContext, Protocol):
     """graph context passed to resolve_edges, with chunking helpers"""
 
     def chunk_size(self, source: "LGNode", target: "LGNode") -> int:
-        """return chunk size for a link.
-        (the Gather or GroupBy width when the target is one, otherwise
-        the DoP ratio between source and target)
-        """
+        # return chunk size for a link.
+        # (the Gather or GroupBy width when the target is one, otherwise
+        # the DoP ratio between source and target)
         ...
 
     def split(
@@ -76,7 +75,7 @@ class WiringContext(GraphContext, Protocol):
         drops: Sequence[dropdict],
         size: int,
     ) -> Iterator[Sequence[dropdict]]:
-        """split DROPs into consecutive chunks of size"""
+        # split DROPs into consecutive chunks of size
         ...
 
 
@@ -140,7 +139,7 @@ class ConstructHandler(Protocol):
         node: "LGNode",
         ctx: Optional[GraphContext] = None,
     ) -> int:
-        """return how many instances of the node to create"""
+        # return how many instances of the node to create
         ...
 
     def instantiate(
@@ -149,7 +148,7 @@ class ConstructHandler(Protocol):
         coord: InstanceId,
         ctx: InstantiationContext,
     ) -> list[dropdict]:
-        """create DROPs for one instance of the node at coord"""
+        # create DROPs for one instance of the node at coord
         ...
 
     def synthesise_links(
@@ -157,7 +156,7 @@ class ConstructHandler(Protocol):
         node: "LGNode",
         ctx: GraphContext,
     ) -> list[LogicalLink]:
-        """return the artificial links the construct adds to the graph"""
+        # return the artificial links the construct adds to the graph
         ...
 
     def resolve_edges(
@@ -167,7 +166,7 @@ class ConstructHandler(Protocol):
         targets: Sequence[dropdict],
         ctx: WiringContext,
     ) -> list[Edge]:
-        """pair a link's source and target DROPs into edges"""
+        # pair a link's source and target DROPs into edges
         ...
 
     def validate_link(
@@ -175,5 +174,5 @@ class ConstructHandler(Protocol):
         source: "LGNode",
         target: "LGNode",
     ) -> None:
-        """raise GInvalidLink if the construct does not allow link"""
+        # raise GInvalidLink if the construct does not allow link
         ...
