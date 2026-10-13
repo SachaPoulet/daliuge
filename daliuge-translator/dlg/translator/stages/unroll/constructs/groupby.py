@@ -14,11 +14,16 @@ if TYPE_CHECKING:
 
 
 class GroupByHandler:
+    """regroups DROPs from nested Scatters by key"""
     construct_type = Categories.GROUP_BY
     is_group_construct = True
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
+        """check links into and out of a GroupBy.
+        input must be a non-group node inside at least 
+        one Scatter, and its output must be a Gather.
+        """
         from .registry import is_construct
 
         if is_construct(target, Categories.GROUP_BY):
@@ -55,6 +60,7 @@ class GroupByHandler:
         node: Any,
         ctx: Optional[GraphContext] = None,
     ) -> int:
+        """Return DoP worked out by group_by_scatter_layers"""
         del ctx
 
         return self.group_by_scatter_layers(node)[0]
@@ -94,12 +100,10 @@ class GroupByHandler:
         node: Any,
     ) -> tuple[int, list[int], list[Any]]:
         """
-        Return:
-            scatter layers info associated with this group by logical node
-            A tuple of three items:
-                (1) DoP
-                (2) layer indexes (list) from innser scatter to outer scatter
-                (3) layers (list)
+        Scatter layers info associated with this group by logical node.
+
+        returns a tuple of three items: DoP, list(layer indexes) from 
+        inner scatter to outer scatter, and list(layers)
         """
         from .registry import is_construct
 

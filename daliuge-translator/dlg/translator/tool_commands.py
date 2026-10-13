@@ -93,6 +93,10 @@ _param_types = {
 
 
 def parse_partition_algo_params(algo_params):
+    """
+    parse the ``name=value`` algorithm parameters into a dict
+    Values are converted to each parameter's type & unknown names dropped.
+    """
     # Double-check that parameters are of shape name=value
     for p in algo_params:
         if len(list(filter(None, p.split("=")))) != 2:
@@ -155,6 +159,10 @@ def _map_options(opts) -> MapOptions:
 
 
 def partition(pgt, opts):
+    """
+    Partition PGT with the algorithm, partition count, island count and
+    algorithm parameters given in CLI options.
+    """
     from dlg.translator.stages.partition.stage import partition as stage_partition
 
     algo_params = parse_partition_algo_params(opts.algo_params or [])
@@ -172,6 +180,7 @@ def partition(pgt, opts):
 
 
 def submit(pg, opts):
+    """submit a physical graph to a DALiuGE manager"""
     from dlg.deploy import common
     session_id = common.submit(
         pg,
@@ -233,6 +242,8 @@ def _setup_output(opts):
 
 
 def dlg_fill(parser, args):
+    """fill a logical graph template's parameters 
+    (either key=value pairs or JSON objects)"""
     tool.add_logging_options(parser)
     _add_output_options(parser)
     parser.add_option(
@@ -379,6 +390,7 @@ def _add_unroll_options(parser):
 
 
 def dlg_unroll(parser, args):
+    """unrolls a logical graph into a physical graph template"""
     # Unroll Logical Graph
     tool.add_logging_options(parser)
     _add_output_options(parser)
@@ -434,6 +446,7 @@ def _add_partition_options(parser):
 
 
 def dlg_partition(parser, args):
+    """partition a physical graph template"""
     tool.add_logging_options(parser)
     _add_output_options(parser)
     _add_partition_options(parser)
@@ -485,6 +498,7 @@ def dlg_partition(parser, args):
 
 
 def dlg_unroll_and_partition(parser, args):
+    """unroll a logical graph and partition result in one step"""
     tool.add_logging_options(parser)
     _add_output_options(parser)
     apps = _add_unroll_options(parser)
@@ -500,6 +514,7 @@ def dlg_unroll_and_partition(parser, args):
 
 
 def dlg_map(parser, args):
+    """map a partitioned PGT onto nodes and islands, giving a physical graph"""
 
     tool.add_logging_options(parser)
     _add_output_options(parser)
@@ -564,6 +579,7 @@ def dlg_map(parser, args):
 
 
 def dlg_submit(parser, args):
+    """submit a physical graph to a DALiuGE manager"""
 
     # Submit Physical Graph
     _add_output_options(parser)
@@ -644,6 +660,7 @@ def dlg_submit(parser, args):
 
 
 def register_commands():
+    """register  translator's dlg sub-commands """
     translator_group = tool.CommandGroup(
         "translator",
         "Commands for unrolling and partitioning graphs using the dlg translator.")

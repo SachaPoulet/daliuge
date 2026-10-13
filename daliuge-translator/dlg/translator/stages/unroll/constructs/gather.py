@@ -12,11 +12,18 @@ if TYPE_CHECKING:
 
 
 class GatherHandler:
+    """merges groups of its inputs into fewer instances"""
+
     construct_type = Categories.GATHER
     is_group_construct = True
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
+        """check links into and out of a Gather.
+
+        Input must be Data or a GroupBy. 
+        Output must be a group-start
+        """
         from .registry import is_construct
 
         if is_construct(source, Categories.GATHER):
@@ -47,6 +54,7 @@ class GatherHandler:
         node: Any,
         ctx: Optional[GraphContext] = None,
     ) -> int:
+        """Return input's DoP / gather_width, rounded up"""
         del ctx
 
         try:

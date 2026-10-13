@@ -10,11 +10,13 @@ if TYPE_CHECKING:
 
 
 class SubgraphHandler:
+    """handler for Subgraph constructs"""
     construct_type = Categories.SUBGRAPH
     is_group_construct = True
     edge_keys = ()
 
     def validate_link(self, source: Any, target: Any) -> None:
+        """accepts every link, Subgraph adds no link rules"""
         del source, target
 
     def degree_of_parallelism(
@@ -24,7 +26,7 @@ class SubgraphHandler:
     ) -> int:
         del node, ctx
 
-        return 1
+        return 1 # Subgraph is instantiated once per enclosing instance
 
     def resolve_edges(
         self,
@@ -33,7 +35,7 @@ class SubgraphHandler:
         targets: Sequence[dropdict],
         ctx: WiringContext,
     ) -> list["Edge"]:
-        """Preserve the legacy no-op behaviour for Subgraph edges."""
+        """preserves legacy no-op behaviour for Subgraph edges"""
 
         del link, sources, targets, ctx
         return []
